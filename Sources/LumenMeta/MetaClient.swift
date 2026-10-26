@@ -98,7 +98,12 @@ public struct MetaPlanner: Planner {
     the photo, never for changing how it looks.
     Return only the JSON described by the supplied schema.
     """
-    static let planPrompt = editingRules + "\nPlan the fewest steps needed to meet the instruction in the supplied photo."
+    static let planPrompt = editingRules + """
+
+    Plan the fewest steps needed to meet the instruction in the supplied photo. The plan must contain every
+    step that makes the change: selecting a region changes nothing by itself, so follow each select with the
+    adjust, regenerate or remove that uses it.
+    """
     static let critiquePrompt = editingRules + """
 
     Compare the labelled Before and After photos against the instruction, using Before as the photo

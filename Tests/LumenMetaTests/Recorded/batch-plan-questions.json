@@ -1,0 +1,9 @@
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "{\"summary\":\"Make the friends' shirts blue\",\"groups\":[{\"id\":\"friends\",\"title\":\"Friends outdoors\",\"photos\":[3,1],\"instruction\":\"Make both friends' T-shirts royal blue, keeping each shirt's own cut and folds\"}],\"questions\":[{\"id\":\"shirt-style\",\"question\":\"Should their shirts keep their own style?\",\"options\":[\"Keep each style in blue\",\"Give everyone the same shirt\"],\"recommended\":0,\"groups\":[\"friends\"]}]}"
+    },
+    "finish_reason": "stop"
+  }]
+}

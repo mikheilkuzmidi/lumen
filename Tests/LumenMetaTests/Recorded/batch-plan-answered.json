@@ -1,0 +1,9 @@
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "{\"summary\":\"Keep each shirt's style and make it royal blue\",\"groups\":[{\"id\":\"friends\",\"title\":\"Friends outdoors\",\"photos\":[1,3],\"instruction\":\"Make both friends' T-shirts royal blue, keeping each shirt's own cut and folds\"},{\"id\":\"base\",\"title\":\"Base pass only\",\"photos\":[2],\"instruction\":null}],\"questions\":[]}"
+    },
+    "finish_reason": "stop"
+  }]
+}

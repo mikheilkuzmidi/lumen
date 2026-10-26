@@ -16,6 +16,11 @@ public actor GlimmerServer {
         self.modelDirectory = modelDirectory
     }
 
+    /// Checks that the local executable and both model files can be used, without launching anything.
+    public nonisolated static func checkInstallation(port: Int = 8786, modelDirectory: URL? = nil) throws {
+        _ = try GlimmerLaunch.resolve(port: port, modelDirectory: modelDirectory)
+    }
+
     deinit {
         loading?.cancel()
         if let process, process.isRunning { process.terminate() }

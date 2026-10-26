@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -17,10 +18,12 @@ enum StudioLaunch {
 
 struct LumenStudioApp: App {
     @State private var model = StudioModel()
+    @NSApplicationDelegateAdaptor(StudioApplicationDelegate.self) private var delegate
 
     var body: some Scene {
         Window("Lumen Studio", id: "studio") {
             StudioView(model: model)
+                .onAppear { delegate.model = model }
                 .preferredColorScheme(.dark)
                 .tint(StudioStyle.accent)
                 .frame(minWidth: 980, minHeight: 680)
@@ -53,5 +56,18 @@ struct LumenStudioApp: App {
                 .preferredColorScheme(.dark)
                 .tint(StudioStyle.accent)
         }
+    }
+}
+
+@MainActor
+final class StudioApplicationDelegate: NSObject, NSApplicationDelegate {
+    weak var model: StudioModel?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            await model?.close()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }

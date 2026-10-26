@@ -11,6 +11,7 @@ enum StudioStyle {
 
 struct StudioView: View {
     @Bindable var model: StudioModel
+    var activatesBackend = true
     @State private var dropTarget = false
 
     var body: some View {
@@ -32,7 +33,7 @@ struct StudioView: View {
                                 .allowsHitTesting(false)
                         }
                     }
-                    if let issue = model.issue { issueBanner(issue) }
+                    if let issue = model.issue ?? model.backends.issue { issueBanner(issue) }
                     PromptBar(model: model)
                 }
                 Rectangle().fill(StudioStyle.line).frame(width: 1)
@@ -49,6 +50,14 @@ struct StudioView: View {
         } isTargeted: { dropTarget = $0 && !model.isBusy }
         .onExitCommand { model.area = nil }
         .background(CompareKeyboard(model: model).frame(width: 0, height: 0))
+        .task { if activatesBackend { await model.backends.activate() } }
+        .onReceive(NotificationCenter.default.publisher(for: .studioProviderChanged)) { _ in
+            Task { await model.backends.refreshAvailability() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if activatesBackend { Task { await model.backends.refreshAvailability() } }
+        }
+        .onDisappear { if activatesBackend { Task { await model.close() } } }
     }
 
     private var header: some View {
@@ -90,7 +99,7 @@ struct StudioView: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
             Text(message).font(.callout).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            Button { model.issue = nil } label: { Image(systemName: "xmark").font(.caption) }
+            Button { model.issue = nil; model.backends.issue = nil } label: { Image(systemName: "xmark").font(.caption) }
                 .buttonStyle(.plain).accessibilityLabel("Dismiss error")
         }
         .padding(14)
@@ -159,7 +168,7 @@ struct PromptBar: View {
             .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
             .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(StudioStyle.line) }
             HStack(spacing: 7) {
-                if model.isBusy { ProgressView().controlSize(.mini) }
+                if model.isBusy || model.backends.isLoading { ProgressView().controlSize(.mini) }
                 else { Circle().fill(StudioStyle.accent.opacity(0.7)).frame(width: 4, height: 4) }
                 Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
                 Spacer(minLength: 0)
@@ -175,14 +184,19 @@ struct PromptBar: View {
 
     private var backend: some View {
         Menu {
-            Button {} label: { Label("Meta (Muse Spark)", systemImage: "checkmark") }
-            Divider()
-            Button("Muse Glimmer on this Mac · Local runtime unavailable") {}.disabled(true)
-            Button("Muse Spark Open · Hosting provider not configured") {}.disabled(true)
+            ForEach(StudioScript.Backend.allCases, id: \.self) { backend in
+                let availability = model.backends.availability(for: backend)
+                Button { model.chooseBackend(backend) } label: {
+                    if backend == model.backends.selection { Label(backend.title, systemImage: "checkmark") }
+                    else { Text(backend.title) }
+                }
+                .disabled(!availability.isEnabled)
+                .help(availability.help)
+            }
         } label: {
             HStack(spacing: 6) {
                 Circle().fill(StudioStyle.accent).frame(width: 5, height: 5)
-                Text("Meta (Muse Spark)")
+                Text(model.backends.selection.title)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }
             .font(.system(size: 11, weight: .medium))
@@ -191,7 +205,8 @@ struct PromptBar: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Model backend: Meta, Muse Spark")
+        .accessibilityLabel("Model backend: \(model.backends.selection.title)")
+        .simultaneousGesture(TapGesture().onEnded { Task { await model.backends.refreshAvailability() } })
     }
 }
 
@@ -356,7 +371,7 @@ private struct TimelineRow: View {
     private var traces: some View {
         ForEach(Array(entry.traces.enumerated()), id: \.offset) { _, trace in
             VStack(alignment: .leading, spacing: 4) {
-                if let model = trace.model {
+                if let model = trace.studioModelName {
                     Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s")
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
                 }

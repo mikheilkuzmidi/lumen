@@ -3,7 +3,10 @@ import LumenCore
 
 /// A photo edit and window size to run without interaction.
 struct StudioScript: Decodable, Sendable {
-    enum Backend: String, Decodable, Sendable { case meta }
+    enum Backend: String, Decodable, CaseIterable, Sendable {
+        case meta, glimmer
+        case sparkOpen = "spark-open"
+    }
 
     struct Window: Decodable, Equatable, Sendable {
         let width: Double
@@ -136,6 +139,7 @@ struct StudioScriptRunner {
     func run(using models: StudioModels? = nil,
              capture: @MainActor (StudioSnapshot) async throws -> Void) async throws {
         do {
+            model.backends.choose(script.backend, remembering: false)
             try await model.openPhoto(script.photoURL(relativeTo: scriptURL))
             model.prompt = script.instruction
             try await capture(.opened)
@@ -143,8 +147,10 @@ struct StudioScriptRunner {
             if script.area != nil { try await capture(.area) }
             var snapshots = StudioSnapshots()
             var finished = false
-            let models = try models ?? StudioModels.meta(allowKeychainInteraction: false)
-            try await model.runEdit(using: models) { event in
+            if model.backends.selection != script.backend {
+                throw StudioScriptError.message(model.backends.issue ?? "The requested planner couldn't be loaded.")
+            }
+            try await model.runEdit(using: models, allowKeychainInteraction: false) { event in
                 if case .trace(let trace) = event, trace.kind == .failure {
                     throw StudioScriptError.message(trace.detail)
                 }
@@ -163,7 +169,9 @@ struct StudioScriptRunner {
             try await capture(.layers)
             try writeTimeline()
             try await model.exportPhoto(to: output.appendingPathComponent("result.jpg"))
+            await model.backends.shutdown()
         } catch {
+            await model.backends.shutdown()
             model.issue = error.localizedDescription
             try? writeTimeline()
             throw error

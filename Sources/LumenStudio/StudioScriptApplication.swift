@@ -71,7 +71,7 @@ final class StudioScriptApplication {
         panel.animationBehavior = .none
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.collectionBehavior = [.stationary, .ignoresCycle]
-        let root = StudioView(model: model)
+        let root = StudioView(model: model, activatesBackend: false)
             .preferredColorScheme(.dark)
             .tint(StudioStyle.accent)
             .frame(width: size.width, height: size.height)

@@ -67,3 +67,23 @@ One run each on CC0 fixtures, with the user's own key. These are single measurem
 - **SAM 3.1, "jacket" on 512 × 768 and on 854 × 1280 photos:** HTTP 200 in 1.5–2.9 s. One record with confidence 0.79–0.82. The mask raster had exactly the box's size (for example 463 × 241 for a 241 × 463 box), lossless encoding.
 - **Muse Image, redrawing a 0.62 × 0.78 crop of the photo:** 10.4–23.9 s.
 - **A complete edit ("Make his jacket bright yellow"):** plan, select, redraw and check took 27 s.
+
+## Muse Spark: library review and planning
+
+`MetaBatchPlanner` uses two structured `POST /chat/completions` calls with the configured planning model
+(`muse-spark-1.3` by default):
+
+- **Review:** up to 20 photos appear in one five-column JPEG contact sheet, with 256-pixel cells numbered
+  from left to right, top to bottom. Compact JSON supplies each number's sharpness, exposure, shadow and
+  highlight clipping, and nullable tilt, alongside the optional instruction. The strict `batch_review`
+  response contains `photos`, each with `number`, `misfire`, nullable `misfireReason`, `quality`,
+  `description`, `group` and `matchesInstruction`. Numbers map back to the request's photo ids in their
+  original order; missing, duplicate or unknown numbers are rejected.
+- **Plan:** text JSON supplies the instruction, numbered reviews (`number`, `description`, `group`) and
+  answers keyed by question id, without images. The strict `batch_plan` response contains `summary`,
+  `groups` (`id`, `title`, photo numbers and a nullable per-photo `instruction`) and `questions`
+  (`id`, `question`, two to four `options`, a zero-based `recommended` index and affected group ids).
+  Questions are reserved for personal choices; once all choices are answered the questions array is empty.
+
+Both schemas use an object root, reject additional properties and require every property, with optional
+values represented by null. Both calls use the same response decoding and error mapping as `MetaPlanner`.

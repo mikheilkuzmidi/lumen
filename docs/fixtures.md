@@ -10,5 +10,22 @@ No private photos, no photos of people without their consent, and no images whos
 
 Recorded model responses in `Tests/LumenMetaTests/Recorded/` are trimmed to what the tests need. They contain no keys, no account identifiers and no private images.
 
-| File | Source | License |
-| --- | --- | --- |
+| File | Source | Author | License |
+| --- | --- | --- | --- |
+| `photos/blue-vintage-car-on-a-dirt-road.jpg` | [Blue vintage car on a dirt road (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Blue_vintage_car_on_a_dirt_road_(Unsplash).jpg) | Cayton Heath cayton | CC0 |
+| `photos/city-at-night.jpg` | [City at Night (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:City_at_Night_(Unsplash).jpg) | Kyle Sudu ksudu94 | CC0 |
+| `photos/coffee-in-montreal.jpg` | [Coffee in Montreal (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Coffee_in_Montreal_(Unsplash).jpg) | Luke Chesser lukechesser | CC0 |
+| `photos/colorful-asian-street-market.jpg` | [Colorful Asian street market (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Colorful_Asian_street_market_(Unsplash).jpg) | Steven Wei stevenwei | CC0 |
+| `photos/dressed-in-red.jpg` | [Dressed In Red (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Dressed_In_Red_(Unsplash).jpg) | Brooke Cagle brookecagle | CC0 |
+| `photos/hooded-woman-in-snow.jpg` | [Hooded woman in snow (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Hooded_woman_in_snow_(Unsplash).jpg) | Pete Bellis petebellis | CC0 |
+| `photos/man-in-black-jacket-on-street.jpg` | [Imani-bahati-man-wearing-black-jacket-on-street.jpg](https://commons.wikimedia.org/wiki/File:Imani-bahati-man-wearing-black-jacket-on-street.jpg) | Imani Bahati | CC0 |
+| `photos/jacket-with-a-hood.jpg` | [Jacket With A Hood (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Jacket_With_A_Hood_(Unsplash).jpg) | Stephen Arnold iamarnold | CC0 |
+| `photos/kayaks-on-a-mountain-lake.jpg` | [Kayaks on a mountain lake (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Kayaks_on_a_mountain_lake_(Unsplash).jpg) | Matheus Bandoch mbandoch | CC0 |
+| `photos/living-room.jpg` | [Living room (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Living_room_(Unsplash).jpg) | Jarosław Ceborski jarson | CC0 |
+| `photos/man-in-denim-jacket-posing.jpg` | [Man in denim jacket posing (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_in_denim_jacket_posing_(Unsplash).jpg) | Brooke Cagle brookecagle | CC0 |
+| `photos/man-on-bike-on-road.jpg` | [Man on bike on road (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_on_bike_on_road_(Unsplash).jpg) | Daniel Peragine danieljperagine | CC0 |
+| `photos/man-walks-in-front-of-graffiti-wall.jpg` | [Man walks in front of graffiti wall (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_walks_in_front_of_graffiti_wall_(Unsplash).jpg) | Josh Aarons mrjoshuahh | CC0 |
+| `photos/stockholm-man-with-headphones.jpg` | [Stockholm man with headphones (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Stockholm_man_with_headphones_(Unsplash).jpg) | Yingchou Han hyingchou | CC0 |
+| `photos/sunset-beach-couple.jpg` | [Sunset beach couple (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Sunset_beach_couple_(Unsplash).jpg) | Caleb Ekeroth calebekeroth | CC0 |
+
+The photos are scaled to 1280 px on the long edge. `Fixtures/instructions.json` pairs each with the instruction the evaluation runs.

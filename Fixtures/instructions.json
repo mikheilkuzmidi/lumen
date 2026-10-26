@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "photo": "photos/blue-vintage-car-on-a-dirt-road.jpg",
+      "instruction": "Make the truck a deep cherry red and give the sky a warm late-afternoon glow."
+    },
+    {
+      "photo": "photos/city-at-night.jpg",
+      "instruction": "Bring out the city lights and cool the shadows a little."
+    },
+    {
+      "photo": "photos/coffee-in-montreal.jpg",
+      "instruction": "Make the nearer cup matte black and the room a touch warmer."
+    },
+    {
+      "photo": "photos/colorful-asian-street-market.jpg",
+      "instruction": "Make the red gate stand out more and calm the busy colours around it."
+    },
+    {
+      "photo": "photos/dressed-in-red.jpg",
+      "instruction": "Change her red sweater to a forest green knit."
+    },
+    {
+      "photo": "photos/hooded-woman-in-snow.jpg",
+      "instruction": "Make the snow a cleaner white without changing her skin."
+    },
+    {
+      "photo": "photos/man-in-black-jacket-on-street.jpg",
+      "instruction": "Turn his black jacket into a tan suede jacket."
+    },
+    {
+      "photo": "photos/jacket-with-a-hood.jpg",
+      "instruction": "Make his jacket bright yellow."
+    },
+    {
+      "photo": "photos/kayaks-on-a-mountain-lake.jpg",
+      "instruction": "Make the sky more dramatic and the water a deeper turquoise."
+    },
+    {
+      "photo": "photos/living-room.jpg",
+      "instruction": "Replace the blue sofa with a green velvet one."
+    },
+    {
+      "photo": "photos/man-in-denim-jacket-posing.jpg",
+      "instruction": "Make it feel like golden hour."
+    },
+    {
+      "photo": "photos/man-on-bike-on-road.jpg",
+      "instruction": "Remove the no-cycling sign from the pole."
+    },
+    {
+      "photo": "photos/man-walks-in-front-of-graffiti-wall.jpg",
+      "instruction": "Make the graffiti wall black and white and keep him in colour."
+    },
+    {
+      "photo": "photos/stockholm-man-with-headphones.jpg",
+      "instruction": "Brighten his face a little and make the crowd behind him less distracting."
+    },
+    {
+      "photo": "photos/sunset-beach-couple.jpg",
+      "instruction": "Make the sunset more vivid."
+    }
+  ]
+}

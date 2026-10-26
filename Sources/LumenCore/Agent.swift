@@ -32,7 +32,7 @@ public enum LumenError: Error, Equatable, Sendable, LocalizedError {
 /// One thing that happened during an edit, for the timeline and the trace file.
 public struct TraceEvent: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case plan, select, adjust, regenerate, remove, crop, critique, finish, failure
+        case plan, select, adjust, regenerate, remove, crop, revert, critique, finish, failure
     }
 
     public var kind: Kind
@@ -72,6 +72,7 @@ public enum AgentEvent: Sendable {
     case stepStarted(index: Int, step: EditStep)
     case selected(region: String, segment: Segment)
     case applied(Layer)
+    case reverted(Layer.ID)
     case critiqued(Critique)
     case finished(reason: String)
     case trace(TraceEvent)
@@ -87,6 +88,10 @@ public actor EditAgent {
     /// The masks and images retained by this agent's layers.
     public let assets = AssetStore()
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var latestRun: Task<Void, Never>?
+    private var regions: [String: Region] = [:]
+    private var layers: [AppliedLayer] = []
+    private var history: [String] = []
 
     public init(planner: any Planner, segmenter: any Segmenter, generator: any Generator, host: any EditHost,
                 configuration: AgentConfiguration = AgentConfiguration()) {
@@ -112,26 +117,44 @@ public actor EditAgent {
         for task in tasks.values { task.cancel() }
     }
 
+    /// Forgets the edit's regions, layers and instructions for a new photo.
+    public func reset() {
+        cancel()
+        regions.removeAll()
+        layers.removeAll()
+        history.removeAll()
+    }
+
     private struct Region {
         var info: RegionInfo
         var mask: MaskData
         var asset: AssetID
     }
 
+    private struct AppliedLayer {
+        var id: Layer.ID
+        var info: LayerInfo
+    }
+
+    private var regionInfo: [RegionInfo] { regions.values.map(\.info).sorted { $0.id < $1.id } }
+    private var layerInfo: [LayerInfo] { layers.map(\.info) }
+
     private struct Run {
-        var regions: [String: Region] = [:]
         var missing: Set<String> = []
         var done: [String] = []
         var steps = 0
-
-        var regionInfo: [RegionInfo] { regions.values.map(\.info).sorted { $0.id < $1.id } }
     }
 
     private typealias Events = AsyncThrowingStream<AgentEvent, Error>.Continuation
 
     private func start(_ instruction: String, area: NormalizedRect?, events: Events) async {
         let id = UUID()
-        let task = Task { await self.run(instruction, area: area, events: events) }
+        let previous = latestRun
+        let task = Task {
+            await previous?.value
+            await self.run(instruction, area: area, events: events)
+        }
+        latestRun = task
         tasks[id] = task
         await withTaskCancellationHandler {
             await task.value
@@ -139,6 +162,7 @@ public actor EditAgent {
             task.cancel()
         }
         tasks[id] = nil
+        if tasks.isEmpty { latestRun = nil }
     }
 
     private func run(_ instruction: String, area: NormalizedRect?, events: Events) async {
@@ -152,11 +176,12 @@ public actor EditAgent {
             let before = try await host.render(maxLongEdge: configuration.previewLongEdge)
             try checkCancellation()
             let request = PlanRequest(instruction: instruction, image: before, area: area,
-                                      regions: run.regionInfo, done: run.done)
+                                      regions: regionInfo, done: run.done, layers: layerInfo, history: history)
+            history.append(instruction)
             let plan = try await call(.plan, model: planner.modelID, detail: instruction, events: events) {
                 try await self.planner.plan(request)
             }
-            var next = checked(plan, run: run, events: events)
+            var next = checked(plan, events: events)
             events.yield(.planned(next))
             var revisions = 0
             while true {
@@ -174,7 +199,7 @@ public actor EditAgent {
                 let after = try await host.render(maxLongEdge: configuration.previewLongEdge)
                 try checkCancellation()
                 let request = CritiqueRequest(instruction: instruction, before: before, after: after,
-                                              regions: run.regionInfo, done: run.done)
+                                              regions: regionInfo, done: run.done, layers: layerInfo)
                 let critique = try await call(.critique, model: planner.modelID, detail: "Check the edit", events: events) {
                     try await self.planner.critique(request)
                 }
@@ -188,7 +213,7 @@ public actor EditAgent {
                     return
                 }
                 revisions += 1
-                next = checked(EditPlan(summary: critique.notes, steps: critique.steps), run: run, events: events)
+                next = checked(EditPlan(summary: critique.notes, steps: critique.steps), events: events)
             }
         } catch {
             let error = cancellationError(error)
@@ -197,8 +222,8 @@ public actor EditAgent {
         }
     }
 
-    private func checked(_ plan: EditPlan, run: Run, events: Events) -> EditPlan {
-        let checked = plan.checked(knownRegions: Set(run.regions.keys))
+    private func checked(_ plan: EditPlan, events: Events) -> EditPlan {
+        let checked = plan.checked(knownRegions: Set(regions.keys), knownLayers: Set(layerInfo.map(\.id)))
         for detail in checked.notes { note(.plan, detail, events: events) }
         return checked.plan
     }
@@ -221,10 +246,10 @@ public actor EditAgent {
                 switch step {
                 case .select(let selection):
                     // A failed reselection must not leave a previous mask active under the same name.
-                    run.regions[selection.id] = nil
+                    regions[selection.id] = nil
                     run.missing.insert(selection.id)
                     if let region = try await select(selection, area: area, events: events) {
-                        run.regions[selection.id] = region
+                        regions[selection.id] = region
                         run.missing.remove(selection.id)
                         run.done.append("\(title(selection.id)): selected")
                     } else {
@@ -232,7 +257,7 @@ public actor EditAgent {
                         run.done.append("\(title(selection.id)): nothing found for “\(selection.concept ?? selection.id)”")
                     }
                 case .adjust(let adjustment):
-                    let region = try adjustment.region.map { try region($0, run: run) }
+                    let region = try adjustment.region.map { try region($0) }
                     let settings = AdjustmentKey.allCases.compactMap { key -> String? in
                         guard let value = adjustment.values[key] else { return nil }
                         let name = key == .noiseReduction ? "noise reduction" : key.rawValue
@@ -241,23 +266,35 @@ public actor EditAgent {
                     }.joined(separator: ", ")
                     let label = "\(title(adjustment.region ?? "photo")): \(settings)"
                     let layer = Layer(label: label, content: .adjustment(values: adjustment.values, mask: region?.asset))
-                    try await apply(layer, events: events)
+                    try await apply(layer, kind: step.type, region: adjustment.region, events: events)
                     run.done.append(label)
                 case .regenerate(let regeneration):
                     let label = "\(title(regeneration.region)): redrawn as \(regeneration.prompt)"
-                    try await redraw(try region(regeneration.region, run: run), prompt: regeneration.prompt,
+                    try await redraw(try region(regeneration.region), prompt: regeneration.prompt,
                                      label: label, kind: .regenerate, events: events)
                     run.done.append(label)
                 case .remove(let removal):
                     let label = "\(title(removal.region)): removed"
-                    try await redraw(try region(removal.region, run: run),
+                    try await redraw(try region(removal.region),
                                      prompt: "Remove the selected object and fill the area naturally from its surroundings",
                                      label: label, kind: .remove, events: events)
                     run.done.append(label)
                 case .crop(let crop):
                     let layer = Layer(label: "Photo: cropped", content: .crop(crop.rect))
-                    try await apply(layer, events: events)
+                    try await apply(layer, kind: step.type, events: events)
                     run.done.append(layer.label)
+                case .revert(let revert):
+                    guard let layer = layers.first(where: { $0.info.id == revert.layer }) else {
+                        throw LumenError.invalidResponse("No applied layer called “\(revert.layer)”.")
+                    }
+                    let started = Date()
+                    try await host.remove(layer.id)
+                    layers.removeAll { $0.id == layer.id }
+                    run.done.append("Reverted \(layer.info.label)")
+                    events.yield(.reverted(layer.id))
+                    events.yield(.trace(TraceEvent(kind: .revert, detail: "Reverted \(layer.info.label) (\(layer.info.id))",
+                                                   started: started, duration: max(0, Date().timeIntervalSince(started)))))
+                    try checkCancellation()
                 case .finish(let finish):
                     if troubled {
                         note(.plan, "Not finishing yet: a step didn't work, so the result is checked first.", events: events)
@@ -338,7 +375,7 @@ public actor EditAgent {
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
             let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect))
-            try await apply(layer, events: events)
+            try await apply(layer, kind: kind.rawValue, region: region.info.id, events: events)
         } catch {
             await assets.remove(imageAsset)
             await assets.remove(maskAsset)
@@ -346,7 +383,7 @@ public actor EditAgent {
         }
     }
 
-    private func apply(_ layer: Layer, events: Events) async throws {
+    private func apply(_ layer: Layer, kind: String, region: String? = nil, events: Events) async throws {
         try checkCancellation()
         do {
             try await host.apply(layer, assets: assets)
@@ -355,11 +392,13 @@ public actor EditAgent {
             try? await host.remove(layer.id)
             throw error
         }
+        layers.append(AppliedLayer(id: layer.id, info: LayerInfo(id: layer.id.uuidString, label: layer.label,
+                                                               kind: kind, region: region)))
         events.yield(.applied(layer))
     }
 
-    private func region(_ id: String, run: Run) throws -> Region {
-        guard let region = run.regions[id] else { throw LumenError.unknownRegion(id) }
+    private func region(_ id: String) throws -> Region {
+        guard let region = regions[id] else { throw LumenError.unknownRegion(id) }
         return region
     }
 

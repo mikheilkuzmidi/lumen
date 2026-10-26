@@ -16,6 +16,22 @@ public struct RegionInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// An applied layer the planner can refer to or revert.
+public struct LayerInfo: Codable, Equatable, Sendable {
+    public var id: String
+    public var label: String
+    /// The step that made the layer: adjust, regenerate, remove or crop.
+    public var kind: String
+    public var region: String?
+
+    public init(id: String, label: String, kind: String, region: String? = nil) {
+        self.id = id
+        self.label = label
+        self.kind = kind
+        self.region = region
+    }
+}
+
 public struct PlanRequest: Sendable {
     public var instruction: String
     /// The photo as it looks now.
@@ -25,13 +41,20 @@ public struct PlanRequest: Sendable {
     public var regions: [RegionInfo]
     /// What has been done so far, step by step, in words.
     public var done: [String]
+    /// Applied layers, oldest first.
+    public var layers: [LayerInfo]
+    /// Earlier instructions for this photo, oldest first.
+    public var history: [String]
 
-    public init(instruction: String, image: EncodedImage, area: NormalizedRect? = nil, regions: [RegionInfo] = [], done: [String] = []) {
+    public init(instruction: String, image: EncodedImage, area: NormalizedRect? = nil, regions: [RegionInfo] = [],
+                done: [String] = [], layers: [LayerInfo] = [], history: [String] = []) {
         self.instruction = instruction
         self.image = image
         self.area = area
         self.regions = regions
         self.done = done
+        self.layers = layers
+        self.history = history
     }
 }
 
@@ -41,13 +64,16 @@ public struct CritiqueRequest: Sendable {
     public var after: EncodedImage
     public var regions: [RegionInfo]
     public var done: [String]
+    public var layers: [LayerInfo]
 
-    public init(instruction: String, before: EncodedImage, after: EncodedImage, regions: [RegionInfo] = [], done: [String] = []) {
+    public init(instruction: String, before: EncodedImage, after: EncodedImage, regions: [RegionInfo] = [],
+                done: [String] = [], layers: [LayerInfo] = []) {
         self.instruction = instruction
         self.before = before
         self.after = after
         self.regions = regions
         self.done = done
+        self.layers = layers
     }
 }
 

@@ -1,13 +1,15 @@
 import Foundation
 
-/// Keeps a plan's values, prompts and region references safe to apply.
+/// Keeps a plan's values, prompts and references safe to apply.
 struct PlanCheck {
     private var regions: Set<String>
+    private var layers: Set<String>
     private var aliases: [String: String] = [:]
     private var notes: [String] = []
 
-    init(knownRegions: Set<String>) {
+    init(knownRegions: Set<String>, knownLayers: Set<String>) {
         regions = knownRegions
+        layers = knownLayers
     }
 
     mutating func check(_ plan: EditPlan) -> CheckedPlan {
@@ -57,6 +59,14 @@ struct PlanCheck {
                 checked = regionID(removal.region, label: label).map { .remove(Removal(region: $0)) }
             case .crop(let crop):
                 checked = rect(crop.rect, label: "\(label) crop").map { .crop(Crop(rect: $0)) }
+            case .revert(let revert):
+                let id = revert.layer.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !id.isEmpty, layers.remove(id) != nil else {
+                    notes.append("\(label): dropped revert using unknown layer \"\(id)\".")
+                    continue
+                }
+                if id != revert.layer { notes.append("\(label): trimmed layer reference to \(id).") }
+                checked = .revert(Revert(layer: id))
             case .finish(let proposed):
                 if finish == nil {
                     finish = proposed

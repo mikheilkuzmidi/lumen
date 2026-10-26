@@ -40,7 +40,8 @@ public struct MetaPlanner: Planner {
 
     public func plan(_ request: PlanRequest) async throws -> EditPlan {
         do {
-            let context = PlanContext(instruction: request.instruction, area: request.area, regions: request.regions, done: request.done)
+            let context = PlanContext(instruction: request.instruction, area: request.area, regions: request.regions,
+                                      done: request.done, layers: request.layers, history: request.history)
             return try await answer(EditPlan.self, prompt: Self.planPrompt,
                                     content: [.text(try context.text()), .image(request.image)],
                                     name: "edit_plan", schema: EditPlan.jsonSchema())
@@ -49,7 +50,8 @@ public struct MetaPlanner: Planner {
 
     public func critique(_ request: CritiqueRequest) async throws -> Critique {
         do {
-            let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions, done: request.done)
+            let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
+                                      done: request.done, layers: request.layers)
             return try await answer(Critique.self, prompt: Self.critiquePrompt,
                                     content: [.text(try context.text()), .text("Before"), .image(request.before),
                                               .text("After"), .image(request.after)],
@@ -70,11 +72,20 @@ public struct MetaPlanner: Planner {
 
     static let editingRules = """
     Lumen is a careful photo editor. Keep edits natural and conservative unless the user asks otherwise.
-    For tonal or colour changes to one part, select it and then adjust that region. Use regenerate only
-    to change what something is or looks like, including a coat's colour or material or an object's appearance.
+    For tonal or colour changes to one part, use its known region or select it, then adjust that region.
+    Use regenerate only to change what something is or looks like, including a coat's colour or material
+    or an object's appearance.
     Use remove to take something out. When a user area is given, stay inside it and put that boundary in
     the select box. Coordinates are normalised from the top-left. Region ids are short lowercase words.
-    Reuse known region ids when appropriate. Consider the steps already done. Finish when the instruction is met.
+    Earlier instructions are in history, oldest first; the current instruction is a follow-up to that edit.
+    The regions list contains selections you can reuse by id without selecting again. Select a new region
+    only when the instruction is about something not selected before. Consider the steps already done.
+    The layers list is in application order, oldest first, with each layer's id, label, kind and region.
+    For "less" or "more" of a change, apply a smaller adjustment to the same region in the needed direction.
+    For example, after darkening the sky, "a bit less" means a small positive exposure adjustment on sky.
+    For "undo that" or "go back", revert the matching latest layer using its exact layer id.
+    Revert takes off an applied layer; remove takes an object out of the photo.
+    Finish when the instruction is met.
     A select concept is what the segmentation model searches for: one short singular noun phrase it can
     see, such as "jacket", "sky", "sofa" or "red gate", without possessives or long descriptions; use a
     box to say which one when there are several.
@@ -89,10 +100,13 @@ public struct MetaPlanner: Planner {
     static let planPrompt = editingRules + "\nPlan the fewest steps needed to meet the instruction in the supplied photo."
     static let critiquePrompt = editingRules + """
 
-    Compare the labelled Before and After photos against the instruction. Answer satisfied true or false
-    and explain briefly in notes. Be satisfied when the instruction is visibly met and the photo still
-    looks natural; ask for more only for a clear gap or a visible flaw. If satisfied, give no further
-    steps. Otherwise give only the next steps needed, without repeating changes already achieved.
+    Compare the labelled Before and After photos against the instruction, using Before as the photo
+    at the start of this instruction. The layers list includes earlier layers and those applied during
+    this run; reuse their regions and revert a layer by id when needed.
+    Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
+    visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
+    If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating
+    changes already achieved.
     """
 
     private struct PlanContext: Encodable {
@@ -100,6 +114,8 @@ public struct MetaPlanner: Planner {
         var area: NormalizedRect?
         var regions: [RegionInfo]
         var done: [String]
+        var layers: [LayerInfo]
+        var history: [String] = []
 
         func text() throws -> String {
             let encoder = JSONEncoder()

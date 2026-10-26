@@ -15,7 +15,7 @@ struct SchemaTests {
         let steps = try #require(properties["steps"] as? [String: Any])
         let items = try #require(steps["items"] as? [String: Any])
         let choices = try #require(items["anyOf"] as? [[String: Any]])
-        #expect(choices.count == 6)
+        #expect(choices.count == 7)
         var types: [String] = []
         for choice in choices {
             let fields = try #require(choice["properties"] as? [String: Any])
@@ -25,7 +25,7 @@ struct SchemaTests {
             #expect(values.count == 1)
             types += values
         }
-        #expect(Set(types) == ["select", "adjust", "regenerate", "remove", "crop", "finish"])
+        #expect(Set(types) == ["select", "adjust", "regenerate", "remove", "crop", "revert", "finish"])
     }
 
     @Test func nullableFieldsAndAdjustmentUnitsAreDescribed() throws {
@@ -88,6 +88,20 @@ struct SchemaTests {
         let schema = try #require(JSONSerialization.jsonObject(with: Critique.jsonSchema()) as? [String: Any])
         #expect(Set((schema["properties"] as? [String: Any])?.keys.map { $0 } ?? []) == ["satisfied", "notes", "steps"])
         #expect(matches(try JSONSerialization.jsonObject(with: data), schema: schema))
+    }
+
+    @Test func aStrictRevertMatchesThePlanAndCritiqueSchemas() throws {
+        let id = UUID().uuidString
+        let plan: [String: Any] = ["summary": "Undo the sky", "steps": [["type": "revert", "layer": id]]]
+        let critique: [String: Any] = ["satisfied": false, "notes": "Undo the sky", "steps": plan["steps"]!]
+        for (answer, data) in [(plan, EditPlan.jsonSchema()), (critique, Critique.jsonSchema())] {
+            let schema = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(matches(answer, schema: schema))
+        }
+        let data = try JSONSerialization.data(withJSONObject: plan)
+        #expect(try JSONDecoder().decode(EditPlan.self, from: data).steps == [.revert(Revert(layer: id))])
+        let critiqueData = try JSONSerialization.data(withJSONObject: critique)
+        #expect(try JSONDecoder().decode(Critique.self, from: critiqueData).steps == [.revert(Revert(layer: id))])
     }
 
     @Test(arguments: [

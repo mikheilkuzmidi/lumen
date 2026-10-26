@@ -140,6 +140,8 @@ public protocol EditHost: Sendable {
     func size() async -> PixelSize
     /// The photo as its layers make it now, at most `maxLongEdge` pixels on its long edge.
     func render(maxLongEdge: Int) async throws -> EncodedImage
+    /// Part of the photo as its layers make it now, at its full resolution up to `maxLongEdge`.
+    func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage
     /// Puts a layer on top; its masks and images are in `assets`.
     func apply(_ layer: Layer, assets: AssetStore) async throws
     /// Takes a layer off again.

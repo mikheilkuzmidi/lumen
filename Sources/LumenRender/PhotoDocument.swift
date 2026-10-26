@@ -14,6 +14,8 @@ public actor PhotoDocument: EditHost {
 
     public func render(maxLongEdge: Int) async throws -> EncodedImage { throw LumenError.notBuilt("The renderer") }
 
+    public func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage { throw LumenError.notBuilt("The renderer") }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws { throw LumenError.notBuilt("The renderer") }
 
     public func remove(_ layer: Layer.ID) async throws { throw LumenError.notBuilt("The renderer") }

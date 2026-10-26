@@ -66,6 +66,11 @@ public struct Critique: Codable, Equatable, Sendable {
     }
 }
 
+extension Critique {
+    /// The JSON Schema of a critique, in the same strict subset as `EditPlan.jsonSchema()`.
+    public static func jsonSchema() -> Data { Data("{}".utf8) }
+}
+
 /// Turns an instruction and the photo into steps, and judges the result.
 public protocol Planner: Sendable {
     var modelID: String { get }

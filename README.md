@@ -41,6 +41,7 @@ swift test
 
 - **`LumenCore`:** the edit plan, layers, the agent loop and the model protocols (`Planner`, `Segmenter`, `Generator`, `EditHost`). No networking and no pixels.
 - **`LumenMeta`:** Muse Spark, SAM 3.1 and Muse Image through the Meta Model API.
+- **`LumenSAMMask`:** decodes SAM 3.1's masks (SAM License).
 - **`LumenRender`:** applies layers to a photo with Core Image (`PhotoDocument`).
 - **`LumenOpen`:** open-weight planners.
 - **`lumen`:** the command-line tool.
@@ -48,4 +49,4 @@ swift test
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE), with one exception. `Sources/LumenSAMMask` ports the mask decoder from Meta's reference SAM parser and is under the [SAM License](Sources/LumenSAMMask/LICENSE).

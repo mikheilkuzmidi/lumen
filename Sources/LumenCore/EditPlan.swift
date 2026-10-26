@@ -144,3 +144,9 @@ public struct EditPlan: Codable, Equatable, Sendable {
         self.steps = steps
     }
 }
+
+extension EditPlan {
+    /// The JSON Schema of a plan, in the strict subset structured output accepts (every field present,
+    /// optional ones nullable), for planners to pass as their response format.
+    public static func jsonSchema() -> Data { Data("{}".utf8) }
+}

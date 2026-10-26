@@ -329,6 +329,14 @@ public actor EditAgent {
                 try await self.segmenter.segment(wider)
             }
         }
+        if segments.isEmpty, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
+            let location = selection.box != nil ? "the planner's box" : request.box != nil ? "the selected area" : "the planner's points"
+            note(.select, "Nothing was found for “\(concept)” by name; selecting from \(location).", events: events)
+            let object = SegmentRequest(image: image, concept: nil, box: request.box, points: request.points)
+            segments = try await call(.select, model: segmenter.modelID, detail: "Select \(concept) by location", events: events) {
+                try await self.segmenter.segment(object)
+            }
+        }
         guard let first = segments.first else {
             note(.select, "Nothing found for \(selection.id).", events: events)
             return nil

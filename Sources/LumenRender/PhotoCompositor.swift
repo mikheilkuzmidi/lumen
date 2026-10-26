@@ -23,9 +23,9 @@ enum PhotoCompositor {
 
     static func feather(_ mask: CIImage, radius: CGFloat) -> CIImage {
         guard radius > 0 else { return mask }
-        let padded = mask.composited(over: CIImage(color: .black))
-        let softened = padded.applyingGaussianBlur(sigma: radius)
-        return softened.applyingFilter("CIMinimumCompositing", parameters: [kCIInputBackgroundImageKey: padded])
+        // Clamped rather than padded with black, so coverage that reaches the photo's border is not dimmed there.
+        let softened = mask.clampedToExtent().applyingGaussianBlur(sigma: radius)
+        return softened.applyingFilter("CIMinimumCompositing", parameters: [kCIInputBackgroundImageKey: mask])
             .cropped(to: mask.extent)
     }
 

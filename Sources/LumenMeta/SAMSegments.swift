@@ -91,13 +91,14 @@ enum SAMSegments {
                 // A box beside a concept says which of the things found is meant: most of it must lie inside.
                 if request.concept != nil, let boundary, boundary.covered(box) < 0.5 { continue }
                 let boxWidth = box.right - box.left, boxHeight = box.bottom - box.top
+                let placed = MaskData(size: PixelSize(width: raster.width, height: raster.height),
+                                      coverage: raster.values.map { $0 * 255 })
+                    .resized(to: PixelSize(width: boxWidth, height: boxHeight))
                 var coverage = [UInt8](repeating: 0, count: area)
                 for y in box.top..<box.bottom {
-                    let sourceY = (y - box.top) * raster.height / boxHeight
-                    for x in box.left..<box.right {
-                        let sourceX = (x - box.left) * raster.width / boxWidth
-                        coverage[y * size.width + x] = raster.values[sourceY * raster.width + sourceX] * 255
-                    }
+                    let row = (y - box.top) * boxWidth
+                    let start = y * size.width + box.left
+                    coverage.replaceSubrange(start..<(start + boxWidth), with: placed.coverage[row..<(row + boxWidth)])
                 }
                 let normalized = NormalizedRect(x: Double(box.left) / Double(size.width),
                                                 y: Double(box.top) / Double(size.height),

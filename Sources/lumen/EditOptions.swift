@@ -18,10 +18,54 @@ enum Backend: String, ExpressibleByArgument, Codable, Sendable {
                               segmenter: MetaSegmenter(configuration: configuration),
                               generator: MetaGenerator(configuration: configuration))
         case .glimmer:
-            throw LumenError.notBuilt("Local Muse Glimmer planning")
+            // Muse Glimmer plans and checks on this Mac; SAM 3.1 and Muse Image still answer through the Meta API.
+            guard let key = environment["META_API_KEY"],
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
+            let configuration = MetaConfiguration(apiKey: key)
+            return EditModels(planner: LocalGlimmerPlanner(baseURL: Self.glimmerURL(environment)),
+                              segmenter: MetaSegmenter(configuration: configuration),
+                              generator: MetaGenerator(configuration: configuration))
         case .sparkOpen:
             throw LumenError.notBuilt("Muse Spark Open planning")
         }
+    }
+}
+
+extension Backend {
+    /// Where a running llama-server answers for Muse Glimmer: LUMEN_GLIMMER_URL, or Lumen's own port.
+    static func glimmerURL(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        environment["LUMEN_GLIMMER_URL"].flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            ?? URL(string: "http://127.0.0.1:8786/v1")!
+    }
+
+    /// Runs `body` with Muse Glimmer serving when this backend needs it. A server that is already answering is
+    /// used as it is; one Lumen starts is stopped afterwards.
+    func withLocalModel<Value: Sendable>(line: @escaping @Sendable (String) -> Void,
+                                         _ body: () async throws -> Value) async throws -> Value {
+        guard self == .glimmer else { return try await body() }
+        let base = Self.glimmerURL()
+        if await Self.answers(base) { return try await body() }
+        let server = GlimmerServer(port: base.port ?? 8786)
+        line("Loading Muse Glimmer on this Mac…")
+        let started = Date()
+        do {
+            _ = try await server.start()
+            line(String(format: "Muse Glimmer is ready (%.0f s).", Date().timeIntervalSince(started)))
+            let value = try await body()
+            await server.stop()
+            return value
+        } catch {
+            await server.stop()
+            throw error
+        }
+    }
+
+    private static func answers(_ base: URL) async -> Bool {
+        var request = URLRequest(url: base.deletingLastPathComponent().appendingPathComponent("health"), timeoutInterval: 2)
+        request.httpMethod = "GET"
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
+        return String(decoding: data, as: UTF8.self).contains("ok")
     }
 }
 

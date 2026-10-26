@@ -8,6 +8,9 @@ struct GlimmerChatTransport: MetaTransport {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.setValue(nil, forHTTPHeaderField: "Authorization")
+        if let body = request.httpBody, let json = try? JSONSerialization.jsonObject(with: body) {
+            request.httpBody = Data(OrderedJSON.text(json).utf8)
+        }
         let (data, response) = try await transport.data(for: request)
         try Task.checkCancellation()
         guard needsSchemaKey(response, data: data),
@@ -19,7 +22,7 @@ struct GlimmerChatTransport: MetaTransport {
             return (data, response)
         }
         json["response_format"] = ["type": "json_schema", "schema": schema]
-        request.httpBody = try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+        request.httpBody = Data(OrderedJSON.text(json).utf8)
         try Task.checkCancellation()
         return try await transport.data(for: request)
     }
@@ -41,5 +44,38 @@ struct GlimmerChatTransport: MetaTransport {
     private struct Failure: Decodable {
         struct Detail: Decodable { var message: String }
         var error: Detail
+    }
+}
+
+/// llama.cpp's grammar writes an object's keys in the order the schema lists them, so a step's type has to come
+/// before its other fields, and a plan's summary before its steps: otherwise the model commits to fields before
+/// it has said what the step is. JSON text with keys in that order, the rest alphabetical.
+enum OrderedJSON {
+    private static let leading = ["type", "summary", "notes", "satisfied", "id", "region", "layer", "concept"]
+
+    static func text(_ value: Any) -> String {
+        switch value {
+        case let object as [String: Any]:
+            let keys = object.keys.sorted { first, second in
+                let a = leading.firstIndex(of: first) ?? leading.count, b = leading.firstIndex(of: second) ?? leading.count
+                return a == b ? first < second : a < b
+            }
+            return "{" + keys.map { string($0) + ":" + text(object[$0]!) }.joined(separator: ",") + "}"
+        case let array as [Any]:
+            return "[" + array.map(text).joined(separator: ",") + "]"
+        case let string as String:
+            return self.string(string)
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() { return number.boolValue ? "true" : "false" }
+            return String(decoding: (try? JSONSerialization.data(withJSONObject: number, options: .fragmentsAllowed)) ?? Data("0".utf8),
+                          as: UTF8.self)
+        default:
+            return "null"
+        }
+    }
+
+    private static func string(_ value: String) -> String {
+        String(decoding: (try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed, .withoutEscapingSlashes]))
+            ?? Data("\"\"".utf8), as: UTF8.self)
     }
 }

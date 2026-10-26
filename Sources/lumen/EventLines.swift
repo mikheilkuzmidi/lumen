@@ -67,6 +67,7 @@ struct EventLines {
         case "sam-3.1": "SAM 3.1"
         case "muse-image-1.0": "Muse Image"
         case "muse-spark-1.3": "Muse Spark"
+        case "muse-glimmer": "Muse Glimmer"
         default: id
         }
     }

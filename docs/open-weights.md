@@ -41,7 +41,7 @@ The downloader uses [Meta's Muse Glimmer GGUF repository](https://huggingface.co
 
 These are listing sizes, not local measurements. Runtime memory also includes context and server overhead; fit on a particular Mac remains to be measured.
 
-The default directory is `~/Library/Application Support/Lumen/Models/muse-glimmer/`. Set `LUMEN_GLIMMER_DIR` to use another directory, for both the downloader and server. The script prints the license and approximate total size before downloading and refuses to download with less than 25 GiB free on the destination volume. Downloads resume into `.part` files using `curl -C -`; completed files are renamed to the expected filenames. Run the script again after an interrupted transfer. Existing completed files are skipped.
+The default directory is `~/Library/Application Support/Lumen/Models/muse-glimmer/`. Set `LUMEN_GLIMMER_DIR` to use another directory, for both the downloader and server. The script prints the license and approximate total size before downloading and refuses to download with less than 25 GiB free on the destination volume. Downloads resume into `.part` files using `curl -C -`. Each finished file is checked against the SHA-256 the repository publishes before it is renamed; a damaged one is deleted. Run the script again after an interrupted transfer. Existing completed files are skipped.
 
 `GlimmerServer` finds `llama-server` on `PATH`, then checks `/opt/homebrew/bin/llama-server`. It launches this command, with each path passed as a separate process argument:
 
@@ -74,6 +74,38 @@ To connect to an already-running server, use `LocalGlimmerPlanner()` for `http:/
 
 The initial response format is the same strict schema wrapper used by `MetaPlanner`. For a 400, 422 or 500 error explicitly reporting a missing `schema` key, the local planner retries once with the full schema directly under `response_format.schema`, keeping `type: json_schema`. Other errors do not trigger a retry. The schema itself, messages and photos are preserved. The [llama-server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) describes direct schema placement, while the [server parser](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-common.cpp) also documents the nested format in code; exact behavior depends on the installed build. A successful response never triggers a format retry.
 
+## Using it from the command line
+
+```sh
+export META_API_KEY=…   # SAM 3.1 and Muse Image still answer through the Meta API
+lumen edit photo.jpg "Make his jacket bright yellow" --backend glimmer
+```
+
+With `--backend glimmer`, Muse Glimmer plans and checks the edit on this Mac; selection and redrawing still use SAM 3.1 and Muse Image. The command uses a llama-server that already answers at `LUMEN_GLIMMER_URL` (default `http://127.0.0.1:8786/v1`); otherwise it starts one with `GlimmerServer`, prints how long loading took, and stops it when the edit ends.
+
+llama.cpp writes an object's keys in the order the schema lists them. The schema Lumen sends to Glimmer therefore lists a step's `type` first and a plan's `summary` before its steps; with alphabetical keys the model had to write a step's other fields before saying what the step was, and its plans came out unusable.
+
+## Measured on October 26, 2026
+
+One Mac, one photo, single runs: these are observations, not benchmarks.
+
+- **Machine:** Apple M4 Max, 36 GB unified memory, macOS 27.2, Homebrew llama.cpp 0.7.0 (build 11669), context 16,384, all layers on the GPU (`-ngl 99`). Other applications were open: the Mac had 8.3 of 9.2 GB of swap in use and reported 17% memory free during the runs.
+- **Files:** the two files above, verified against the published SHA-256 (16,756,683,904 and 1,400,328,928 bytes).
+- **Loading:** about 33 s from launch to `GET /health` reporting ready, with the vision projector. The server process's own footprint was 2.0–2.9 GB; the weights are memory-mapped from the 16.8 GB file on top of that.
+- **Speed:** prompts were read at about 78 tokens/s and answers written at 9.6–10.1 tokens/s. Glimmer reasons before answering, so each call wrote 350–560 tokens.
+- **A complete edit,** "Make his jacket bright yellow" on `jacket-with-a-hood.jpg`:
+
+  | Call | Time | Prompt tokens | Written tokens | Answer |
+  | --- | --- | --- | --- | --- |
+  | Plan | 72.6 s | 1,377 | 563 | Select the jacket (no redraw step yet) |
+  | Critique | 75.6 s | 3,411 | 353 | Not satisfied: the jacket is still black; regenerate it bright yellow |
+  | Critique | 85.9 s | 2,912 | 471 | Satisfied |
+
+  SAM 3.1 and Muse Image took 1.6 s, 17.7 s and 3.9 s (the redraw check). The result matched the Muse Spark run of the same instruction, at about 4.5 minutes instead of 27 s.
+- **Before the key-order fix,** the same instruction failed: Glimmer's reasoning said to select the jacket and regenerate it, but its constrained answers used the region before selecting it, and every revision was dropped by the plan check.
+
+So the whole planning loop runs on the Mac with open weights, and it works; on this machine, with other work open, it is slow. Muse Spark remains the default.
+
 ## What was verified
 
 On October 26, 2026, the whole package built and the full `swift test` run passed using Swift 6 strict concurrency. SwiftPM's own sandbox was disabled for this restricted build environment. The existing paid live suite stayed disabled, and the existing pixel-rendering tests skipped where Core Image was unavailable.
@@ -82,12 +114,10 @@ The open-planner tests use hand-built chat completions and error envelopes only.
 
 The downloader was checked with shell syntax validation and stubbed disk-space and download commands. Those checks exercised the low-space refusal, interrupted download resumption, filenames and completed-file skipping without downloading weights.
 
-Live provider compatibility, model loading, Metal operation and output quality have not been verified. No latency, throughput, memory-use or quality measurements are claimed here.
+Muse Spark Open on a provider has not been run: no hosting credits were used. The Glimmer measurements above are the only live open-weight results.
 
-## What the maintainer will measure
+## Still to measure
 
-- Record the Mac, unified memory, macOS version, llama.cpp build, model revision and context size, plus the provider deployment and model ID for Spark Open.
-- Measure cold startup to health status 200, warm startup and peak memory while loading and answering. Check whether this configuration fits the target Mac without sustained swapping.
-- Measure plan and critique latency separately on the repository's photo fixtures. Record any timeout, refusal, schema failure or format fallback, and whether the server actually constrains output to the full schema.
-- Compare instruction completion, natural-looking edits and revision counts against Muse Spark using the same fixtures and instructions. Record provider cost from actual usage when credits are available.
-- Add dated results and the number of runs here after those checks. Hosting credits and a local weights download are still needed for live verification.
+- Muse Spark Open on Baseten or Modal, when credits are available: latency, cost from actual usage, and the same fixtures.
+- Glimmer on a Mac without memory pressure, and with reasoning turned off, to see how much of the time is the model and how much is this machine.
+- Glimmer across all the evaluation fixtures, against Muse Spark.

@@ -67,10 +67,15 @@ struct ArgumentsTests {
         #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["eval", "cases.json"]) }
     }
 
-    @Test func backendsReportTheirOwnErrorsWithoutCallingModels() {
+    @Test func backendsReportTheirOwnErrorsWithoutCallingModels() throws {
         #expect(throws: LumenError.missingKey) { try Backend.meta.models(environment: [:]) }
         #expect(throws: LumenError.missingKey) { try Backend.meta.models(environment: ["META_API_KEY": " \n"]) }
-        #expect(throws: LumenError.notBuilt("Local Muse Glimmer planning")) { try Backend.glimmer.models(environment: [:]) }
+        #expect(throws: LumenError.missingKey) { try Backend.glimmer.models(environment: [:]) }
+        let glimmer = try Backend.glimmer.models(environment: ["META_API_KEY": "key", "LUMEN_GLIMMER_URL": "http://127.0.0.1:9999/v1"])
+        #expect(glimmer.planner.modelID == "muse-glimmer")
+        #expect(glimmer.segmenter.modelID == "sam-3.1" && glimmer.generator.modelID == "muse-image-1.0")
+        #expect(Backend.glimmerURL(["LUMEN_GLIMMER_URL": "http://127.0.0.1:9999/v1"]).port == 9999)
+        #expect(Backend.glimmerURL([:]).absoluteString == "http://127.0.0.1:8786/v1")
         #expect(throws: LumenError.notBuilt("Muse Spark Open planning")) { try Backend.sparkOpen.models(environment: [:]) }
         #expect(Lumen.message(for: LumenError.missingKey) == LumenError.missingKey.localizedDescription)
         #expect(Lumen.exitCode(for: LumenError.missingKey) != .success)

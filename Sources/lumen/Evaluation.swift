@@ -55,7 +55,7 @@ enum EvaluationRunner {
             let planner: String
             switch options.backend {
             case .meta: planner = "muse-spark-1.3"
-            case .glimmer: planner = "muse-glimmer (unavailable)"
+            case .glimmer: planner = "muse-glimmer on this Mac"
             case .sparkOpen: planner = "Muse Spark Open (unavailable)"
             }
             return [description,

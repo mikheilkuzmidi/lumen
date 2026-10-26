@@ -49,8 +49,10 @@ struct Edit: AsyncParsableCommand {
         let models = try options.backend.models()
         let output = ConsoleOutput()
         let result = try await withInterruptCancellation {
-            try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
-                                     models: models, output: outputURL, trace: traceURL, line: output.write)
+            try await options.backend.withLocalModel(line: output.write) {
+                try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
+                                         models: models, output: outputURL, trace: traceURL, line: output.write)
+            }
         }
         if let failure = result.failure { throw CLIError(failure) }
     }
@@ -85,8 +87,10 @@ struct Evaluate: AsyncParsableCommand {
         }
         let models = try options.backend.models()
         let failures = try await withInterruptCancellation {
-            try await EvaluationRunner.run(selected, file: file, folder: URL(fileURLWithPath: out),
-                                           options: options, models: models, line: output.write)
+            try await options.backend.withLocalModel(line: output.write) {
+                try await EvaluationRunner.run(selected, file: file, folder: URL(fileURLWithPath: out),
+                                               options: options, models: models, line: output.write)
+            }
         }
         if failures > 0 { throw CLIError("\(failures) evaluation case\(failures == 1 ? "" : "s") failed. See summary.md.") }
     }

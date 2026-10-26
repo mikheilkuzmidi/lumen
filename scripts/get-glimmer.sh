@@ -27,6 +27,14 @@ if (( available_kb < 25 * 1024 * 1024 )); then
 fi
 
 base_url='https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/resolve/main'
+# SHA-256 of each file as published by the repository (October 26, 2026). An interrupted transfer stays as
+# .part and resumes on the next run; one that finished damaged is deleted so the next run starts it again.
+checksum() {
+    case "$1" in
+        Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf) echo 4cc57c0f51040a226e5a72cc47b7613f7772950e460a665f7083de89f183f60e ;;
+        mmproj-Muse-Glimmer-30B-Q4_K_M.gguf) echo f48b452316f9b213758e8659444029b961a24a07f99a1abb2a9f88b06f7c00c6 ;;
+    esac
+}
 for model_file in Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf mmproj-Muse-Glimmer-30B-Q4_K_M.gguf; do
     destination="$model_dir/$model_file"
     if [[ -f "$destination" ]]; then
@@ -35,6 +43,13 @@ for model_file in Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf mmproj-Muse-Glimmer-3
     fi
     printf 'Downloading %s\n' "$model_file"
     curl --fail --location --retry 3 -C - --output "$destination.part" "$base_url/$model_file"
+    printf 'Checking %s\n' "$model_file"
+    actual=$(shasum -a 256 "$destination.part" | cut -d' ' -f1)
+    if [[ "$actual" != "$(checksum "$model_file")" ]]; then
+        rm -f "$destination.part"
+        printf 'The download of %s was damaged and has been deleted. Run scripts/get-glimmer.sh again.\n' "$model_file" >&2
+        exit 1
+    fi
     mv "$destination.part" "$destination"
 done
 printf 'Muse Glimmer model files are ready in %s.\n' "$model_dir"

@@ -326,7 +326,10 @@ public actor EditAgent {
         guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
         let image = try await host.render(region: rect, maxLongEdge: 2048)
         try checkCancellation()
-        let mask = region.mask.cropped(to: rect).resized(to: image.size)
+        // SAM's edge sits right on the object, so a sliver of its old colour would ring the redrawn one; the redraw
+        // shows a little past it, where the generator redrew the boundary too.
+        let edge = max(2, Int((Double(min(image.size.width, image.size.height)) * 0.012).rounded()))
+        let mask = region.mask.cropped(to: rect).resized(to: image.size).grown(by: edge)
         let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
         let generated = try await call(kind, model: generator.modelID, detail: prompt, events: events) {
             try await self.generator.generate(request)

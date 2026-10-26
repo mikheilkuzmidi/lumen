@@ -41,7 +41,9 @@ struct AgentTests {
         #expect(await agent.assets.get(imageID) == .image(AgentGenerator.image))
         let generateRequest = try #require(await generator.requests.first)
         #expect(generateRequest.prompt == "a navy wool coat")
-        #expect(generateRequest.mask == segment().mask.cropped(to: rect).resized(to: generateRequest.image.size))
+        let size = generateRequest.image.size
+        let edge = max(2, Int((Double(min(size.width, size.height)) * 0.012).rounded()))
+        #expect(generateRequest.mask == segment().mask.cropped(to: rect).resized(to: size).grown(by: edge), "a little past SAM's edge")
         #expect(await agent.assets.get(patchMaskID) == .mask(generateRequest.mask.resized(to: AgentGenerator.image.size)))
         #expect(await host.crops.map(\.maxLongEdge) == [2048])
         #expect(await host.crops.map(\.rect) == [rect])

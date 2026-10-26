@@ -165,8 +165,10 @@ public actor PhotoDocument: EditHost {
                 let placed = PhotoCompositor.resized(patch, to: patchBounds)
                 // A patch's mask is the size of its own crop, so it is placed on the patch, not stretched over the photo.
                 let coverage = PhotoCompositor.scaledMask(mask, to: patchBounds)
-                let matched = PhotoCompositor.colorMatched(placed, to: image, mask: coverage,
-                                                           context: context)
+                let enlargement = min(patchBounds.width / patch.extent.width, patchBounds.height / patch.extent.height)
+                let matched = PhotoCompositor.restoringDetail(
+                    PhotoCompositor.colorMatched(placed, to: image, mask: coverage, context: context),
+                    from: image, enlargement: enlargement)
                 let feathered = PhotoCompositor.feather(coverage, radius: min(patchBounds.width, patchBounds.height) * 0.015)
                 image = PhotoCompositor.blend(matched, over: image, mask: feathered, opacity: layer.opacity)
             case .crop:

@@ -129,6 +129,26 @@ struct PhotoPixelTests {
         #expect(after[64, 80].distance(to: before[64, 80]) <= 1.0 / 255, "outside the patch nothing changes")
     }
 
+    /// A small, flat redraw enlarged over fine stripes gets the stripes back at about 70% of their contrast.
+    @Test
+    func anEnlargedPatchGetsThePhotosFineDetailBack() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x % 4 < 2 ? RGB(150, 150, 150) : RGB(90, 90, 90) })
+        let before = try await folder.pixels(document)
+        let assets = AssetStore()
+        let patchURL = try folder.photo(width: 16, height: 12) { _, _ in RGB(60, 140, 60) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 16, height: 12))))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 16, height: 12), filledWith: 255)))
+        try await document.apply(Layer(label: "Patch", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let after = try await folder.pixels(document)
+        let original = abs(linear(before[64, 48].green) - linear(before[66, 48].green))
+        let restored = abs(linear(after[64, 48].green) - linear(after[66, 48].green))
+        #expect(restored > original * 0.45 && restored < original * 0.95, "restored \(restored) of \(original)")
+        #expect(after[64, 48].green > after[64, 48].red, "still the patch's colour")
+    }
+
     @Test
     func patchShowsOnlyThroughItsOwnMask() async throws {
         let folder = try PhotoFolder()

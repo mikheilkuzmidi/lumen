@@ -36,6 +36,17 @@ public struct Selection: Codable, Equatable, Sendable {
         self.points = points
         self.invert = invert
     }
+
+    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        concept = try container.decodeIfPresent(String.self, forKey: .concept)
+        box = try container.decodeIfPresent(NormalizedRect.self, forKey: .box)
+        points = try container.decodeIfPresent([NormalizedPoint].self, forKey: .points) ?? []
+        invert = try container.decodeIfPresent(Bool.self, forKey: .invert) ?? false
+    }
 }
 
 /// Change develop settings, on the whole photo or inside a selected region.
@@ -47,6 +58,15 @@ public struct Adjustment: Codable, Equatable, Sendable {
     public init(region: String? = nil, values: [AdjustmentKey: Double]) {
         self.region = region
         self.values = values
+    }
+
+    private enum CodingKeys: String, CodingKey { case region, values }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        let entries = try container.decode([AdjustmentKey: Double?].self, forKey: .values)
+        values = entries.compactMapValues { $0 }
     }
 }
 
@@ -148,7 +168,7 @@ public struct EditPlan: Codable, Equatable, Sendable {
 extension EditPlan {
     /// The JSON Schema of a plan, in the strict subset structured output accepts (every field present,
     /// optional ones nullable), for planners to pass as their response format.
-    public static func jsonSchema() -> Data { Data("{}".utf8) }
+    public static func jsonSchema() -> Data { PlanSchema.plan() }
 }
 
 /// A planner's plan made safe to run: values held to their ranges, coordinates kept on the photo, steps that use a
@@ -164,6 +184,9 @@ public struct CheckedPlan: Equatable, Sendable {
 }
 
 extension EditPlan {
-    /// `regions` are the ids selected by earlier plans of the same edit.
-    public func checked(knownRegions: Set<String> = []) -> CheckedPlan { CheckedPlan(plan: self, notes: []) }
+    /// `knownRegions` are the ids selected by earlier plans of the same edit.
+    public func checked(knownRegions: Set<String> = []) -> CheckedPlan {
+        var check = PlanCheck(knownRegions: knownRegions)
+        return check.check(self)
+    }
 }

@@ -21,6 +21,8 @@ struct StudioCanvas: View {
                                 .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
                         }
                         .scrollIndicators(.hidden)
+                        .scrollBounceBehavior(.basedOnSize)
+                        .defaultScrollAnchor(.center, for: .alignment)
                         .overlay(alignment: .topLeading) {
                             if model.showsOriginal {
                                 Text("Original")
@@ -39,6 +41,7 @@ struct StudioCanvas: View {
                     await model.renderPreview(maxLongEdge: max(1, edge))
                 }
             }
+            .clipped()
             canvasControls
         }
         .background(StudioStyle.canvas)
@@ -135,12 +138,12 @@ private struct PhotoSurface: View {
                     .accessibilityLabel(model.showsOriginal ? "Original photo" : "Edited photo")
                 if !model.showsOriginal {
                     ForEach(model.regions) { region in
-                        RegionOverlay(region: region)
+                        RegionOverlay(region: region, snapshotDate: model.snapshotDate)
                             .transition(.opacity)
                     }
                     .allowsHitTesting(false)
                     if let area = model.area {
-                        AreaOverlay(area: area)
+                        AreaOverlay(area: area, snapshotDate: model.snapshotDate)
                             .allowsHitTesting(false)
                     }
                 }
@@ -174,6 +177,7 @@ private struct PhotoSurface: View {
 
 private struct AreaOverlay: View {
     let area: NormalizedRect
+    let snapshotDate: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -184,8 +188,8 @@ private struct AreaOverlay: View {
                 path.addRect(rect)
             }
             .fill(.black.opacity(0.48), style: FillStyle(eoFill: true))
-            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: reduceMotion)) { timeline in
-                let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * -18
+            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: reduceMotion)) { timeline in
+                let phase = reduceMotion ? 0 : (snapshotDate ?? timeline.date).timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * -18
                 Rectangle()
                     .stroke(.black.opacity(0.6), lineWidth: 2)
                     .overlay {
@@ -208,56 +212,65 @@ private struct AreaOverlay: View {
 
 private struct RegionOverlay: View {
     let region: StudioRegion
+    let snapshotDate: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var drawn: CGFloat = 0
-    @State private var tint: Double = 0
-    @State private var shimmer: CGFloat = -0.6
 
     private var color: Color { StudioStyle.regionColors[region.colorIndex % StudioStyle.regionColors.count] }
 
     var body: some View {
-        GeometryReader { geometry in
-            let box = region.segment.box.rect(in: geometry.size)
-            ZStack(alignment: .topLeading) {
-                if let mask = region.mask {
-                    color.opacity(tint)
-                        .mask { Image(nsImage: mask).resizable().luminanceToAlpha() }
-                    if !reduceMotion {
-                        LinearGradient(colors: [.clear, color.opacity(0.32), .white.opacity(0.35), .clear],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: geometry.size.width * 0.4, height: geometry.size.height)
-                            .offset(x: shimmer * geometry.size.width)
-                            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
-                            .mask { Image(nsImage: mask).resizable().luminanceToAlpha() }
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: reduceMotion || snapshotDate != nil)) { timeline in
+            let frame = StudioSelectionFrame(elapsed: (snapshotDate ?? timeline.date).timeIntervalSince(region.selectedAt),
+                                             reduceMotion: reduceMotion)
+            GeometryReader { geometry in
+                let box = region.segment.box.rect(in: geometry.size)
+                ZStack(alignment: .topLeading) {
+                    if let mask = region.mask {
+                        color.opacity(frame.tint)
+                            .mask { Image(nsImage: mask).resizable().interpolation(.high).luminanceToAlpha() }
+                        if !reduceMotion, frame.shimmer < 1.3 {
+                            LinearGradient(colors: [.clear, color.opacity(0.32), .white.opacity(0.35), .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: geometry.size.width * 0.4, height: geometry.size.height)
+                                .offset(x: frame.shimmer * geometry.size.width)
+                                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
+                                .mask { Image(nsImage: mask).resizable().interpolation(.high).luminanceToAlpha() }
+                        }
                     }
+                    Rectangle().trim(from: 0, to: frame.drawn)
+                        .stroke(color, style: StrokeStyle(lineWidth: 1.25, lineCap: .round))
+                        .frame(width: box.width, height: box.height)
+                        .position(x: box.midX, y: box.midY)
+                    Text(region.name)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1).truncationMode(.tail)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 5))
+                        .frame(maxWidth: max(1, box.width - 10), alignment: .leading)
+                        .offset(x: box.minX + 5, y: max(4, box.minY + 5))
+                        .opacity(frame.drawn)
                 }
-                Rectangle().trim(from: 0, to: drawn)
-                    .stroke(color, style: StrokeStyle(lineWidth: 1.25, lineCap: .round))
-                    .frame(width: box.width, height: box.height)
-                    .position(x: box.midX, y: box.midY)
-                Text(region.name)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(color)
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 5))
-                    .offset(x: box.minX + 5, y: max(4, box.minY + 5))
-                    .opacity(Double(drawn))
+                .clipped()
             }
-            .clipped()
-        }
-        .task {
-            if reduceMotion {
-                drawn = 1
-                tint = 0.12
-                return
-            }
-            withAnimation(.easeInOut(duration: 0.55)) { drawn = 1 }
-            withAnimation(.easeIn(duration: 0.55).delay(0.25)) { tint = 0.28 }
-            withAnimation(.easeInOut(duration: 1.25).delay(0.45)) { shimmer = 1.3 }
-            do { try await Task.sleep(for: .milliseconds(1750)) } catch { return }
-            withAnimation(.easeOut(duration: 0.65)) { tint = 0.10 }
         }
         .accessibilityLabel("Selected region: \(region.name)")
+    }
+}
+
+/// Samples the selection reveal at a time, including when a window is offscreen.
+struct StudioSelectionFrame {
+    let drawn: Double
+    let tint: Double
+    let shimmer: Double
+
+    init(elapsed: TimeInterval, reduceMotion: Bool) {
+        func eased(_ value: Double) -> Double {
+            let value = min(1, max(0, value))
+            return value * value * (3 - 2 * value)
+        }
+        drawn = reduceMotion ? 1 : eased(elapsed / 0.55)
+        tint = reduceMotion ? 0.12 : 0.28 * eased((elapsed - 0.25) / 0.55) - 0.18 * eased((elapsed - 1.75) / 0.65)
+        shimmer = reduceMotion ? 1.3 : -0.6 + 1.9 * eased((elapsed - 0.45) / 1.25)
     }
 }
 

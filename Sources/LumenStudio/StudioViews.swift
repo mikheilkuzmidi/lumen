@@ -41,6 +41,7 @@ struct StudioView: View {
             }
         }
         .background(StudioStyle.panel)
+        .preferredColorScheme(.dark)
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.isBusy, let url = urls.first, url.isFileURL else { return false }
             model.open(url)
@@ -160,7 +161,7 @@ struct PromptBar: View {
             HStack(spacing: 7) {
                 if model.isBusy { ProgressView().controlSize(.mini) }
                 else { Circle().fill(StudioStyle.accent.opacity(0.7)).frame(width: 4, height: 4) }
-                Text(model.status).lineLimit(2)
+                Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
                 Spacer(minLength: 0)
                 Text("Every edit, a layer").foregroundStyle(.tertiary)
             }
@@ -229,6 +230,7 @@ struct StudioSidebar: View {
                             Text("THE PLAN").font(.system(size: 9, weight: .semibold)).tracking(1.8)
                                 .foregroundStyle(StudioStyle.accent)
                             Text(model.planSummary).font(.system(size: 13)).lineSpacing(4)
+                                .lineLimit(4).help(model.planSummary)
                                 .textSelection(.enabled)
                         }
                         .padding(.bottom, 4)
@@ -246,9 +248,10 @@ struct StudioSidebar: View {
                 }
                 .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 24)
             }
-            .onChange(of: model.status) {
-                if let step = model.steps.first(where: { $0.status == .running }) ?? model.steps.last {
-                    scroll.scrollTo(step.id, anchor: .center)
+            .scrollBounceBehavior(.basedOnSize)
+            .onChange(of: model.timelineFocus) {
+                if let id = model.timelineFocus {
+                    withAnimation(.easeOut(duration: 0.2)) { scroll.scrollTo(id, anchor: .center) }
                 }
             }
         }
@@ -304,6 +307,7 @@ struct StudioSidebar: View {
 private struct TimelineRow: View {
     let entry: StudioStep
     let isLast: Bool
+    @State private var showsTraces = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 11) {
@@ -317,6 +321,7 @@ private struct TimelineRow: View {
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text(entry.title).font(.system(size: 12, weight: .medium)).lineSpacing(3)
+                    .lineLimit(2).truncationMode(.tail).help(entry.title)
                 HStack(spacing: 5) {
                     if entry.status == .running { ProgressView().controlSize(.mini) }
                     else if entry.status == .done { Image(systemName: "checkmark").font(.system(size: 8, weight: .semibold)) }
@@ -325,30 +330,42 @@ private struct TimelineRow: View {
                 .font(.system(size: 10)).foregroundStyle(statusColor)
                 if let detail = entry.detail, !detail.isEmpty {
                     Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(4)
+                        .lineLimit(2).truncationMode(.tail).help(detail)
                         .textSelection(.enabled)
                 }
                 if let message = entry.status.message {
                     Text(message).font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(3)
+                        .lineLimit(3).help(message)
                         .textSelection(.enabled)
                 }
-                ForEach(Array(entry.traces.enumerated()), id: \.offset) { _, trace in
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let model = trace.model {
-                            Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s")
-                                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
-                        }
-                        if !trace.detail.isEmpty, trace.detail != entry.detail, trace.detail != entry.status.message {
-                            Text(trace.detail).font(.system(size: 10)).foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
+                if !entry.traces.isEmpty {
+                    DisclosureGroup("Details · \(entry.traces.count)", isExpanded: $showsTraces) {
+                        traces
                     }
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
                 }
             }
-            .padding(.top, 5).padding(.bottom, 25)
+            .padding(.top, 5).padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var traces: some View {
+        ForEach(Array(entry.traces.enumerated()), id: \.offset) { _, trace in
+            VStack(alignment: .leading, spacing: 4) {
+                if let model = trace.model {
+                    Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s")
+                        .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
+                }
+                if !trace.detail.isEmpty, trace.detail != entry.detail, trace.detail != entry.status.message {
+                    Text(trace.detail).font(.system(size: 10)).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
     }
 
     private var statusColor: Color {
@@ -367,7 +384,9 @@ private struct LayerRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             Toggle(isOn: Binding(get: { layer.isEnabled }, set: { _ in model.toggleLayer(layer.id) })) {
-                Text(layer.label).font(.system(size: 12, weight: .medium)).lineLimit(3)
+                Text(layer.label).font(.system(size: 12, weight: .medium))
+                    .lineLimit(2).truncationMode(.tail).help(layer.label)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch).controlSize(.mini)
             HStack(spacing: 10) {

@@ -281,15 +281,47 @@ extension StudioModels {
         guard !metaKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
         let configuration = MetaConfiguration(apiKey: metaKey)
         let planner: any Planner
+        let reviewConfiguration: MetaConfiguration
         switch backend {
-        case .meta: planner = MetaPlanner(configuration: configuration)
-        case .glimmer: planner = LocalGlimmerPlanner(baseURL: glimmerURL)
+        case .meta:
+            planner = MetaPlanner(configuration: configuration)
+            reviewConfiguration = configuration
+        case .glimmer:
+            planner = LocalGlimmerPlanner(baseURL: glimmerURL)
+            reviewConfiguration = MetaConfiguration(apiKey: "local-glimmer", baseURL: glimmerURL, planningModel: planner.modelID)
         case .sparkOpen:
             guard let provider else { throw StudioScriptError.message("Save the Muse Spark Open provider in Settings.") }
             planner = HostedSparkOpenPlanner(endpoint: provider.baseURL, apiKey: provider.key, modelID: provider.modelID)
+            reviewConfiguration = MetaConfiguration(apiKey: provider.key, baseURL: provider.baseURL, planningModel: provider.modelID)
         }
         return StudioModels(planner: planner, segmenter: MetaSegmenter(configuration: configuration),
-                            generator: MetaGenerator(configuration: configuration))
+                            generator: MetaGenerator(configuration: configuration),
+                            reviewer: MetaBatchPlanner(configuration: reviewConfiguration,
+                                transport: backend == .glimmer ? StudioLibraryGlimmerTransport() : URLSessionMetaTransport()))
+    }
+}
+
+/// Sends library schemas in llama-server's direct schema format.
+struct StudioLibraryGlimmerTransport: MetaTransport {
+    var transport: any MetaTransport = URLSessionMetaTransport()
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        request.setValue(nil, forHTTPHeaderField: "Authorization")
+        if let body = request.httpBody,
+           var payload = try JSONSerialization.jsonObject(with: body) as? [String: Any],
+           let format = payload["response_format"] as? [String: Any],
+           let wrapper = format["json_schema"] as? [String: Any], let schema = wrapper["schema"] {
+            payload["response_format"] = ["type": "json_schema", "schema": schema]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        }
+        return try await transport.data(for: request)
+    }
+
+    func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
+        var request = request
+        request.setValue(nil, forHTTPHeaderField: "Authorization")
+        return try await transport.lines(for: request)
     }
 }
 

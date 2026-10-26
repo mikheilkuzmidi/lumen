@@ -18,12 +18,19 @@ enum StudioLaunch {
 
 struct LumenStudioApp: App {
     @State private var model = StudioModel()
+    @State private var libraries = StudioLibraryWindows()
     @NSApplicationDelegateAdaptor(StudioApplicationDelegate.self) private var delegate
 
     var body: some Scene {
         Window("Lumen Studio", id: "studio") {
-            StudioView(model: model)
-                .onAppear { delegate.model = model }
+            StudioView(model: model, openFolder: libraries.openFolder)
+                .onAppear { delegate.model = model; delegate.libraries = libraries; libraries.focusedPhoto = model }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { notification in
+                    if let window = notification.object as? NSWindow,
+                       window.identifier?.rawValue == "studio" || window.title == "Lumen Studio" {
+                        libraries.focusedPhoto = model
+                    }
+                }
                 .preferredColorScheme(.dark)
                 .tint(StudioStyle.accent)
                 .frame(minWidth: 980, minHeight: 680)
@@ -35,19 +42,21 @@ struct LumenStudioApp: App {
                 Button("Open Photo…", action: model.choosePhoto)
                     .keyboardShortcut("o")
                     .disabled(model.isBusy)
+                Button("Open Folder…", action: libraries.chooseFolder)
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .undoRedo) {
-                Button("Undo", action: model.undo)
+                Button("Undo") { libraries.focusedPhoto?.undo() }
                     .keyboardShortcut("z")
-                    .disabled(!model.canUndo)
-                Button("Redo", action: model.redo)
+                    .disabled(libraries.focusedPhoto?.canUndo != true)
+                Button("Redo") { libraries.focusedPhoto?.redo() }
                     .keyboardShortcut("z", modifiers: [.command, .shift])
-                    .disabled(!model.canRedo)
+                    .disabled(libraries.focusedPhoto?.canRedo != true)
             }
             CommandGroup(replacing: .importExport) {
-                Button("Export Photo…", action: model.chooseExport)
+                Button("Export Photo…") { libraries.focusedPhoto?.chooseExport() }
                     .keyboardShortcut("e")
-                    .disabled(!model.canExport)
+                    .disabled(libraries.focusedPhoto?.canExport != true)
             }
         }
 
@@ -62,10 +71,12 @@ struct LumenStudioApp: App {
 @MainActor
 final class StudioApplicationDelegate: NSObject, NSApplicationDelegate {
     weak var model: StudioModel?
+    weak var libraries: StudioLibraryWindows?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
             await model?.close()
+            await libraries?.close()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

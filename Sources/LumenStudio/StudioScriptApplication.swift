@@ -20,6 +20,10 @@ final class StudioScriptApplication {
         app.appearance = NSAppearance(named: .darkAqua)
         do {
             let options = try StudioScriptArguments(arguments)
+            if options.kind == .library {
+                StudioLibraryScriptApplication.main(options)
+                return
+            }
             try FileManager.default.createDirectory(at: options.output, withIntermediateDirectories: true)
             let script = try StudioScript.parse(Data(contentsOf: options.script))
             let application = StudioScriptApplication(arguments: options, script: script)

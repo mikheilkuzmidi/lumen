@@ -50,30 +50,34 @@ struct StudioScript: Decodable, Sendable {
 }
 
 struct StudioScriptArguments: Equatable {
+    enum Kind: Equatable { case photo, library }
     let script: URL
     let output: URL
+    let kind: Kind
 
     init(_ arguments: [String]) throws {
         var values: [String: String] = [:]
         var index = 0
         while index < arguments.count {
             let flag = arguments[index]
-            guard ["--script", "--out"].contains(flag), values[flag] == nil,
+            guard ["--script", "--library-script", "--out"].contains(flag), values[flag] == nil,
                   index + 1 < arguments.count, !arguments[index + 1].hasPrefix("--") else {
                 throw StudioScriptError.message(Self.usage)
             }
             values[flag] = arguments[index + 1]
             index += 2
         }
-        guard let script = values["--script"], !script.isEmpty,
+        guard (values["--script"] == nil) != (values["--library-script"] == nil),
+              let script = values["--script"] ?? values["--library-script"], !script.isEmpty,
               let output = values["--out"], !output.isEmpty else {
             throw StudioScriptError.message(Self.usage)
         }
         self.script = URL(fileURLWithPath: (script as NSString).expandingTildeInPath).standardizedFileURL
         self.output = URL(fileURLWithPath: (output as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
+        kind = values["--library-script"] == nil ? .photo : .library
     }
 
-    static let usage = "Usage: LumenStudio --script <file.json> --out <folder>"
+    static let usage = "Usage: LumenStudio (--script <file.json> | --library-script <library.json>) --out <folder>"
 
     /// Finds the error destination even when another argument is invalid.
     static func errorOutput(in arguments: [String]) -> URL? {

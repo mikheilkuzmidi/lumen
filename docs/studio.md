@@ -76,3 +76,68 @@ The output folder contains the first occurrence of each milestone:
 | `8-layers.png` | Edited photo with the Layers tab open |
 
 Selection and redraw snapshots are omitted when the plan never reaches those events. The run also writes the full-size `result.jpg` and a readable `timeline.txt`, then exits. Failures write `error.txt` and exit with a nonzero status. Reusing an output folder replaces these known output files; use a separate folder for each run to keep earlier captures.
+
+## Library window
+
+Choose **File › Open Folder…** (⇧⌘O), or drop a folder on a Studio window. Each folder opens its own Library window. Lumen lists JPEG, PNG and HEIC photos directly in that folder. The grid loads thumbnails as they become visible and keeps a bounded image cache, including for libraries of 1,000 photos.
+
+Results default to `<folder>/Lumen`. Use **Change folder…** before Run to choose a different destination. The destination must be separate from the originals. **Results** reveals it in Finder. HEIC files export as JPEG; each exported photo has a `.lumen.json` sidecar with its layer labels, rotation and any misfire flag.
+
+Enter an instruction for the library, or leave it blank for the base pass. Choose a mode:
+
+- **Autonomous** takes recommended answers without waiting. Each choice appears briefly as **Decided: …** and remains in Decisions and the event history.
+- **Ask me** pauses for personal choices. A card above the grid shows the question and its options, with the recommendation marked. Affected photos have an accent outline. Choose an option to continue.
+- **Plan first** reviews the library and asks its questions before making changes. The plan panel shows each group's title, photo count and instruction, plus estimated remaining model calls. Select a group to highlight its photos. **Go ahead** starts the edits; **Cancel** stops without applying the base pass or edits.
+
+The side panel controls **Auto**, **Straighten** (Ask, Yes or No), **Flag misfires**, and the **quality threshold**. The agent measures and reviews the library, flags misfires, applies the base pass, gives low-quality photos a closer look, and plans the instruction across the remaining photos. Straighten Ask raises a question only when a horizon looks tilted. Misfires stay in the source folder and are left out of later editing.
+
+The planner menu uses the same saved backends and settings as the photo window. The selected planner also reviews the library's contact sheets and plans its groups. SAM 3.1 and Muse Image still use the Meta key. The status line, progress bar, completed count, model call count and latest events update during the run. **Stop** cancels an edit or a pending question or approval.
+
+Cells show Measured, Misfire, Auto, Straightened, Edited, Needs attention and Failed badges as events arrive. Hover a misfire or failure to read its reason. **Before** switches the grid to the originals. Once the library has finished or stopped, click a photo to open its retained document in the photo window. Its batch layers, assets and straightening are available there: toggle them, change layer opacity, undo or redo, and export. These controls change the retained document; use Export to write further changes to disk. Open the folder again to start another batch run.
+
+### Script a library
+
+```sh
+".build/studio/Lumen Studio.app/Contents/MacOS/LumenStudio" \
+  --library-script library.json --out /tmp/lumen-library-captures
+```
+
+```json
+{
+  "folder": "photos",
+  "instruction": "Make everyone's shirt blue, keeping the folds",
+  "mode": "plan",
+  "options": {
+    "auto": true,
+    "straighten": "ask",
+    "flagMisfires": true,
+    "qualityThreshold": 0.5,
+    "concurrency": 3,
+    "maxModelCalls": 200
+  },
+  "answers": {"straighten": "Straighten them"},
+  "backend": "meta",
+  "approve": true,
+  "window": {"width": 1440, "height": 900}
+}
+```
+
+`folder` is required. Paths are absolute, `~`-expanded, or relative to the script. Optional `output` changes the results folder; without it, results go to `<folder>/Lumen`. `--out` is the separate capture folder and must differ from both the source and results folders.
+
+`mode` is `autonomous`, `ask` (the default), or `plan`. `backend` is `meta` (the default), `glimmer`, or `spark-open`. Options default to Auto on, Straighten Ask, Flag misfires on, quality threshold 0.5, concurrency 3, and no model call limit. Straighten also accepts `true`, `false`, or `null`. Concurrency must be 1–32, quality threshold 0–1, and the call limit nonnegative. Window limits match the photo script.
+
+Answers are keyed by the question's id and must match one of its option texts. Missing answers take the recommendation. Autonomous mode always takes recommendations. Plan mode captures the approval panel and then approves by default; set `approve` to `false` to capture and cancel the plan without changing photos.
+
+The script drives the same view model and batch agent as Run, in an offscreen, nonactivating window. It captures the first occurrence of each milestone that the run reaches:
+
+| File | Window content |
+| --- | --- |
+| `1-opened.png` | Library ready with its options |
+| `2-reviewed.png` | Library review received |
+| `3-question.png` | A question or an autonomous decision |
+| `4-plan.png` | Group plan, including approval controls in Plan first |
+| `5-editing.png` | Base pass or a photo edit underway |
+| `6-finished.png` | Completed library |
+| `7-photo-opened.png` | A result opened with its batch layers |
+
+The capture folder also receives `summary.json` with all photo results and answers, and `timeline.txt` with decisions and the latest events. Milestones not reached are omitted. A cancelled plan has no finished capture or summary. Failures write `error.txt` and exit with a nonzero status. Reusing a capture folder replaces these known output files. Running a library script uses the configured services and keys; the offline tests use hand-built responses and never call those services.

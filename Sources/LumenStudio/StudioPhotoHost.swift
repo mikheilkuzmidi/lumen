@@ -10,6 +10,19 @@ protocol StudioPhoto: EditHost {
 
 extension PhotoDocument: StudioPhoto {}
 
+/// A photo whose horizon can be restored alongside its layers.
+protocol StudioStraighteningPhoto: StudioPhoto {
+    var straighteningAngle: Double { get async }
+    func straighten(degrees: Double) async throws
+}
+
+extension PhotoDocument: StudioStraighteningPhoto {}
+
+struct StudioLayerSnapshot: Equatable {
+    var layers: [Layer] = []
+    var straightening: Double = 0
+}
+
 /// Keeps a layer's assets available when the document restores an earlier edit.
 actor StudioPhotoHost: EditHost {
     let photo: any StudioPhoto
@@ -40,18 +53,30 @@ actor StudioPhotoHost: EditHost {
 
     func layers() async -> [Layer] { await photo.layers }
 
+    func straightening() async -> Double {
+        await (photo as? any StudioStraighteningPhoto)?.straighteningAngle ?? 0
+    }
+
+    /// Retains the asset-free layers added by the library's automatic pass.
+    func retainAutoLayers() async {
+        for layer in await photo.layers where layerAssets[layer.id] == nil {
+            if case .adjustment(_, nil) = layer.content { layerAssets[layer.id] = AssetStore() }
+        }
+    }
+
     /// Replays a snapshot in order because the host has no layer update or undo API.
-    func restore(_ layers: [Layer]) async throws {
+    func restore(_ layers: [Layer], straightening: Double? = nil) async throws {
         for layer in layers where layerAssets[layer.id] == nil {
             throw StudioPhotoError.missingAssets(layer.label)
         }
         let previous = await self.layers()
+        let previousAngle = await self.straightening()
         do {
-            try await replay(layers)
+            try await replay(layers, straightening: straightening)
         } catch {
             let changeError = error
             do {
-                try await replay(previous)
+                try await replay(previous, straightening: previousAngle)
             } catch {
                 throw StudioPhotoError.restoreFailed(change: changeError.localizedDescription,
                                                      recovery: error.localizedDescription)
@@ -60,9 +85,12 @@ actor StudioPhotoHost: EditHost {
         }
     }
 
-    private func replay(_ layers: [Layer]) async throws {
+    private func replay(_ layers: [Layer], straightening: Double?) async throws {
         for layer in await self.layers().reversed() {
             try await photo.remove(layer.id)
+        }
+        if let straightening, let photo = photo as? any StudioStraighteningPhoto {
+            try await photo.straighten(degrees: straightening)
         }
         for layer in layers {
             guard let assets = layerAssets[layer.id] else {

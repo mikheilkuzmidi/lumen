@@ -12,6 +12,7 @@ enum StudioStyle {
 struct StudioView: View {
     @Bindable var model: StudioModel
     var activatesBackend = true
+    var openFolder: (URL) -> Void = { _ in }
     @State private var dropTarget = false
 
     var body: some View {
@@ -44,7 +45,12 @@ struct StudioView: View {
         .background(StudioStyle.panel)
         .preferredColorScheme(.dark)
         .dropDestination(for: URL.self) { urls, _ in
-            guard !model.isBusy, let url = urls.first, url.isFileURL else { return false }
+            guard let url = urls.first, url.isFileURL else { return false }
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                openFolder(url)
+                return true
+            }
+            guard !model.isBusy else { return false }
             model.open(url)
             return true
         } isTargeted: { dropTarget = $0 && !model.isBusy }
@@ -217,7 +223,7 @@ struct StudioSidebar: View {
         VStack(spacing: 0) {
             Picker("Sidebar", selection: $model.sidebar) {
                 Text("Steps").tag(StudioSidebarTab.steps)
-                Text("Layers · \(model.layers.count)").tag(StudioSidebarTab.layers)
+                Text("Layers · \(model.layers.count + (model.batchStraightening == nil ? 0 : 1))").tag(StudioSidebarTab.layers)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -275,11 +281,11 @@ struct StudioSidebar: View {
     private var layerList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                if model.layers.isEmpty {
+                if model.layers.isEmpty && model.batchStraightening == nil {
                     sidebarEmpty("Built one layer at a time", detail: "Applied edits appear here. Adjust their opacity, hide them, or undo a step.", symbol: "square.3.layers.3d")
                 } else {
                     HStack {
-                        Text("\(model.layers.count) layers").font(.caption).foregroundStyle(.secondary)
+                        Text("\(model.layers.count + (model.batchStraightening == nil ? 0 : 1)) layers").font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button(action: model.undo) { Image(systemName: "arrow.uturn.backward") }
                             .disabled(!model.canUndo).help("Undo (⌘Z)")
@@ -291,6 +297,14 @@ struct StudioSidebar: View {
                     .buttonStyle(.borderless)
                     ForEach(model.layers.reversed()) { layer in
                         LayerRow(model: model, layer: layer)
+                    }
+                    if let angle = model.batchStraightening {
+                        Toggle(isOn: Binding(get: { model.straighteningAngle != 0 }, set: { _ in model.toggleStraightening() })) {
+                            Text("Straighten · \(angle.formatted())°").font(.system(size: 12, weight: .medium))
+                        }
+                        .toggleStyle(.switch).controlSize(.mini).disabled(model.isBusy)
+                        .padding(14).background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(StudioStyle.line) }
                     }
                 }
                 if model.photoURL != nil {
@@ -319,7 +333,7 @@ struct StudioSidebar: View {
     }
 }
 
-private struct TimelineRow: View {
+struct TimelineRow: View {
     let entry: StudioStep
     let isLast: Bool
     @State private var showsTraces = false

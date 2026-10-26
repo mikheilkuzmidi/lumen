@@ -87,8 +87,8 @@ public struct MetaPlanner: Planner {
     Revert takes off an applied layer; remove takes an object out of the photo.
     Finish when the instruction is met.
     A select concept is what the segmentation model searches for: one short singular noun phrase it can
-    see, such as "jacket", "sky", "sofa" or "red gate", without possessives or long descriptions; use a
-    box to say which one when there are several.
+    see, such as "jacket", "sky", "sofa" or "red gate", without possessives or long descriptions; when
+    there are several, give a point on the one you mean and a box around it.
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
     either way for a visible but natural change.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and

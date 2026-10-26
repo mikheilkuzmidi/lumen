@@ -1,4 +1,5 @@
 import CoreImage
+import Vision
 import Foundation
 import ImageIO
 import LumenCore
@@ -130,12 +131,14 @@ struct PhotoStatistics: Sendable {
         return variance / (variance + 0.01)
     }
 
+    /// The horizon's tilt from Vision's horizon detector, positive counterclockwise (Vision reports the angle
+    /// that levels it, the other way round); nil when it finds no horizon or one within 0.3°.
     static func tilt(in sample: CIImage) -> Double? {
-        let filters = sample.autoAdjustmentFilters(options: [.level: true])
-        guard let filter = filters.first(where: { $0.name == "CIStraightenFilter" }),
-              let angle = filter.value(forKey: kCIInputAngleKey) as? NSNumber else { return nil }
-        let degrees = angle.doubleValue * 180 / .pi
-        return degrees.isFinite && abs(degrees) >= 0.2 ? degrees : nil
+        let request = VNDetectHorizonRequest()
+        guard (try? VNImageRequestHandler(ciImage: sample).perform([request])) != nil,
+              let angle = request.results?.first?.angle else { return nil }
+        let degrees = -Double(angle) * 180 / .pi
+        return degrees.isFinite && abs(degrees) >= 0.3 ? degrees : nil
     }
 
     /// Reads the original capture time, using UTC when EXIF has no offset.

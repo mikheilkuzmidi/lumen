@@ -334,13 +334,25 @@ public actor EditAgent {
                                       detail: "Find \(selection.concept ?? selection.id)", events: events) {
             try await self.segmenter.segment(request)
         }
-        // The planner's own box is a guess; when it rules out everything, search the whole photo (or the user's area).
+        // When the planner says which one it means among several, keep only that: the segments under its points,
+        // or else the ones that fit its box. If nothing fits (SAM found the neighbour's shirt but not this one),
+        // nothing is kept, rather than the wrong one.
+        if selection.concept != nil, !segments.isEmpty, selection.box != nil || !selection.points.isEmpty {
+            segments = Self.meant(segments, points: selection.points, box: selection.box)
+            if segments.isEmpty {
+                note(.select, "What was found for \(selection.id) is not where the planner pointed.", events: events)
+            }
+        }
+        // The planner's box is a guess; when it rules out everything, search the whole photo (or the user's area).
+        // That is only trusted when it finds exactly one: with several, it cannot say which was meant.
         if segments.isEmpty, selection.box != nil, selection.concept != nil {
             note(.select, "Nothing found inside the planner's box for \(selection.id); looking again without it.", events: events)
             let wider = SegmentRequest(image: image, concept: selection.concept, box: area, points: selection.points)
-            segments = try await call(.select, model: segmenter.modelID, detail: "Find \(selection.concept ?? selection.id) again", events: events) {
+            let found = try await call(.select, model: segmenter.modelID, detail: "Find \(selection.concept ?? selection.id) again", events: events) {
                 try await self.segmenter.segment(wider)
             }
+            if found.count == 1 { segments = found }
+            else if found.count > 1 { note(.select, "Found \(found.count) of them elsewhere; none is the one meant.", events: events) }
         }
         if segments.isEmpty, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
             let location = selection.box != nil ? "the planner's box" : request.box != nil ? "the selected area" : "the planner's points"
@@ -375,6 +387,34 @@ public actor EditAgent {
         events.yield(.selected(region: selection.id, segment: segment))
         return Region(info: RegionInfo(id: selection.id, concept: selection.concept, box: box, area: mask.area),
                       mask: mask, asset: asset)
+    }
+
+    /// The segments the planner meant: those under one of its points, or else those that fit its box best.
+    static func meant(_ segments: [Segment], points: [NormalizedPoint], box: NormalizedRect?) -> [Segment] {
+        if !points.isEmpty {
+            let under = segments.filter { segment in
+                points.contains { point in
+                    let size = segment.mask.size
+                    let x = min(size.width - 1, max(0, Int(point.x * Double(size.width))))
+                    let y = min(size.height - 1, max(0, Int(point.y * Double(size.height))))
+                    return size.width > 0 && size.height > 0 && segment.mask[x, y] > 127
+                }
+            }
+            if !under.isEmpty || box == nil { return under }
+        }
+        guard let box else { return segments }
+        let fits = segments.map { overlap($0.box, box) }
+        let best = fits.max() ?? 0
+        return best < 0.25 ? [] : zip(segments, fits).filter { $0.1 >= best * 0.6 }.map(\.0)
+    }
+
+    /// Intersection over union of two rectangles.
+    static func overlap(_ a: NormalizedRect, _ b: NormalizedRect) -> Double {
+        let width = max(0, min(a.x + a.width, b.x + b.width) - max(a.x, b.x))
+        let height = max(0, min(a.y + a.height, b.y + b.height) - max(a.y, b.y))
+        let shared = width * height
+        let union = a.width * a.height + b.width * b.height - shared
+        return union > 0 ? shared / union : 0
     }
 
     private func redraw(_ region: Region, prompt: String, label: String, kind: TraceEvent.Kind,

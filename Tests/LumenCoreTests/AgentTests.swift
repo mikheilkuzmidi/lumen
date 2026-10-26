@@ -4,6 +4,157 @@ import Testing
 
 @Suite("Edit agent", .timeLimit(.minutes(1)))
 struct AgentTests {
+    @Test func followUpsReuseTheSkyAndCanRevertAnEarlierLayer() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Darken the sky", steps: [
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: -0.4])),
+        ]))
+        let segmenter = AgentSegmenter(segments: [segment()])
+        let host = AgentHost()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: AgentGenerator(), host: host)
+        let first = try await collect(agent.run("Darken the sky"))
+        let originalLayer = try #require(first.layers.first)
+        let originalInfo = LayerInfo(id: originalLayer.id.uuidString, label: originalLayer.label, kind: "adjust", region: "sky")
+
+        await planner.setPlan(EditPlan(summary: "Lighten it a little", steps: [
+            .adjust(Adjustment(region: "sky", values: [.exposure: 0.1])),
+        ]))
+        let second = try await collect(agent.run("a bit less"))
+        let adjustment = try #require(second.layers.first)
+        let requests = await planner.plans
+        #expect(requests[0].history.isEmpty && requests[0].layers.isEmpty)
+        #expect(requests[1].instruction == "a bit less")
+        #expect(requests[1].history == ["Darken the sky"])
+        #expect(requests[1].regions == [RegionInfo(id: "sky", concept: "sky", box: segment().mask.boundingBox!, area: segment().mask.area)])
+        #expect(requests[1].layers == [originalInfo])
+        #expect(second.selections.isEmpty)
+        #expect(await segmenter.requests.count == 1)
+        #expect(second.stepIndices == [0], "step counts start fresh for each instruction")
+        guard case .adjustment(let values, let mask) = adjustment.content,
+              case .adjustment(_, let originalMask) = originalLayer.content else {
+            Issue.record("Expected two sky adjustments")
+            return
+        }
+        #expect(values == [.exposure: 0.1])
+        #expect(mask == originalMask)
+        #expect(await agent.assets.get(try #require(mask)) == .mask(segment().mask))
+        let critiques = await planner.critiques
+        #expect(critiques[1].before == AgentPhoto.preview(layers: 1))
+        #expect(critiques[1].after == AgentPhoto.preview(layers: 2))
+        #expect(critiques[1].layers.map(\.id) == [originalLayer.id.uuidString, adjustment.id.uuidString])
+
+        await planner.setPlan(EditPlan(summary: "Undo the first darkening", steps: [
+            .revert(Revert(layer: originalLayer.id.uuidString)),
+        ]))
+        let third = try await collect(agent.run("Undo the first darkening"))
+        #expect(third.reverted == [originalLayer.id])
+        #expect(third.layers.isEmpty)
+        #expect(await host.removed == [originalLayer.id])
+        #expect(await host.layers == [adjustment])
+        #expect(third.traces.contains { $0.kind == .revert && $0.detail.contains(originalLayer.id.uuidString) && $0.model == nil })
+        let thirdRequest = try #require(await planner.plans.last)
+        #expect(thirdRequest.history == ["Darken the sky", "a bit less"])
+        #expect(thirdRequest.layers.map(\.id) == [originalLayer.id.uuidString, adjustment.id.uuidString])
+        let thirdCritique = try #require(await planner.critiques.last)
+        #expect(thirdCritique.before == AgentPhoto.preview(layers: 2))
+        #expect(thirdCritique.after == AgentPhoto.preview(layers: 1))
+        #expect(thirdCritique.layers.map(\.id) == [adjustment.id.uuidString])
+
+        await planner.setPlan(EditPlan(summary: "No change", steps: []))
+        _ = try await collect(agent.run("Keep it"))
+        let nextRequest = try #require(await planner.plans.last)
+        #expect(nextRequest.history == ["Darken the sky", "a bit less", "Undo the first darkening"])
+        #expect(nextRequest.layers.map(\.id) == [adjustment.id.uuidString])
+        #expect(nextRequest.regions.map(\.id) == ["sky"])
+    }
+
+    @Test func resetForgetsThePhotoWithoutRemovingItsLayers() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Darken sky", steps: [
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: -0.4])),
+        ]))
+        let host = AgentHost()
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [segment()]),
+                              generator: AgentGenerator(), host: host)
+        let first = try await collect(agent.run("Darken the sky"))
+        await agent.reset()
+        await planner.setPlan(EditPlan(summary: "Warm the new photo", steps: [.adjust(Adjustment(values: [.temperature: 5]))]))
+        _ = try await collect(agent.run("Warm this photo"))
+        let request = try #require(await planner.plans.last)
+        #expect(request.regions.isEmpty && request.layers.isEmpty && request.history.isEmpty && request.done.isEmpty)
+        #expect(await host.removed.isEmpty)
+        #expect(await host.layers.first == first.layers.first)
+        #expect(await planner.critiques.last?.layers.map(\.kind) == ["adjust"])
+        #expect(await planner.critiques.last?.layers.first?.region == nil)
+    }
+
+    @Test func aFailedRevertKeepsTheLayerInMemory() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Brighten", steps: [.adjust(Adjustment(values: [.exposure: 0.2]))]))
+        let host = AgentHost(removeError: .invalidResponse("Cannot remove the layer."))
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: []), generator: AgentGenerator(), host: host)
+        let first = try await collect(agent.run("Brighten"))
+        let layer = try #require(first.layers.first)
+        await planner.setPlan(EditPlan(summary: "Undo", steps: [.revert(Revert(layer: layer.id.uuidString))]))
+        let second = try await collect(agent.run("Undo that"))
+        #expect(second.reverted.isEmpty)
+        #expect(second.traces.contains { $0.kind == .failure && $0.detail.contains("Cannot remove") })
+        #expect(await host.layers == [layer])
+        #expect(await planner.critiques.last?.layers.map(\.id) == [layer.id.uuidString])
+    }
+
+    @Test func overlappingInstructionsRememberTheEarlierRun() async throws {
+        let gate = AgentGate()
+        let planner = AgentPlanner(plan: EditPlan(summary: "Darken sky", steps: [
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: -0.4])),
+        ]))
+        let host = AgentHost(applyGate: gate)
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [segment()]),
+                              generator: AgentGenerator(), host: host)
+        let first = Task { try await collect(agent.run("Darken the sky")) }
+        await gate.waitUntilEntered()
+        await planner.setPlan(EditPlan(summary: "A little less", steps: [.adjust(Adjustment(region: "sky", values: [.exposure: 0.1]))]))
+        let second = Task { try await collect(agent.run("a bit less")) }
+        await gate.release()
+        let firstEvents = try await first.value
+        let secondEvents = try await second.value
+        #expect(firstEvents.layers.count == 1 && secondEvents.layers.count == 1)
+        #expect(await planner.plans.last?.history == ["Darken the sky"])
+        #expect(await planner.plans.last?.layers.map(\.id) == firstEvents.layers.map { $0.id.uuidString })
+    }
+
+    @Test func theCriticCanRevertALayerAppliedDuringTheRun() async throws {
+        let host = AgentHost()
+        let agent = EditAgent(planner: RevertingPlanner(), segmenter: AgentSegmenter(segments: []),
+                              generator: AgentGenerator(), host: host)
+        let events = try await collect(agent.run("Brighten a little"))
+        let layer = try #require(events.layers.first)
+        #expect(events.reverted == [layer.id])
+        #expect(events.critiques.map(\.satisfied) == [false, true])
+        #expect(await host.layers.isEmpty)
+        #expect(await host.removed == [layer.id])
+    }
+
+    @Test func resetStopsAnEarlierRunFromRestoringItsMemory() async throws {
+        let gate = AgentGate()
+        let planner = AgentPlanner(plan: EditPlan(summary: "Change sky", steps: [
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: -0.4])),
+            .regenerate(Regeneration(region: "sky", prompt: "a sunset sky")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [segment()]),
+                              generator: AgentGenerator(gate: gate), host: AgentHost())
+        let first = Task { try await collect(agent.run("Make a sunset")) }
+        await gate.waitUntilEntered()
+        await agent.reset()
+        await gate.release()
+        await #expect(throws: LumenError.cancelled) { try await first.value }
+        await planner.setPlan(EditPlan(summary: "No change", steps: []))
+        _ = try await collect(agent.run("Keep this photo"))
+        let request = try #require(await planner.plans.last)
+        #expect(request.regions.isEmpty && request.layers.isEmpty && request.history.isEmpty)
+    }
+
     @Test func selectsAdjustsAndRedrawsAsSeparateLayers() async throws {
         let plan = EditPlan(summary: "Change the coat", steps: [
             .select(Selection(id: "coat", concept: "coat")),
@@ -51,6 +202,8 @@ struct AgentTests {
         let request = try #require(await planner.plans.first)
         #expect(request.instruction == "Make the coat navy")
         #expect(request.regions.isEmpty && request.done.isEmpty)
+        #expect(await planner.critiques.first?.layers.map(\.kind) == ["adjust", "regenerate"])
+        #expect(await planner.critiques.first?.layers.map(\.region) == ["coat", "coat"])
         #expect(events.stepIndices == [0, 1, 2, 3])
         // The plan said it was ready before any result existed; the critic looked once and agreed.
         #expect(events.reasons == ["Done."])
@@ -149,6 +302,8 @@ struct AgentTests {
         #expect(requests[1].after == AgentPhoto.preview(layers: 2))
         #expect(requests[1].regions == [RegionInfo(id: "coat", concept: "coat", box: segment().mask.boundingBox!, area: segment().mask.area)])
         #expect(requests[1].done == ["Coat: selected", "Coat: exposure −0.4", "Coat: saturation +10"])
+        #expect(requests[0].layers.map(\.id) == [events.layers[0].id.uuidString])
+        #expect(requests[1].layers.map(\.id) == events.layers.map { $0.id.uuidString })
     }
 
     @Test func stepLimitIncludesStepsFromRevisions() async throws {
@@ -264,6 +419,8 @@ struct AgentTests {
         #expect(events.layers.map(\.label) == ["Object: removed", "Photo: cropped"])
         #expect(events.layers.last?.content == .crop(NormalizedRect(x: 0, y: 0, width: 0.5, height: 1)))
         #expect(events.traces.contains { $0.kind == .remove && $0.model == "muse-image-1.0" })
+        #expect(await planner.critiques.first?.layers.map(\.kind) == ["remove", "crop"])
+        #expect(await planner.critiques.first?.layers.map(\.region) == ["object", nil])
     }
 
     @Test func cancelledPlannerResultAddsNoLayers() async throws {
@@ -310,6 +467,11 @@ struct AgentTests {
         }
         #expect(await host.layers.map(\.label) == ["Coat: exposure −0.4"])
         #expect(await gate.wasCancelled)
+        await planner.setPlan(EditPlan(summary: "A little less", steps: [.adjust(Adjustment(region: "coat", values: [.exposure: 0.1]))]))
+        let followUp = try await collect(agent.run("A little less"))
+        #expect(followUp.layers.count == 1 && followUp.selections.isEmpty)
+        #expect(await planner.plans.last?.history == ["Change the coat"])
+        #expect(await planner.plans.last?.layers.map(\.label) == ["Coat: exposure −0.4"])
     }
 
     @Test func terminatingTheStreamCancelsTheModelTask() async throws {
@@ -345,6 +507,9 @@ struct AgentTests {
         }
         #expect(await host.layers.isEmpty)
         #expect(await host.removed.count == 1)
+        await planner.setPlan(EditPlan(summary: "No change", steps: []))
+        _ = try await collect(agent.run("Keep the photo"))
+        #expect(await planner.plans.last?.layers.isEmpty == true)
     }
 
     @Test func cancellationErrorEndsTheStreamWithTheDomainError() async throws {
@@ -377,6 +542,7 @@ private func collect(_ stream: AsyncThrowingStream<AgentEvent, Error>) async thr
 
 private extension Array where Element == AgentEvent {
     var layers: [Layer] { compactMap { if case .applied(let layer) = $0 { layer } else { nil } } }
+    var reverted: [Layer.ID] { compactMap { if case .reverted(let id) = $0 { id } else { nil } } }
     var stepIndices: [Int] { compactMap { if case .stepStarted(let index, _) = $0 { index } else { nil } } }
     var selections: [Segment] { compactMap { if case .selected(_, let segment) = $0 { segment } else { nil } } }
     var critiques: [Critique] { compactMap { if case .critiqued(let critique) = $0 { critique } else { nil } } }
@@ -386,7 +552,7 @@ private extension Array where Element == AgentEvent {
 
 private actor AgentPlanner: Planner {
     let modelID = "muse-spark-1.3"
-    private let answer: EditPlan
+    private var answer: EditPlan
     private var answers: [Result<Critique, LumenError>]
     private let error: LumenError?
     private let gate: AgentGate?
@@ -412,9 +578,24 @@ private actor AgentPlanner: Planner {
         return answer
     }
 
+    func setPlan(_ plan: EditPlan) { answer = plan }
+
     func critique(_ request: CritiqueRequest) async throws -> Critique {
         critiques.append(request)
         return try answers.isEmpty ? Critique(satisfied: true, notes: "Done.") : answers.removeFirst().get()
+    }
+}
+
+private struct RevertingPlanner: Planner {
+    let modelID = "muse-spark-1.3"
+
+    func plan(_ request: PlanRequest) async throws -> EditPlan {
+        EditPlan(summary: "Brighten", steps: [.adjust(Adjustment(values: [.exposure: 0.5]))])
+    }
+
+    func critique(_ request: CritiqueRequest) async throws -> Critique {
+        guard let layer = request.layers.last else { return Critique(satisfied: true, notes: "Done.") }
+        return Critique(satisfied: false, notes: "Too bright", steps: [.revert(Revert(layer: layer.id))])
     }
 }
 
@@ -468,8 +649,12 @@ private actor AgentHost: EditHost {
     private(set) var crops: [RenderedCrop] = []
     private(set) var removed: [Layer.ID] = []
     private let applyGate: AgentGate?
+    private let removeError: LumenError?
 
-    init(applyGate: AgentGate? = nil) { self.applyGate = applyGate }
+    init(applyGate: AgentGate? = nil, removeError: LumenError? = nil) {
+        self.applyGate = applyGate
+        self.removeError = removeError
+    }
 
     func size() async -> PixelSize { PixelSize(width: 10, height: 10) }
 
@@ -490,6 +675,7 @@ private actor AgentHost: EditHost {
     }
 
     func remove(_ layer: Layer.ID) async throws {
+        if let removeError { throw removeError }
         removed.append(layer)
         layers.removeAll { $0.id == layer }
     }

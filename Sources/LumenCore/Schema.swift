@@ -20,7 +20,7 @@ enum PlanSchema {
     private static func steps() -> [String: Any] {
         [
             "type": "array",
-            "description": "Steps in execution order. Select a region before using its id; finish last.",
+            "description": "Steps in execution order. Reuse known regions or select before using a new id; finish last.",
             "items": ["anyOf": [
                 step("select", properties: [
                     "id": string("A unique, nonempty region id, such as sky, used by later steps."),
@@ -41,6 +41,7 @@ enum PlanSchema {
                     "region": string("An earlier selected region id to remove and fill from its surroundings."),
                 ]),
                 step("crop", properties: ["rect": rect()]),
+                step("revert", properties: ["layer": string("The id of an applied layer to take off the photo.")]),
                 step("finish", properties: ["reason": string("Why the edit is complete.")]),
             ]],
         ]

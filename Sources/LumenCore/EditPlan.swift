@@ -95,6 +95,13 @@ public struct Crop: Codable, Equatable, Sendable {
     public init(rect: NormalizedRect) { self.rect = rect }
 }
 
+/// Take an earlier layer off the photo.
+public struct Revert: Codable, Equatable, Sendable {
+    public var layer: String
+
+    public init(layer: String) { self.layer = layer }
+}
+
 /// The edit is done, and why.
 public struct Finish: Codable, Equatable, Sendable {
     public var reason: String
@@ -103,13 +110,14 @@ public struct Finish: Codable, Equatable, Sendable {
 }
 
 /// One thing the agent does. In JSON it is a flat object with a `type` ("select", "adjust", "regenerate",
-/// "remove", "crop" or "finish") beside that step's own fields; this is the contract every planner answers in.
+/// "remove", "crop", "revert" or "finish") beside that step's own fields; this is the contract every planner answers in.
 public enum EditStep: Codable, Equatable, Sendable {
     case select(Selection)
     case adjust(Adjustment)
     case regenerate(Regeneration)
     case remove(Removal)
     case crop(Crop)
+    case revert(Revert)
     case finish(Finish)
 
     public var type: String {
@@ -119,6 +127,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case .regenerate: "regenerate"
         case .remove: "remove"
         case .crop: "crop"
+        case .revert: "revert"
         case .finish: "finish"
         }
     }
@@ -134,6 +143,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case "regenerate": self = .regenerate(try Regeneration(from: decoder))
         case "remove": self = .remove(try Removal(from: decoder))
         case "crop": self = .crop(try Crop(from: decoder))
+        case "revert": self = .revert(try Revert(from: decoder))
         case "finish": self = .finish(try Finish(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown step type “\(type)”.")
@@ -149,6 +159,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case .regenerate(let step): try step.encode(to: encoder)
         case .remove(let step): try step.encode(to: encoder)
         case .crop(let step): try step.encode(to: encoder)
+        case .revert(let step): try step.encode(to: encoder)
         case .finish(let step): try step.encode(to: encoder)
         }
     }
@@ -186,7 +197,12 @@ public struct CheckedPlan: Equatable, Sendable {
 extension EditPlan {
     /// `knownRegions` are the ids selected by earlier plans of the same edit.
     public func checked(knownRegions: Set<String> = []) -> CheckedPlan {
-        var check = PlanCheck(knownRegions: knownRegions)
+        checked(knownRegions: knownRegions, knownLayers: [])
+    }
+
+    /// Keeps references to regions and applied layers from earlier plans of this edit.
+    public func checked(knownRegions: Set<String>, knownLayers: Set<String>) -> CheckedPlan {
+        var check = PlanCheck(knownRegions: knownRegions, knownLayers: knownLayers)
         return check.check(self)
     }
 }

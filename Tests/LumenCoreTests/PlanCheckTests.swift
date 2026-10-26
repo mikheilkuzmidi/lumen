@@ -4,6 +4,26 @@ import Testing
 
 @Suite("Plan checking")
 struct PlanCheckTests {
+    @Test func revertsNeedKnownLayersAndCannotRepeat() {
+        let id = UUID().uuidString
+        let plan = EditPlan(summary: "Undo the sky", steps: [
+            .revert(Revert(layer: "missing")),
+            .revert(Revert(layer: " \n\(id)\t")),
+            .revert(Revert(layer: id)),
+            .revert(Revert(layer: "")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: 0.1])),
+        ])
+        let checked = plan.checked(knownRegions: ["sky"], knownLayers: [id])
+        #expect(checked.plan.steps == [
+            .revert(Revert(layer: id)),
+            .adjust(Adjustment(region: "sky", values: [.exposure: 0.1])),
+        ])
+        #expect(checked.notes.filter { $0.contains("unknown layer") }.count == 3)
+        #expect(checked.notes.contains { $0.contains("trimmed layer reference") })
+        #expect(checked.plan.checked(knownRegions: ["sky"], knownLayers: [id]).notes.isEmpty)
+        #expect(EditPlan(summary: "Undo", steps: [.revert(Revert(layer: id))]).checked().plan.steps.isEmpty)
+    }
+
     @Test(arguments: AdjustmentKey.allCases)
     func adjustmentsStayWithinTheirRanges(key: AdjustmentKey) {
         let checked = EditPlan(summary: "Develop", steps: [

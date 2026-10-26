@@ -47,6 +47,7 @@ struct StudioStep: Identifiable {
 
 struct StudioRegion: Identifiable {
     let id = UUID()
+    let selectedAt = Date()
     let name: String
     let segment: Segment
     let colorIndex: Int
@@ -80,6 +81,8 @@ final class StudioModel {
     var zoom: Double = 1
     var compare = false
     var holdingCompare = false
+    var sidebar = StudioSidebarTab.steps
+    var snapshotDate: Date?
     var issue: String?
     private(set) var phase = StudioPhase.idle
     private(set) var photoURL: URL?
@@ -94,8 +97,9 @@ final class StudioModel {
     private(set) var historyPosition = 0
     private(set) var historyCount = 1
 
-    @ObservationIgnored private var document: PhotoDocument?
-    @ObservationIgnored private var originalDocument: PhotoDocument?
+    @ObservationIgnored private var document: (any StudioPhoto)?
+    @ObservationIgnored private var originalDocument: (any StudioPhoto)?
+    @ObservationIgnored private let makePhoto: (URL) throws -> any StudioPhoto
     @ObservationIgnored private var host: StudioPhotoHost?
     @ObservationIgnored private var agentTask: Task<Void, Never>?
     @ObservationIgnored private var history: [[Layer]] = [[]]
@@ -109,6 +113,10 @@ final class StudioModel {
     @ObservationIgnored private var originalEdge = 0
     @ObservationIgnored private var photoVersion = UUID()
 
+    init(makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
+        self.makePhoto = makePhoto
+    }
+
     var isBusy: Bool { phase != .idle }
     var isRunning: Bool { phase == .running || phase == .stopping }
     var showsOriginal: Bool { compare || holdingCompare }
@@ -116,6 +124,7 @@ final class StudioModel {
     var canUndo: Bool { !isBusy && historyPosition > 0 }
     var canRedo: Bool { !isBusy && historyPosition + 1 < historyCount }
     var canExport: Bool { document != nil && preview != nil && !isBusy }
+    var timelineFocus: UUID? { activeStep ?? steps.last(where: { $0.status != .waiting })?.id }
 
     var status: String {
         switch phase {
@@ -143,41 +152,48 @@ final class StudioModel {
 
     func open(_ url: URL) {
         guard !isBusy, url.isFileURL else { return }
+        Task {
+            do { try await openPhoto(url) }
+            catch { issue = error.localizedDescription }
+        }
+    }
+
+    func openPhoto(_ url: URL) async throws {
+        guard !isBusy, url.isFileURL else { throw StudioScriptError.message("A photo can't be opened right now.") }
         phase = .opening
         issue = nil
-        Task {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            do {
-                let photo = try PhotoDocument(contentsOf: url)
-                let original = try PhotoDocument(contentsOf: url)
-                let encoded = try await photo.render(maxLongEdge: renderEdge)
-                guard let image = NSImage(data: encoded.data) else { throw StudioPhotoError.unreadablePreview }
-                document = photo
-                originalDocument = original
-                host = StudioPhotoHost(photo: photo)
-                photoURL = url
-                photoVersion = UUID()
-                photoSize = await photo.size()
-                preview = image
-                self.original = image
-                originalEdge = renderEdge
-                zoom = 1
-                compare = false
-                holdingCompare = false
-                area = nil
-                layers = []
-                steps = []
-                regions = []
-                regionColors = [:]
-                planSummary = ""
-                completion = nil
-                history = [[]]
-                historyPosition = 0
-                historyCount = 1
-            } catch { issue = error.localizedDescription }
-            phase = .idle
-        }
+        defer { phase = .idle }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let photo = try makePhoto(url)
+            let original = try makePhoto(url)
+            let encoded = try await photo.render(maxLongEdge: renderEdge)
+            guard let image = NSImage(data: encoded.data) else { throw StudioPhotoError.unreadablePreview }
+            document = photo
+            originalDocument = original
+            host = StudioPhotoHost(photo: photo)
+            photoURL = url
+            photoVersion = UUID()
+            photoSize = await photo.size()
+            preview = image
+            self.original = image
+            originalEdge = renderEdge
+            zoom = 1
+            compare = false
+            holdingCompare = false
+            area = nil
+            layers = []
+            steps = []
+            regions = []
+            regionColors = [:]
+            planSummary = ""
+            completion = nil
+            sidebar = .steps
+            history = [[]]
+            historyPosition = 0
+            historyCount = 1
+        } catch { issue = error.localizedDescription; throw error }
     }
 
     func renderPreview(maxLongEdge: Int) async {
@@ -207,10 +223,23 @@ final class StudioModel {
     }
 
     func run() {
-        guard canRun, let host else { return }
-        let configuration: MetaConfiguration
-        do { configuration = MetaConfiguration(apiKey: try StudioKeychain.runtimeKey()) }
-        catch { issue = error.localizedDescription; return }
+        guard canRun, agentTask == nil else { return }
+        agentTask = Task {
+            do { try await runEdit() }
+            catch {
+                if !Task.isCancelled, !(error is CancellationError), (error as? LumenError) != .cancelled {
+                    issue = error.localizedDescription
+                }
+            }
+            agentTask = nil
+        }
+    }
+
+    /// Runs the same edit for the window and a script, reporting events after the view model updates.
+    func runEdit(using models: StudioModels? = nil,
+                 onEvent: @MainActor (AgentEvent) async throws -> Void = { _ in }) async throws {
+        guard canRun, let host else { throw StudioScriptError.message("Open a photo and enter an instruction before running.") }
+        let models = try models ?? StudioModels.meta()
         let instruction = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedArea = area
         phase = .running
@@ -225,38 +254,39 @@ final class StudioModel {
         revision = 0
         pendingRevision = nil
         regions = []
-        let agent = EditAgent(planner: MetaPlanner(configuration: configuration),
-                              segmenter: MetaSegmenter(configuration: configuration),
-                              generator: MetaGenerator(configuration: configuration), host: host)
-        agentTask = Task {
-            do {
-                for try await event in agent.run(instruction, area: requestedArea) {
-                    try Task.checkCancellation()
-                    await receive(event)
-                }
-                if Task.isCancelled {
-                    finishStopped()
-                } else if completion == nil {
-                    finishActive()
-                    skipWaiting("The edit ended before this step.")
-                    completion = "Edit ended"
-                }
-            } catch {
-                if Task.isCancelled || error is CancellationError || (error as? LumenError) == .cancelled {
-                    finishStopped()
-                } else {
-                    failActive(error.localizedDescription)
-                    issue = error.localizedDescription
-                    skipWaiting("The edit stopped before this step.")
-                }
+        sidebar = .steps
+        let agent = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator, host: host)
+        var failure: (any Error)?
+        do {
+            for try await event in agent.run(instruction, area: requestedArea) {
+                try Task.checkCancellation()
+                await receive(event)
+                try await onEvent(event)
             }
-            layers = await host.layers()
-            remember(layers)
-            await Task { await renderPreview(maxLongEdge: renderEdge) }.value
-            regions = []
-            phase = .idle
-            agentTask = nil
+            if Task.isCancelled {
+                finishStopped()
+            } else if completion == nil {
+                finishActive()
+                skipWaiting("The edit ended before this step.")
+                completion = "Edit ended"
+            }
+        } catch {
+            await agent.cancel()
+            failure = error
+            if Task.isCancelled || error is CancellationError || (error as? LumenError) == .cancelled {
+                finishStopped()
+            } else {
+                failActive(error.localizedDescription)
+                issue = error.localizedDescription
+                skipWaiting("The edit stopped before this step.")
+            }
         }
+        layers = await host.layers()
+        remember(layers)
+        await Task { await renderPreview(maxLongEdge: renderEdge) }.value
+        regions = []
+        phase = .idle
+        if let failure { throw failure }
     }
 
     func stop() {
@@ -305,17 +335,23 @@ final class StudioModel {
     }
 
     private func export(to url: URL) {
-        guard canExport, let document else { return }
+        guard canExport else { return }
+        Task {
+            do { try await exportPhoto(to: url) }
+            catch { issue = error.localizedDescription }
+        }
+    }
+
+    func exportPhoto(to url: URL) async throws {
+        guard canExport, let document else { throw StudioScriptError.message("No photo is ready to export.") }
         phase = .exporting
         issue = nil
-        Task {
-            do {
-                let format: EncodedImage.Format = ["jpg", "jpeg"].contains(url.pathExtension.lowercased()) ? .jpeg : .png
-                try await document.export(to: url, format: format)
-                completion = "Exported \(url.lastPathComponent)"
-            } catch { issue = error.localizedDescription }
-            phase = .idle
-        }
+        defer { phase = .idle }
+        do {
+            let format: EncodedImage.Format = ["jpg", "jpeg"].contains(url.pathExtension.lowercased()) ? .jpeg : .png
+            try await document.export(to: url, format: format)
+            completion = "Exported \(url.lastPathComponent)"
+        } catch { issue = error.localizedDescription; throw error }
     }
 
     private func restore(_ snapshot: [Layer], historyTarget: Int?) {
@@ -371,7 +407,7 @@ final class StudioModel {
         case .stepStarted(_, let step):
             finishActive()
             pendingRevision = nil
-            regions = []
+            if case .select = step { regions = [] }
             if let index = steps.firstIndex(where: { $0.step == step && $0.status == .waiting }) {
                 steps[index].status = .running
                 activeStep = steps[index].id
@@ -390,6 +426,7 @@ final class StudioModel {
             else { layers.append(layer) }
             remember(layers)
             await renderPreview(maxLongEdge: renderEdge)
+            regions = []
         case .critiqued(let critique):
             finishActive()
             let title = critique.satisfied ? "Result checked" : "Refining the result"
@@ -422,7 +459,21 @@ final class StudioModel {
 
     private func appendSteps(_ plan: [EditStep]) {
         steps.append(contentsOf: plan.map { StudioStep(title: $0.studioLabel, symbol: $0.studioSymbol,
-                                                       status: .waiting, step: $0) })
+                                                       detail: $0.studioDetail, status: .waiting, step: $0) })
+    }
+
+    var timelineText: String {
+        var lines = ["Photo: \(photoURL?.path ?? "")", "Instruction: \(prompt)", "Plan: \(planSummary)"]
+        for (index, step) in steps.enumerated() {
+            lines.append("\n\(index + 1). [\(step.status.label)] \(step.title)")
+            if let detail = step.detail { lines.append(detail) }
+            if let message = step.status.message { lines.append(message) }
+            for trace in step.traces {
+                lines.append("  [\(trace.kind.rawValue)\(trace.model.map { " " + $0 } ?? "")] \(String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), trace.duration)) s \(trace.detail)")
+            }
+        }
+        if let issue { lines.append("\nError: \(issue)") }
+        return lines.joined(separator: "\n") + "\n"
     }
 
     private func receiveTrace(_ trace: TraceEvent) {
@@ -481,6 +532,14 @@ final class StudioModel {
 }
 
 extension EditStep {
+    var studioDetail: String? {
+        switch self {
+        case .regenerate(let regeneration): regeneration.prompt
+        case .finish(let finish): finish.reason
+        default: nil
+        }
+    }
+
     var studioSymbol: String {
         switch self {
         case .select: "viewfinder"
@@ -501,5 +560,21 @@ extension EditStep {
         case .crop: "Crop the photo"
         case .finish: "Finish the edit"
         }
+    }
+}
+
+enum StudioSidebarTab: Hashable { case steps, layers }
+
+/// The models used by an edit, replaceable for offline runs in tests.
+struct StudioModels: Sendable {
+    let planner: any Planner
+    let segmenter: any Segmenter
+    let generator: any Generator
+
+    static func meta(allowKeychainInteraction: Bool = true) throws -> StudioModels {
+        let configuration = MetaConfiguration(apiKey: try StudioKeychain.runtimeKey(allowInteraction: allowKeychainInteraction))
+        return StudioModels(planner: MetaPlanner(configuration: configuration),
+                            segmenter: MetaSegmenter(configuration: configuration),
+                            generator: MetaGenerator(configuration: configuration))
     }
 }

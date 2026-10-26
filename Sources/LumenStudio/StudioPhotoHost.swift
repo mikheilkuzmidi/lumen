@@ -2,12 +2,20 @@ import Foundation
 import LumenCore
 import LumenRender
 
+/// A document that Studio can preview, edit, and export.
+protocol StudioPhoto: EditHost {
+    var layers: [Layer] { get async }
+    func export(to url: URL, format: EncodedImage.Format) async throws
+}
+
+extension PhotoDocument: StudioPhoto {}
+
 /// Keeps a layer's assets available when the document restores an earlier edit.
 actor StudioPhotoHost: EditHost {
-    let photo: PhotoDocument
+    let photo: any StudioPhoto
     private var layerAssets: [UUID: AssetStore] = [:]
 
-    init(photo: PhotoDocument) {
+    init(photo: any StudioPhoto) {
         self.photo = photo
     }
 
@@ -30,7 +38,7 @@ actor StudioPhotoHost: EditHost {
         try await photo.remove(layer)
     }
 
-    func layers() async -> [Layer] { await photo.stack.layers }
+    func layers() async -> [Layer] { await photo.layers }
 
     /// Replays a snapshot in order because the host has no layer update or undo API.
     func restore(_ layers: [Layer]) async throws {

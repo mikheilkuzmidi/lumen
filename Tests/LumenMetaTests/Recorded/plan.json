@@ -1,0 +1,14 @@
+{
+  "id": "plan-recorded",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"summary\": \"Darken the sky\", \"steps\": [{\"type\": \"select\", \"id\": \"sky\", \"concept\": \"sky\", \"box\": null, \"points\": [], \"invert\": false}, {\"type\": \"adjust\", \"region\": \"sky\", \"values\": {\"exposure\": -0.4}}, {\"type\": \"finish\", \"reason\": \"The sky is moodier.\"}]}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

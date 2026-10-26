@@ -1,0 +1,13 @@
+{
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "refusal": "Cannot perform that edit."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

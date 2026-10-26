@@ -37,5 +37,6 @@ let package = Package(
         .testTarget(name: "LumenSAMMaskTests", dependencies: ["LumenSAMMask"]),
         .testTarget(name: "LumenRenderTests", dependencies: ["LumenRender"]),
         .testTarget(name: "LumenOpenTests", dependencies: ["LumenOpen"]),
+        .testTarget(name: "LumenCLITests", dependencies: ["lumen"]),
     ]
 )

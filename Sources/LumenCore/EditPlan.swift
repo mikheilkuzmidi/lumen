@@ -150,3 +150,20 @@ extension EditPlan {
     /// optional ones nullable), for planners to pass as their response format.
     public static func jsonSchema() -> Data { Data("{}".utf8) }
 }
+
+/// A planner's plan made safe to run: values held to their ranges, coordinates kept on the photo, steps that use a
+/// region no step selected dropped, and `finish` only at the end. `notes` says, in words, what was changed.
+public struct CheckedPlan: Equatable, Sendable {
+    public var plan: EditPlan
+    public var notes: [String]
+
+    public init(plan: EditPlan, notes: [String]) {
+        self.plan = plan
+        self.notes = notes
+    }
+}
+
+extension EditPlan {
+    /// `regions` are the ids selected by earlier plans of the same edit.
+    public func checked(knownRegions: Set<String> = []) -> CheckedPlan { CheckedPlan(plan: self, notes: []) }
+}

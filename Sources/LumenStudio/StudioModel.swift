@@ -97,13 +97,15 @@ final class StudioModel {
     private(set) var completion: String?
     private(set) var historyPosition = 0
     private(set) var historyCount = 1
+    private(set) var straighteningAngle: Double = 0
+    private(set) var batchStraightening: Double?
 
     @ObservationIgnored private var document: (any StudioPhoto)?
     @ObservationIgnored private var originalDocument: (any StudioPhoto)?
     @ObservationIgnored private let makePhoto: (URL) throws -> any StudioPhoto
     @ObservationIgnored private var host: StudioPhotoHost?
     @ObservationIgnored private var agentTask: Task<Void, Never>?
-    @ObservationIgnored private var history: [[Layer]] = [[]]
+    @ObservationIgnored private var history: [StudioLayerSnapshot] = [StudioLayerSnapshot()]
     @ObservationIgnored private var activeStep: UUID?
     @ObservationIgnored private var regionColors: [String: Int] = [:]
     @ObservationIgnored private var revision = 0
@@ -113,6 +115,7 @@ final class StudioModel {
     @ObservationIgnored private var renderVersion = 0
     @ObservationIgnored private var originalEdge = 0
     @ObservationIgnored private var photoVersion = UUID()
+    @ObservationIgnored var photoDidChange: (() -> Void)?
 
     init(backends: StudioBackends = StudioBackends(),
          makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
@@ -194,7 +197,9 @@ final class StudioModel {
             planSummary = ""
             completion = nil
             sidebar = .steps
-            history = [[]]
+            straighteningAngle = 0
+            batchStraightening = nil
+            history = [StudioLayerSnapshot()]
             historyPosition = 0
             historyCount = 1
         } catch { issue = error.localizedDescription; throw error }
@@ -224,6 +229,27 @@ final class StudioModel {
         } catch {
             if photo == photoVersion, version == renderVersion { issue = error.localizedDescription }
         }
+    }
+
+    /// Opens the library's retained document with its layers and reversible history.
+    func openLibraryPhoto(_ url: URL, host: StudioPhotoHost, events: [AgentEvent]) async throws {
+        try await openPhoto(url)
+        document = host.photo
+        self.host = host
+        photoSize = await host.size()
+        layers = await host.layers()
+        straighteningAngle = await host.straightening()
+        batchStraightening = straighteningAngle == 0 ? nil : straighteningAngle
+        history = (0...layers.count).map { StudioLayerSnapshot(layers: Array(layers.prefix($0)), straightening: straighteningAngle) }
+        if batchStraightening != nil { history.insert(StudioLayerSnapshot(), at: 0) }
+        historyPosition = history.count - 1
+        historyCount = history.count
+        for event in events { await receive(event) }
+        if steps.isEmpty {
+            steps = layers.map { StudioStep(title: $0.label, symbol: "slider.horizontal.3", status: .done) }
+        }
+        sidebar = .layers
+        await renderPreview(maxLongEdge: renderEdge)
     }
 
     func run() {
@@ -295,6 +321,7 @@ final class StudioModel {
         }
         layers = await host.layers()
         remember(layers)
+        photoDidChange?()
         await Task { await renderPreview(maxLongEdge: renderEdge) }.value
         regions = []
         phase = .idle
@@ -329,8 +356,13 @@ final class StudioModel {
     }
 
     func commitLayerChanges() {
-        guard !isBusy, layers != history[historyPosition] else { return }
-        restore(layers, historyTarget: nil)
+        guard !isBusy, snapshot != history[historyPosition] else { return }
+        restore(snapshot, historyTarget: nil)
+    }
+
+    func toggleStraightening() {
+        guard !isBusy, let batchStraightening else { return }
+        restore(StudioLayerSnapshot(layers: layers, straightening: straighteningAngle == 0 ? batchStraightening : 0), historyTarget: nil)
     }
 
     func undo() {
@@ -376,31 +408,39 @@ final class StudioModel {
         } catch { issue = error.localizedDescription; throw error }
     }
 
-    private func restore(_ snapshot: [Layer], historyTarget: Int?) {
+    private var snapshot: StudioLayerSnapshot { StudioLayerSnapshot(layers: layers, straightening: straighteningAngle) }
+
+    private func restore(_ snapshot: StudioLayerSnapshot, historyTarget: Int?) {
         guard let host else { return }
         phase = .updating
         issue = nil
         Task {
             do {
-                try await host.restore(snapshot)
+                try await host.restore(snapshot.layers, straightening: snapshot.straightening)
                 layers = await host.layers()
+                straighteningAngle = await host.straightening()
+                photoSize = await host.size()
                 if let historyTarget { historyPosition = historyTarget }
                 else { remember(layers) }
                 completion = nil
             } catch {
                 layers = await host.layers()
-                if layers != history[historyPosition] { remember(layers) }
+                straighteningAngle = await host.straightening()
+                photoSize = await host.size()
+                if self.snapshot != history[historyPosition] { remember(layers) }
                 issue = error.localizedDescription
             }
             await renderPreview(maxLongEdge: renderEdge)
+            photoDidChange?()
             phase = .idle
         }
     }
 
     private func remember(_ layers: [Layer]) {
-        guard history[historyPosition] != layers else { return }
+        let snapshot = StudioLayerSnapshot(layers: layers, straightening: straighteningAngle)
+        guard history[historyPosition] != snapshot else { return }
         history = Array(history.prefix(historyPosition + 1))
-        history.append(layers)
+        history.append(snapshot)
         historyPosition = history.count - 1
         historyCount = history.count
     }
@@ -599,6 +639,7 @@ struct StudioModels: Sendable {
     let planner: any Planner
     let segmenter: any Segmenter
     let generator: any Generator
+    var reviewer: (any BatchPlanner)? = nil
 
     static func meta(allowKeychainInteraction: Bool = true) throws -> StudioModels {
         let configuration = MetaConfiguration(apiKey: try StudioKeychain.runtimeKey(allowInteraction: allowKeychainInteraction))

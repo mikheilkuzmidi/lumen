@@ -1,6 +1,20 @@
 import SwiftUI
 
 @main
+enum StudioLaunch {
+    @MainActor
+    static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.isEmpty {
+            LumenStudioApp.main()
+        } else if arguments == ["--help"] || arguments == ["-h"] {
+            print(StudioScriptArguments.usage)
+        } else {
+            StudioScriptApplication.main(arguments)
+        }
+    }
+}
+
 struct LumenStudioApp: App {
     @State private var model = StudioModel()
 

@@ -195,19 +195,18 @@ struct PromptBar: View {
 }
 
 struct StudioSidebar: View {
-    let model: StudioModel
-    @State private var tab = 0
+    @Bindable var model: StudioModel
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Sidebar", selection: $tab) {
-                Text("Steps").tag(0)
-                Text("Layers · \(model.layers.count)").tag(1)
+            Picker("Sidebar", selection: $model.sidebar) {
+                Text("Steps").tag(StudioSidebarTab.steps)
+                Text("Layers · \(model.layers.count)").tag(StudioSidebarTab.layers)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(18)
-            if tab == 0 { timeline }
+            if model.sidebar == .steps { timeline }
             else { layerList }
             Spacer(minLength: 0)
             HStack(spacing: 8) {

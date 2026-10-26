@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 import SwiftUI
 import LumenCore
@@ -11,10 +12,15 @@ enum StudioKeychain {
          kSecAttrAccount as String: "meta-api-key"]
     }
 
-    static func read() throws -> String? {
+    static func read(allowInteraction: Bool = true) throws -> String? {
         var request = query
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !allowInteraction {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            request[kSecUseAuthenticationContext as String] = context
+        }
         var result: CFTypeRef?
         let status = SecItemCopyMatching(request as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -43,10 +49,15 @@ enum StudioKeychain {
         if status != errSecItemNotFound { try check(status) }
     }
 
-    static func runtimeKey() throws -> String {
-        if let key = try read() { return key }
-        if let key = ProcessInfo.processInfo.environment["META_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !key.isEmpty { return key }
+    static func runtimeKey(allowInteraction: Bool = true) throws -> String {
+        let environmentKey = ProcessInfo.processInfo.environment["META_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if let key = try read(allowInteraction: allowInteraction) { return key }
+        } catch {
+            if let environmentKey, !environmentKey.isEmpty { return environmentKey }
+            throw error
+        }
+        if let environmentKey, !environmentKey.isEmpty { return environmentKey }
         throw LumenError.missingKey
     }
 

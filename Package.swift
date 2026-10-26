@@ -37,6 +37,7 @@ let package = Package(
         .testTarget(name: "LumenSAMMaskTests", dependencies: ["LumenSAMMask"]),
         .testTarget(name: "LumenRenderTests", dependencies: ["LumenRender"]),
         .testTarget(name: "LumenOpenTests", dependencies: ["LumenOpen"]),
+        .testTarget(name: "LumenStudioTests", dependencies: ["LumenStudio"]),
         // A paid end-to-end edit with the Meta models; skipped unless LUMEN_LIVE=1.
         .testTarget(name: "LumenLiveTests", dependencies: ["LumenCore", "LumenMeta", "LumenRender"]),
     ]

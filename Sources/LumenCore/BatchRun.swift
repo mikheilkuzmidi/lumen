@@ -335,7 +335,7 @@ actor BatchRun {
             let request = BatchPlanRequest(instruction: instruction, reviews: matching,
                                            answers: Dictionary(uniqueKeysWithValues: answers.map { ($0.question.id, $0.answer) }))
             do {
-                latest = try await call(.plan, model: reviewer.modelID, detail: instruction) { try await reviewer.plan(request) }
+                latest = try await call(.plan, model: reviewer.planModelID, detail: instruction) { try await reviewer.plan(request) }
             } catch is BatchCallLimit {
                 for review in matching { note("Instruction skipped: model call limit reached.", for: review.photo) }
                 latest = basePlan(kept)

@@ -213,10 +213,17 @@ public struct BatchPlanRequest: Sendable {
 
 /// Looks at many photos at once and plans an instruction across them.
 public protocol BatchPlanner: Sendable {
+    /// The model that looks at the photos.
     var modelID: String { get }
+    /// The model that plans across the library; the reviewing model unless a planner says otherwise.
+    var planModelID: String { get }
     func review(_ request: ReviewRequest) async throws -> [PhotoReview]
     /// Groups the photos the instruction applies to and writes each group's instruction, asking what it cannot decide.
     func plan(_ request: BatchPlanRequest) async throws -> BatchPlan
+}
+
+extension BatchPlanner {
+    public var planModelID: String { modelID }
 }
 
 /// How one photo came out.

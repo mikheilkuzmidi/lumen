@@ -109,7 +109,9 @@ import Testing
     let call = try #require(await transport.requests.first)
     #expect(call.timeoutInterval == 42)
     let body = try json(#require(call.httpBody))
-    #expect(body["model"] as? String == "hosted-spark")
+    // Muse Wonder plans across the library; the reviewing model is still the configuration's.
+    #expect(planner.planModelID == "muse-wonder-1.0")
+    #expect(body["model"] as? String == "muse-wonder-1.0")
     try expectStrictBatchSchema(batchResponseSchema(body, name: "batch_plan"))
     let messages = try #require(body["messages"] as? [[String: Any]])
     #expect(messages[0]["content"] as? String == MetaBatchPlanner.planPrompt)

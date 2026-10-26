@@ -6,9 +6,13 @@ public struct MetaBatchPlanner: BatchPlanner {
     public let configuration: MetaConfiguration
     public let transport: any MetaTransport
     public var modelID: String { configuration.planningModel }
+    /// Muse Wonder plans across the library: it is Meta's model for longer planning, and the plan is text only.
+    public let planModelID: String
 
-    public init(configuration: MetaConfiguration, transport: any MetaTransport = URLSessionMetaTransport()) {
+    public init(configuration: MetaConfiguration, planModelID: String = "muse-wonder-1.0",
+                transport: any MetaTransport = URLSessionMetaTransport()) {
         self.configuration = configuration
+        self.planModelID = planModelID
         self.transport = transport
     }
 
@@ -23,7 +27,7 @@ public struct MetaBatchPlanner: BatchPlanner {
                  "tilt": photo.facts.tilt as Any? ?? NSNull()]
             }
             let context = try Self.text(["instruction": request.instruction as Any? ?? NSNull(), "photos": facts])
-            let answer = try await answer(ReviewAnswer.self, prompt: Self.reviewPrompt,
+            let answer = try await answer(ReviewAnswer.self, model: modelID, prompt: Self.reviewPrompt,
                                           content: [.text(context), .image(sheet)],
                                           name: "batch_review", schema: MetaBatchSchema.review())
             let photos = request.photos.map(\.photo)
@@ -58,7 +62,7 @@ public struct MetaBatchPlanner: BatchPlanner {
                 ["number": index + 1, "description": review.description, "group": review.group]
             }
             let context = try Self.text(["instruction": request.instruction, "reviews": reviews, "answers": request.answers])
-            let answer = try await answer(PlanAnswer.self, prompt: Self.planPrompt, content: [.text(context)],
+            let answer = try await answer(PlanAnswer.self, model: planModelID, prompt: Self.planPrompt, content: [.text(context)],
                                           name: "batch_plan", schema: MetaBatchSchema.plan())
             let photos = request.reviews.map(\.photo)
             var groupIDs: Set<String> = []
@@ -94,10 +98,10 @@ public struct MetaBatchPlanner: BatchPlanner {
         } catch { throw MetaHTTP.error(error) }
     }
 
-    private func answer<Answer: Decodable>(_ type: Answer.Type, prompt: String, content: [ChatContentPart],
+    private func answer<Answer: Decodable>(_ type: Answer.Type, model: String, prompt: String, content: [ChatContentPart],
                                            name: String, schema: Data) async throws -> Answer {
         let builder = ChatCompletionRequestBuilder(baseURL: configuration.baseURL, apiKey: configuration.apiKey,
-                                                   model: modelID, timeout: configuration.timeout)
+                                                   model: model, timeout: configuration.timeout)
         let request = try builder.request(systemPrompt: prompt, content: content, schemaName: name, schema: schema)
         let (data, response) = try await transport.data(for: request)
         try Task.checkCancellation()

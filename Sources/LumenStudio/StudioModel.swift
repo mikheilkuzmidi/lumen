@@ -427,6 +427,11 @@ final class StudioModel {
             remember(layers)
             await renderPreview(maxLongEdge: renderEdge)
             regions = []
+        case .reverted(let id):
+            finishActive()
+            layers.removeAll { $0.id == id }
+            remember(layers)
+            await renderPreview(maxLongEdge: renderEdge)
         case .critiqued(let critique):
             finishActive()
             let title = critique.satisfied ? "Result checked" : "Refining the result"
@@ -547,6 +552,7 @@ extension EditStep {
         case .regenerate: "paintbrush.pointed"
         case .remove: "eraser"
         case .crop: "crop"
+        case .revert: "arrow.uturn.backward"
         case .finish: "checkmark"
         }
     }
@@ -558,6 +564,7 @@ extension EditStep {
         case .regenerate(let regeneration): "Redraw \(regeneration.region)"
         case .remove(let removal): "Remove \(removal.region)"
         case .crop: "Crop the photo"
+        case .revert(let revert): "Undo \(revert.layer)"
         case .finish: "Finish the edit"
         }
     }

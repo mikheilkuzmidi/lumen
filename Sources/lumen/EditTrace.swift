@@ -60,6 +60,7 @@ struct EditProgress {
         case .applied(let layer):
             trace.layerLabels.append(layer.label)
             trace.stepsApplied += 1
+        case .reverted: trace.stepsApplied += 1
         case .critiqued(let critique):
             trace.critiques.append(critique)
             if !critique.satisfied, trace.revisions < configuration.maxRevisions,
@@ -71,7 +72,7 @@ struct EditProgress {
         case .trace(let event):
             trace.events.append(event)
             if event.kind == .failure, trace.failure == nil {
-                let prefix = ["select", "adjust", "regenerate", "remove", "crop"].map { $0 + ": " }
+                let prefix = ["select", "adjust", "regenerate", "remove", "crop", "revert"].map { $0 + ": " }
                     .first { event.detail.hasPrefix($0) }
                 trace.failure = prefix.map { String(event.detail.dropFirst($0.count)) } ?? event.detail
             }

@@ -28,6 +28,7 @@ struct LiveEditTests {
             case .stepStarted(let index, let step): log.append("Step \(index + 1): \(step.type)")
             case .selected(let region, let segment): log.append(String(format: "Selected %@: %.1f%% of the photo", region, segment.mask.area * 100))
             case .applied(let layer): applied += 1; log.append("Layer: \(layer.label)")
+            case .reverted(let id): log.append("Reverted layer \(id)")
             case .critiqued(let critique): log.append("Critique: \(critique.satisfied ? "satisfied" : "not yet") — \(critique.notes)")
             case .finished(let reason): finished = true; log.append("Finished: \(reason)")
             case .trace(let trace): log.append(String(format: "  [%@%@] %.1f s %@", trace.kind.rawValue, trace.model.map { " " + $0 } ?? "", trace.duration, trace.detail))

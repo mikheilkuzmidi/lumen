@@ -31,6 +31,9 @@ struct EventLines {
             case .remove(let removal): return "→ remove \(oneLine(removal.region))\(stage())"
             default: return "→ \(step?.type ?? "apply"): \(oneLine(layer.label))"
             }
+        case .reverted:
+            if case .revert(let revert) = step { return "→ revert \(oneLine(revert.layer))" }
+            return "→ revert"
         case .critiqued(let critique):
             return "Critique: \(critique.satisfied ? "satisfied" : "needs revision"): \(oneLine(critique.notes))"
         case .finished(let reason): return "Finished: \(oneLine(reason))"

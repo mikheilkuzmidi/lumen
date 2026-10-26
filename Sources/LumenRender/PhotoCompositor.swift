@@ -84,7 +84,10 @@ enum PhotoCompositor {
         var gain = [Double]()
         var offset = [Double]()
         for channel in 0..<3 {
-            let spread = min(2, max(0.5, surroundings.spread[channel] / max(0.015, generated.spread[channel])))
+            // Contrast is matched only where both rings have texture to compare, and only so far: beside a flat
+            // sky or wall, a contrast ratio would squeeze the new colour toward grey.
+            let textured = surroundings.spread[channel] > 0.04 && generated.spread[channel] > 0.04
+            let spread = textured ? min(1.25, max(0.8, surroundings.spread[channel] / generated.spread[channel])) : 1
             let scale = 1 + (spread - 1) * 0.65
             gain.append(scale)
             offset.append((surroundings.mean[channel] - generated.mean[channel]) * 0.65

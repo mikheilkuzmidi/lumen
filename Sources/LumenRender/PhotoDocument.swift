@@ -9,11 +9,14 @@ public actor PhotoDocument: EditHost {
     public private(set) var stack = LayerStack()
     /// The photo's layers, from bottom to top.
     public var layers: [Layer] { stack.layers }
+    /// Rotation before the layers, in degrees counterclockwise.
+    public private(set) var straighteningAngle: Double = 0
 
     private let photo: CIImage
+    private var canvas: CIImage
     private let sourceColorSpace: CGColorSpace
     private let context: CIContext
-    private let photoSize: PixelSize
+    private let capturedAt: Date?
     private var masks: [UUID: CIImage] = [:]
     private var patches: [UUID: CIImage] = [:]
 
@@ -27,7 +30,8 @@ public actor PhotoDocument: EditHost {
         let oriented = CIImage(cgImage: image).oriented(forExifOrientation: orientation)
         photo = oriented.transformed(by: CGAffineTransform(translationX: -oriented.extent.minX,
                                                          y: -oriented.extent.minY))
-        photoSize = PixelSize(width: Int(oriented.extent.width), height: Int(oriented.extent.height))
+        canvas = photo
+        capturedAt = PhotoStatistics.capturedAt(in: properties)
         let colorSpace = image.colorSpace
         sourceColorSpace = (colorSpace?.model == .indexed ? colorSpace?.baseColorSpace : colorSpace)
             ?? CGColorSpace(name: CGColorSpace.sRGB)!
@@ -39,7 +43,29 @@ public actor PhotoDocument: EditHost {
         self.url = url
     }
 
-    public func size() async -> PixelSize { photoSize }
+    public func size() async -> PixelSize {
+        PixelSize(width: Int(canvas.extent.width), height: Int(canvas.extent.height))
+    }
+
+    /// Rotates the original, then keeps the largest centred rectangle of its aspect, rounded down to pixels.
+    public func straighten(degrees: Double) throws {
+        guard degrees.isFinite else {
+            throw LumenError.invalidResponse("The straightening angle must be finite.")
+        }
+        straighteningAngle = degrees
+        let radians = degrees.truncatingRemainder(dividingBy: 360) * .pi / 180
+        let width = photo.extent.width, height = photo.extent.height
+        let cosine = abs(cos(radians)), sine = abs(sin(radians))
+        let scale = min(width / (width * cosine + height * sine),
+                        height / (width * sine + height * cosine))
+        let cropWidth = max(1, floor(width * min(1, scale) + 0.000001))
+        let cropHeight = max(1, floor(height * min(1, scale) + 0.000001))
+        let rotated = photo.transformed(by: CGAffineTransform(translationX: -width / 2, y: -height / 2))
+            .transformed(by: CGAffineTransform(rotationAngle: radians))
+        let bounds = CGRect(x: -cropWidth / 2, y: -cropHeight / 2, width: cropWidth, height: cropHeight)
+        canvas = rotated.cropped(to: bounds)
+            .transformed(by: CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
+    }
 
     public func render(maxLongEdge: Int) async throws -> EncodedImage {
         try preview(in: cropBounds(), maxLongEdge: maxLongEdge)
@@ -58,7 +84,7 @@ public actor PhotoDocument: EditHost {
             // A selection's edge is fitted to the photo once, when its layer is added.
             if let id { mask = try Self.image(of: refined(try await maskData(id, assets: assets))) }
         case .patch(let imageID, let maskID, let rect):
-            _ = try Self.bounds(of: rect, in: photo.extent)
+            _ = try Self.bounds(of: rect, in: canvas.extent)
             mask = try Self.image(of: try await maskData(maskID, assets: assets))
             guard case .image(let encoded) = await assets.get(imageID),
                   let image = CIImage(data: encoded.data, options: [.applyOrientationProperty: true]),
@@ -69,7 +95,7 @@ public actor PhotoDocument: EditHost {
             patch = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX,
                                                             y: -image.extent.minY))
         case .crop(let rect):
-            _ = try Self.bounds(of: rect, in: photo.extent)
+            _ = try Self.bounds(of: rect, in: canvas.extent)
         }
         var layer = layer
         layer.opacity = Self.opacity(layer.opacity)
@@ -102,9 +128,19 @@ public actor PhotoDocument: EditHost {
 
     /// Writes the photo with its layers at full size.
     public func export(to url: URL, format: EncodedImage.Format) async throws {
+        _ = try exportSnapshot(to: url, format: format)
+    }
+
+    /// Exports pixels and returns the edit state from the same moment.
+    func exportSnapshot(to url: URL, format: EncodedImage.Format) throws -> (labels: [String], angle: Double) {
         let image = rendered(scale: 1).cropped(to: cropBounds())
         let data = try encoded(image, format: format, colorSpace: sourceColorSpace)
         try data.write(to: url, options: .atomic)
+        return (layers.map(\.label), straighteningAngle)
+    }
+
+    func statistics() throws -> PhotoStatistics {
+        try PhotoStatistics(photo: rendered(scale: 1).cropped(to: cropBounds()), context: context, capturedAt: capturedAt)
     }
 
     private func maskData(_ id: AssetID, assets: AssetStore) async throws -> MaskData {
@@ -117,7 +153,7 @@ public actor PhotoDocument: EditHost {
     /// Masks under 64 px on a side carry no edge detail worth fitting and are used as they are.
     private func refined(_ mask: MaskData) -> MaskData {
         guard min(mask.size.width, mask.size.height) >= 64,
-              let guide = MaskRefinement.guide(photo, size: mask.size, context: context) else { return mask }
+              let guide = MaskRefinement.guide(canvas, size: mask.size, context: context) else { return mask }
         // A second pass fits the edge again from the first pass's better start; then smooth parts of the photo
         // get a wider transition, about 8% of the mask's short side.
         let radius = MaskRefinement.radius(for: mask.size)
@@ -142,9 +178,9 @@ public actor PhotoDocument: EditHost {
     private func cropBounds() -> CGRect {
         for layer in stack.layers.reversed() where layer.isEnabled && layer.opacity > 0 {
             if case .crop(let rect) = layer.content,
-               let bounds = try? Self.bounds(of: rect, in: photo.extent) { return bounds }
+               let bounds = try? Self.bounds(of: rect, in: canvas.extent) { return bounds }
         }
-        return photo.extent
+        return canvas.extent
     }
 
     private func preview(in bounds: CGRect, maxLongEdge: Int) throws -> EncodedImage {
@@ -167,8 +203,8 @@ public actor PhotoDocument: EditHost {
 
     private func rendered(scale: CGFloat) -> CIImage {
         let transform = CGAffineTransform(scaleX: scale, y: scale)
-        let extent = photo.extent.applying(transform)
-        var image = PhotoCompositor.resized(photo, to: extent)
+        let extent = canvas.extent.applying(transform)
+        var image = PhotoCompositor.resized(canvas, to: extent)
         for layer in stack.layers where layer.isEnabled && layer.opacity > 0 {
             switch layer.content {
             case .adjustment(let values, _):
@@ -178,7 +214,7 @@ public actor PhotoDocument: EditHost {
                 image = PhotoCompositor.blend(adjusted, over: image, mask: feathered, opacity: layer.opacity)
             case .patch(_, _, let rect):
                 guard let patch = patches[layer.id], let mask = masks[layer.id],
-                      let bounds = try? Self.bounds(of: rect, in: photo.extent) else { continue }
+                      let bounds = try? Self.bounds(of: rect, in: canvas.extent) else { continue }
                 let patchBounds = bounds.applying(transform)
                 let placed = PhotoCompositor.resized(patch, to: patchBounds)
                 // A patch's mask is the size of its own crop, so it is placed on the patch, not stretched over the photo.

@@ -10,6 +10,8 @@ Every step is a separate, non-destructive layer. You can turn any of them off, a
 
 Lumen is a Swift package with a command-line tool (`lumen`) and a small Mac app (Lumen Studio).
 
+![Lumen Studio after "Make his jacket bright yellow and the buildings behind him a little warmer": the plan, each step with its model and time, and the result Muse Spark checked](docs/images/studio-finished.jpg)
+
 ## What existed before, and what is new
 
 Lumen is new work, started on October 26, 2026 for the Meta AI Developer Hackathon. Everything in this repository was written during the event.
@@ -36,6 +38,14 @@ Requires macOS 26 and Xcode 26.
 swift build
 swift test
 ```
+
+## Use it
+
+- **Lumen Studio:** `scripts/build-studio.sh`, then open `.build/studio/Lumen Studio.app`. See [docs/studio.md](docs/studio.md), including how to open a build that isn't notarized.
+- **The command:** `swift build -c release`, then `.build/release/lumen edit photo.jpg "Make the sky moodier"`. See [docs/cli.md](docs/cli.md).
+- **Open weights:** see [docs/open-weights.md](docs/open-weights.md).
+
+![Selecting the jacket: SAM 3.1's box drawn on the photo while the plan waits](docs/images/studio-selecting.jpg)
 
 ## Layout
 

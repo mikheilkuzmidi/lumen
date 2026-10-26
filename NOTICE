@@ -1,0 +1,9 @@
+Lumen
+Copyright 2026 Mikheil Kuzmidi
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Lumen calls Meta models through the Meta Model API with the user's own key,
+and can call Muse Spark Open through a hosting provider or run Muse Glimmer
+locally. No model weights are included in this repository; each model is
+used under its own license and acceptable use policy.

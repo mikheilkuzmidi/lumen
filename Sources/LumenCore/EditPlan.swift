@@ -1,0 +1,146 @@
+import Foundation
+
+/// A develop setting a step can change, with the range its value is held to.
+public enum AdjustmentKey: String, Codable, CodingKeyRepresentable, CaseIterable, Sendable {
+    case exposure, contrast, highlights, shadows, whites, blacks
+    case temperature, tint, vibrance, saturation
+    case clarity, dehaze, sharpness, noiseReduction
+
+    /// Exposure in stops; sharpness and noise reduction from none to full; the rest as a signed percentage.
+    public var range: ClosedRange<Double> {
+        switch self {
+        case .exposure: -5...5
+        case .sharpness, .noiseReduction: 0...100
+        default: -100...100
+        }
+    }
+}
+
+/// Find a region for later steps to work on.
+public struct Selection: Codable, Equatable, Sendable {
+    /// The name later steps use for it, such as "sky" or "coat".
+    public var id: String
+    /// What to find, in a few words: "the man's coat".
+    public var concept: String?
+    /// Where to look: the area the user drew, or one the planner chose.
+    public var box: NormalizedRect?
+    /// Points on the thing itself.
+    public var points: [NormalizedPoint]
+    /// Everything except what was found.
+    public var invert: Bool
+
+    public init(id: String, concept: String? = nil, box: NormalizedRect? = nil, points: [NormalizedPoint] = [], invert: Bool = false) {
+        self.id = id
+        self.concept = concept
+        self.box = box
+        self.points = points
+        self.invert = invert
+    }
+}
+
+/// Change develop settings, on the whole photo or inside a selected region.
+public struct Adjustment: Codable, Equatable, Sendable {
+    /// A region's id from an earlier select step; nil for the whole photo.
+    public var region: String?
+    public var values: [AdjustmentKey: Double]
+
+    public init(region: String? = nil, values: [AdjustmentKey: Double]) {
+        self.region = region
+        self.values = values
+    }
+}
+
+/// Redraw what is inside a region with Muse Image, as the prompt describes.
+public struct Regeneration: Codable, Equatable, Sendable {
+    public var region: String
+    public var prompt: String
+
+    public init(region: String, prompt: String) {
+        self.region = region
+        self.prompt = prompt
+    }
+}
+
+/// Take a region out and fill it from its surroundings.
+public struct Removal: Codable, Equatable, Sendable {
+    public var region: String
+
+    public init(region: String) { self.region = region }
+}
+
+/// Keep only this part of the photo.
+public struct Crop: Codable, Equatable, Sendable {
+    public var rect: NormalizedRect
+
+    public init(rect: NormalizedRect) { self.rect = rect }
+}
+
+/// The edit is done, and why.
+public struct Finish: Codable, Equatable, Sendable {
+    public var reason: String
+
+    public init(reason: String) { self.reason = reason }
+}
+
+/// One thing the agent does. In JSON it is a flat object with a `type` ("select", "adjust", "regenerate",
+/// "remove", "crop" or "finish") beside that step's own fields; this is the contract every planner answers in.
+public enum EditStep: Codable, Equatable, Sendable {
+    case select(Selection)
+    case adjust(Adjustment)
+    case regenerate(Regeneration)
+    case remove(Removal)
+    case crop(Crop)
+    case finish(Finish)
+
+    public var type: String {
+        switch self {
+        case .select: "select"
+        case .adjust: "adjust"
+        case .regenerate: "regenerate"
+        case .remove: "remove"
+        case .crop: "crop"
+        case .finish: "finish"
+        }
+    }
+
+    private enum TypeKey: String, CodingKey { case type }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: TypeKey.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "select": self = .select(try Selection(from: decoder))
+        case "adjust": self = .adjust(try Adjustment(from: decoder))
+        case "regenerate": self = .regenerate(try Regeneration(from: decoder))
+        case "remove": self = .remove(try Removal(from: decoder))
+        case "crop": self = .crop(try Crop(from: decoder))
+        case "finish": self = .finish(try Finish(from: decoder))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown step type “\(type)”.")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: TypeKey.self)
+        try container.encode(type, forKey: .type)
+        switch self {
+        case .select(let step): try step.encode(to: encoder)
+        case .adjust(let step): try step.encode(to: encoder)
+        case .regenerate(let step): try step.encode(to: encoder)
+        case .remove(let step): try step.encode(to: encoder)
+        case .crop(let step): try step.encode(to: encoder)
+        case .finish(let step): try step.encode(to: encoder)
+        }
+    }
+}
+
+/// What a planner proposes for an instruction: a one-line summary and the steps, in order.
+public struct EditPlan: Codable, Equatable, Sendable {
+    public var summary: String
+    public var steps: [EditStep]
+
+    public init(summary: String, steps: [EditStep]) {
+        self.summary = summary
+        self.steps = steps
+    }
+}

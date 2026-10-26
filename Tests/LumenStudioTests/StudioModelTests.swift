@@ -122,6 +122,112 @@ struct StudioModelTests {
         #expect(model.timelineFocus == model.steps.last?.id)
     }
 
+    @Test func anInstructionWaitsForGlimmerBeforeCallingThePlanner() async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let server = StudioTestGlimmer()
+        var requests: [StudioScript.Backend] = []
+        var services = studioBackendServices(server: server)
+        services.models = { backend, _, _ in
+            requests.append(backend)
+            return StudioModels(planner: StudioPlanner(modelID: "muse-glimmer"),
+                                segmenter: StudioSegmenter(), generator: StudioGenerator())
+        }
+        let backends = StudioBackends(selection: .meta, baseURL: studioGlimmerURL, services: services, remember: { _ in })
+        let model = StudioModel(backends: backends, makePhoto: { try StudioTestPhoto(url: $0) })
+        try await model.openPhoto(makePhoto(in: folder))
+        model.prompt = "Make the jacket yellow"
+        backends.choose(.glimmer)
+        await server.waitUntilStarted()
+        let entered = AsyncStream<Void>.makeStream()
+        let edit = Task {
+            entered.continuation.yield(())
+            entered.continuation.finish()
+            try await model.runEdit()
+        }
+        for await _ in entered.stream {}
+        #expect(model.phase == .running)
+        #expect(requests.isEmpty)
+        #expect(model.status == "Loading Muse Glimmer on this Mac…")
+        #expect(model.steps.first?.detail?.contains("a minute or more") == true)
+        await server.succeed()
+        try await edit.value
+        #expect(requests == [.glimmer])
+        let traces = model.steps.flatMap(\.traces).filter { $0.model == "muse-glimmer" }
+        #expect(traces.map(\.kind) == [.plan, .critique])
+        #expect(traces.allSatisfy { $0.duration >= 0 && $0.studioModelName == "Muse Glimmer" })
+        await model.close()
+        #expect(await server.stops == 1)
+    }
+
+    @Test(arguments: StudioScript.Backend.allCases)
+    func scriptUsesItsPlannerWithoutKeychainInteraction(backend: StudioScript.Backend) async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let photo = try makePhoto(in: folder)
+        let json: [String: Any] = ["photo": photo.path, "instruction": "Make the jacket yellow",
+                                   "backend": backend.rawValue, "window": ["width": 1440, "height": 900]]
+        let script = try StudioScript.parse(JSONSerialization.data(withJSONObject: json))
+        var chosen: StudioScript.Backend?
+        var services = studioBackendServices(server: StudioTestGlimmer(), answers: true)
+        services.models = { choice, base, interaction in
+            chosen = choice
+            #expect(!interaction)
+            let provider = try StudioProvider(baseURL: "https://provider.example/v1", key: "test-key",
+                                               modelID: StudioProvider.defaultModel)
+            let configured = try StudioModels.configured(backend: choice, metaKey: "test-meta-key", glimmerURL: base, provider: provider)
+            return StudioModels(planner: StudioPlanner(modelID: configured.planner.modelID),
+                                segmenter: StudioSegmenter(), generator: StudioGenerator())
+        }
+        var remembered: [StudioScript.Backend] = []
+        let backends = StudioBackends(selection: .meta, services: services, remember: { remembered.append($0) })
+        let model = StudioModel(backends: backends, makePhoto: { try StudioTestPhoto(url: $0) })
+        let runner = StudioScriptRunner(model: model, script: script, scriptURL: folder.appendingPathComponent("edit.json"), output: folder)
+        try await runner.run { _ in }
+        #expect(chosen == backend)
+        #expect(remembered.isEmpty)
+        let expected: String = switch backend {
+        case .meta: "muse-spark-1.3"
+        case .glimmer: "muse-glimmer"
+        case .sparkOpen: StudioProvider.defaultModel
+        }
+        #expect(model.steps.flatMap(\.traces).contains { $0.kind == .plan && $0.model == expected })
+    }
+
+    @Test func scriptReportsAnEarlyLoadFailureWithoutRunningTheFallbackPlanner() async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let photo = try makePhoto(in: folder)
+        let json: [String: Any] = ["photo": photo.path, "instruction": "Make the jacket yellow",
+                                   "backend": "glimmer", "window": ["width": 1440, "height": 900]]
+        let script = try StudioScript.parse(JSONSerialization.data(withJSONObject: json))
+        let server = StudioTestGlimmer()
+        var calls = 0
+        var services = studioBackendServices(server: server)
+        services.models = { _, _, _ in
+            calls += 1
+            return StudioModels(planner: StudioPlanner(), segmenter: StudioSegmenter(), generator: StudioGenerator())
+        }
+        var remembered: [StudioScript.Backend] = []
+        let backends = StudioBackends(selection: .meta, services: services, remember: { remembered.append($0) })
+        let model = StudioModel(backends: backends, makePhoto: { try StudioTestPhoto(url: $0) })
+        let runner = StudioScriptRunner(model: model, script: script, scriptURL: folder.appendingPathComponent("edit.json"), output: folder)
+        await #expect(throws: (any Error).self) {
+            try await runner.run { snapshot in
+                if snapshot == .opened {
+                    await server.waitUntilStarted()
+                    let waiting = await studioWaitingForModels(backends)
+                    await server.fail("The vision projector could not be loaded.")
+                    _ = try? await waiting.value
+                }
+            }
+        }
+        #expect(model.issue == "The vision projector could not be loaded.")
+        #expect(calls == 0 && remembered.isEmpty)
+        #expect(backends.selection == .meta)
+        #expect(await server.stops == 1)
+    }
+
     private func temporaryFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("studio-test-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -151,15 +257,16 @@ struct StudioModelTests {
 }
 
 private actor StudioPlanner: Planner {
-    nonisolated let modelID = "recorded-planner"
+    nonisolated let modelID: String
     let steps: [EditStep]
     let fails: Bool
     private(set) var requestedArea: NormalizedRect?
 
-    init(steps: [EditStep] = [.select(Selection(id: "jacket", concept: "jacket")),
+    init(modelID: String = "recorded-planner", steps: [EditStep] = [.select(Selection(id: "jacket", concept: "jacket")),
                              .regenerate(Regeneration(region: "jacket", prompt: "Keep the jacket folds and make it bright yellow"))],
          fails: Bool = false) {
         self.steps = steps
+        self.modelID = modelID
         self.fails = fails
     }
 

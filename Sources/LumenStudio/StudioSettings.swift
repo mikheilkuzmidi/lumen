@@ -4,16 +4,21 @@ import Security
 import SwiftUI
 import LumenCore
 
-/// Stores the user's Meta key as a generic password.
+/// Stores model service keys as generic passwords.
 enum StudioKeychain {
-    private static var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "Lumen",
-         kSecAttrAccount as String: "meta-api-key"]
+    enum Account: String {
+        case meta = "meta-api-key"
+        case provider = "spark-open-api-key"
     }
 
-    static func read(allowInteraction: Bool = true) throws -> String? {
-        var request = query
+    private static func query(_ account: Account) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "Lumen",
+         kSecAttrAccount as String: account.rawValue]
+    }
+
+    static func read(account: Account = .meta, allowInteraction: Bool = true) throws -> String? {
+        var request = query(account)
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
         if !allowInteraction {
@@ -26,12 +31,13 @@ enum StudioKeychain {
         if status == errSecItemNotFound { return nil }
         try check(status)
         guard let data = result as? Data, let key = String(data: data, encoding: .utf8) else {
-            throw KeychainError(message: "The saved Meta key couldn't be read. Remove it and save it again.")
+            throw KeychainError(message: "The saved key couldn't be read. Remove it and save it again.")
         }
         return key.isEmpty ? nil : key
     }
 
-    static func save(_ key: String) throws {
+    static func save(_ key: String, account: Account = .meta) throws {
+        let query = query(account)
         let data = Data(key.utf8)
         let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
@@ -44,8 +50,8 @@ enum StudioKeychain {
         }
     }
 
-    static func remove() throws {
-        let status = SecItemDelete(query as CFDictionary)
+    static func remove(account: Account = .meta) throws {
+        let status = SecItemDelete(query(account) as CFDictionary)
         if status != errSecItemNotFound { try check(status) }
     }
 
@@ -78,6 +84,10 @@ struct StudioSettingsView: View {
     @State private var hasSavedKey = false
     @State private var message: String?
     @State private var failed = false
+    @State private var providerURL = StudioPreferences.providerURL
+    @State private var providerModel = StudioPreferences.providerModel
+    @State private var providerKey = ""
+    @State private var hasProviderKey = false
 
     var body: some View {
         Form {
@@ -120,11 +130,30 @@ struct StudioSettingsView: View {
                 Text("If no key is saved, Lumen reads META_API_KEY from its environment.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Muse Spark Open") {
+                TextField("Provider base URL", text: $providerURL, prompt: Text("https://your-provider.example/v1"))
+                TextField("Model ID", text: $providerModel)
+                SecureField("Provider API key", text: $providerKey)
+                    .textContentType(.password)
+                Text("The provider plans and checks. SAM 3.1 and Muse Image still need your Meta key. The provider key stays in this Mac’s Keychain.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Save Provider", action: saveProvider)
+                        .buttonStyle(.borderedProminent)
+                    Button("Remove Provider Key", role: .destructive, action: removeProvider)
+                        .disabled(!hasProviderKey)
+                    Spacer()
+                    if hasProviderKey { Text("Key saved").font(.caption).foregroundStyle(StudioStyle.accent) }
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 350)
+        .frame(width: 580, height: 650)
         .onAppear {
-            do { hasSavedKey = try StudioKeychain.read() != nil }
+            do {
+                hasSavedKey = try StudioKeychain.read() != nil
+                hasProviderKey = try StudioKeychain.read(account: .provider) != nil
+            }
             catch { show(error) }
         }
     }
@@ -155,4 +184,35 @@ struct StudioSettingsView: View {
         message = error.localizedDescription
         failed = true
     }
+
+    private func saveProvider() {
+        do {
+            let enteredKey = providerKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let savedKey = try enteredKey.isEmpty ? StudioKeychain.read(account: .provider) : enteredKey
+            let provider = try StudioProvider(baseURL: providerURL, key: savedKey, modelID: providerModel)
+            if !enteredKey.isEmpty { try StudioKeychain.save(provider.key, account: .provider) }
+            StudioPreferences.providerURL = provider.baseURL.absoluteString
+            StudioPreferences.providerModel = provider.modelID
+            providerKey = ""
+            hasProviderKey = true
+            message = "Your provider is saved."
+            failed = false
+            NotificationCenter.default.post(name: .studioProviderChanged, object: nil)
+        } catch { show(error) }
+    }
+
+    private func removeProvider() {
+        do {
+            try StudioKeychain.remove(account: .provider)
+            providerKey = ""
+            hasProviderKey = false
+            message = "The provider key was removed."
+            failed = false
+            NotificationCenter.default.post(name: .studioProviderChanged, object: nil)
+        } catch { show(error) }
+    }
+}
+
+extension Notification.Name {
+    static let studioProviderChanged = Notification.Name("LumenStudioProviderChanged")
 }

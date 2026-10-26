@@ -76,6 +76,7 @@ struct StudioRegion: Identifiable {
 /// Owns the photo, edit task, timeline, and reversible layer history for one window.
 @MainActor @Observable
 final class StudioModel {
+    let backends: StudioBackends
     var prompt = ""
     var area: NormalizedRect?
     var zoom: Double = 1
@@ -113,7 +114,9 @@ final class StudioModel {
     @ObservationIgnored private var originalEdge = 0
     @ObservationIgnored private var photoVersion = UUID()
 
-    init(makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
+    init(backends: StudioBackends = StudioBackends(),
+         makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
+        self.backends = backends
         self.makePhoto = makePhoto
     }
 
@@ -127,13 +130,14 @@ final class StudioModel {
     var timelineFocus: UUID? { activeStep ?? steps.last(where: { $0.status != .waiting })?.id }
 
     var status: String {
+        if let status = backends.status, backends.isLoading || phase == .idle { return status }
         switch phase {
-        case .opening: "Opening photo"
-        case .running: steps.first(where: { $0.id == activeStep })?.title ?? "Working on your edit"
-        case .stopping: "Stopping"
-        case .updating: "Updating layers"
-        case .exporting: "Exporting full-size photo"
-        case .idle: completion ?? (photoURL == nil ? "A new perspective starts here" : "Ready for your next edit")
+        case .opening: return "Opening photo"
+        case .running: return steps.first(where: { $0.id == activeStep })?.title ?? "Working on your edit"
+        case .stopping: return "Stopping"
+        case .updating: return "Updating layers"
+        case .exporting: return "Exporting full-size photo"
+        case .idle: return completion ?? (photoURL == nil ? "A new perspective starts here" : "Ready for your next edit")
         }
     }
 
@@ -236,18 +240,21 @@ final class StudioModel {
     }
 
     /// Runs the same edit for the window and a script, reporting events after the view model updates.
-    func runEdit(using models: StudioModels? = nil,
+    func runEdit(using suppliedModels: StudioModels? = nil,
+                 allowKeychainInteraction: Bool = true,
                  onEvent: @MainActor (AgentEvent) async throws -> Void = { _ in }) async throws {
         guard canRun, let host else { throw StudioScriptError.message("Open a photo and enter an instruction before running.") }
-        let models = try models ?? StudioModels.meta()
         let instruction = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedArea = area
         phase = .running
         compare = false
         holdingCompare = false
         issue = nil
+        backends.issue = nil
         completion = nil
-        steps = [StudioStep(title: "Planning your edit", symbol: "sparkle", status: .running, kind: .planning)]
+        steps = [StudioStep(title: "Planning your edit", symbol: "sparkle",
+                            detail: backends.selection == .glimmer ? "Muse Glimmer may take a minute or more to plan on this Mac." : nil,
+                            status: .running, kind: .planning)]
         activeStep = steps.first?.id
         planSummary = ""
         planCount = 0
@@ -255,10 +262,15 @@ final class StudioModel {
         pendingRevision = nil
         regions = []
         sidebar = .steps
-        let agent = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator, host: host)
+        var agent: EditAgent?
         var failure: (any Error)?
         do {
-            for try await event in agent.run(instruction, area: requestedArea) {
+            let models: StudioModels
+            if let suppliedModels { models = suppliedModels }
+            else { models = try await backends.models(allowKeychainInteraction: allowKeychainInteraction) }
+            let edit = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator, host: host)
+            agent = edit
+            for try await event in edit.run(instruction, area: requestedArea) {
                 try Task.checkCancellation()
                 await receive(event)
                 try await onEvent(event)
@@ -271,7 +283,7 @@ final class StudioModel {
                 completion = "Edit ended"
             }
         } catch {
-            await agent.cancel()
+            await agent?.cancel()
             failure = error
             if Task.isCancelled || error is CancellationError || (error as? LumenError) == .cancelled {
                 finishStopped()
@@ -293,6 +305,16 @@ final class StudioModel {
         guard phase == .running else { return }
         phase = .stopping
         agentTask?.cancel()
+    }
+
+    func chooseBackend(_ backend: StudioScript.Backend) {
+        if backends.selection != backend, isRunning { stop() }
+        backends.choose(backend)
+    }
+
+    func close() async {
+        agentTask?.cancel()
+        await backends.shutdown()
     }
 
     func toggleLayer(_ id: UUID) {
@@ -477,7 +499,7 @@ final class StudioModel {
                 lines.append("  [\(trace.kind.rawValue)\(trace.model.map { " " + $0 } ?? "")] \(String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), trace.duration)) s \(trace.detail)")
             }
         }
-        if let issue { lines.append("\nError: \(issue)") }
+        if let issue = issue ?? backends.issue { lines.append("\nError: \(issue)") }
         return lines.joined(separator: "\n") + "\n"
     }
 

@@ -22,6 +22,12 @@ struct StudioScriptTests {
         }
     }
 
+    @Test(arguments: StudioScript.Backend.allCases)
+    func parsesEachPlanner(backend: StudioScript.Backend) throws {
+        let json = Self.json.replacingOccurrences(of: "\"meta\"", with: "\"\(backend.rawValue)\"")
+        #expect(try StudioScript.parse(Data(json.utf8)).backend == backend)
+    }
+
     @Test(arguments: [
         ("\"meta\"", "\"local\""),
         ("photos/jacket.jpg", "  "),

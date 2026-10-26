@@ -29,3 +29,25 @@ Recorded model responses in `Tests/LumenMetaTests/Recorded/` are trimmed to what
 | `photos/sunset-beach-couple.jpg` | [Sunset beach couple (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Sunset_beach_couple_(Unsplash).jpg) | Caleb Ekeroth calebekeroth | CC0 |
 
 The photos are scaled to 1280 px on the long edge. `Fixtures/instructions.json` pairs each with the instruction the evaluation runs.
+
+## The batch library
+`Fixtures/library/` is a small shoot for batch editing: people in shirts of several colours, a few photos with nobody in them, two misfires and two tilted horizons. Five files there link to `photos/`. These photos are new to the library, at 1280 px wide:
+
+| File | Source | Author | License |
+| --- | --- | --- | --- |
+| `library/adventurers-taking-a-break.jpg` | [Adventurers taking a break (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Adventurers_taking_a_break_(Unsplash).jpg) | Koushik C koushikc | CC0 |
+| `library/friends-near-a-forest.jpg` | [Friends near a forest (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Friends_near_a_forest_(Unsplash).jpg) | Elijah Henderson elijahhenderson | CC0 |
+| `library/good-old-school-friends.jpg` | [Good Old School Friends (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Good_Old_School_Friends_(Unsplash).jpg) | Aman Shrivastava amansks91 | CC0 |
+| `library/kamenjak-hikers.jpg` | [Kamenjak hikers (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Kamenjak_hikers_(Unsplash).jpg) | Filip Filkovic Philatz philatz | CC0 |
+| `library/men-laughing-by-green-valley.jpg` | [Men laughing by green valley (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Men_laughing_by_green_valley_(Unsplash).jpg) | Matheus Ferrero matheusferrero | CC0 |
+| `library/new-friends.jpg` | [New Friends (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:New_Friends_(Unsplash).jpg) | Max Bender maxwbender | CC0 |
+| `library/three-friends-by-train-tracks.jpg` | [Three friends by train tracks (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Three_friends_by_train_tracks_(Unsplash).jpg) | Priscilla Du Preez artographybyp | CC0 |
+
+These four were made from CC0 photos above by a script, to stand for what goes wrong on a shoot:
+
+| File | Made from | How |
+| --- | --- | --- |
+| `library/friends-near-a-forest-shaken.jpg` | `library/friends-near-a-forest.jpg` | Strong motion blur |
+| `library/pocket-shot.jpg` | `photos/living-room.jpg` | A corner, heavily blurred and 5 stops darker |
+| `library/kayaks-on-a-mountain-lake-tilted.jpg` | `photos/kayaks-on-a-mountain-lake.jpg` | Rotated 4° and cropped to fill |
+| `library/man-on-bike-on-road-tilted.jpg` | `photos/man-on-bike-on-road.jpg` | Rotated −3° and cropped to fill |

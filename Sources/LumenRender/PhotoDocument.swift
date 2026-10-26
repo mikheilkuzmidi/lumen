@@ -55,10 +55,11 @@ public actor PhotoDocument: EditHost {
         var patch: CIImage?
         switch layer.content {
         case .adjustment(_, let id):
-            if let id { mask = try await loadMask(id, assets: assets) }
+            // A selection's edge is fitted to the photo once, when its layer is added.
+            if let id { mask = try Self.image(of: refined(try await maskData(id, assets: assets))) }
         case .patch(let imageID, let maskID, let rect):
             _ = try Self.bounds(of: rect, in: photo.extent)
-            mask = try await loadMask(maskID, assets: assets)
+            mask = try Self.image(of: try await maskData(maskID, assets: assets))
             guard case .image(let encoded) = await assets.get(imageID),
                   let image = CIImage(data: encoded.data, options: [.applyOrientationProperty: true]),
                   image.extent.width.isFinite, image.extent.height.isFinite,
@@ -106,9 +107,24 @@ public actor PhotoDocument: EditHost {
         try data.write(to: url, options: .atomic)
     }
 
-    private func loadMask(_ id: AssetID, assets: AssetStore) async throws -> CIImage {
-        guard case .mask(let mask) = await assets.get(id),
-              mask.size.width > 0, mask.size.height > 0,
+    private func maskData(_ id: AssetID, assets: AssetStore) async throws -> MaskData {
+        guard case .mask(let mask) = await assets.get(id) else {
+            throw LumenError.invalidResponse("The layer's mask is missing or unreadable.")
+        }
+        return mask
+    }
+
+    /// Masks under 64 px on a side carry no edge detail worth fitting and are used as they are.
+    private func refined(_ mask: MaskData) -> MaskData {
+        guard min(mask.size.width, mask.size.height) >= 64,
+              let guide = MaskRefinement.guide(photo, size: mask.size, context: context) else { return mask }
+        // A second pass fits the edge again from the first pass's better start.
+        let radius = MaskRefinement.radius(for: mask.size)
+        return MaskRefinement.refined(MaskRefinement.refined(mask, guide: guide, radius: radius), guide: guide, radius: radius)
+    }
+
+    private static func image(of mask: MaskData) throws -> CIImage {
+        guard mask.size.width > 0, mask.size.height > 0,
               mask.size.width <= Int.max / mask.size.height,
               mask.coverage.count == mask.size.width * mask.size.height,
               let provider = CGDataProvider(data: Data(mask.coverage) as CFData),

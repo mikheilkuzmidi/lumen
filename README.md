@@ -18,6 +18,20 @@ Lumen is new work, started on October 26, 2026 for the Meta AI Developer Hackath
 
 Lumen is also the agent inside Photoeditor, a native macOS photo editor that existed before the hackathon. Photoeditor is closed source and is not part of this repository. Photoeditor uses Lumen through the same public interfaces as Lumen Studio.
 
+## How it works
+
+1. **Plan.** Muse Spark reads the instruction and the photo, with any area you drew, and writes a plan in a strict JSON schema: select, adjust, regenerate, remove, crop, revert, finish. Lumen checks the plan before acting on it: values are clamped and steps that use unknown regions or layers are dropped, each with a note.
+2. **Find.** SAM 3.1 looks for each region by name. The planner's box only chooses among what SAM found. When a name finds nothing (SAM finds no "gate" in a street-market photo, only its pillars and roof), Lumen asks again with the planner's box as SAM's own prompt.
+3. **Change.**
+   - Tone and colour changes are adjustment layers through the region's mask, fitted to the photo's edges with a guided filter.
+   - Changes to what something is or looks like are redrawn by Muse Image from a crop around the region. Small crops are upscaled first, because Muse Image keeps their layout better at its own scale.
+   - SAM then looks at the redraw: if the object moved or changed size, Lumen redraws once more and keeps the better attempt.
+   - The patch is composited through the mask, with the generator's colour drift measured on a ring around the region and taken out.
+4. **Check.** Muse Spark compares the result with the photo before the instruction. If something is missing or looks wrong, it writes the next steps; a redraw that went wrong is replaced, not stacked. Each revision with a redraw or a failure is checked again, within a step and revision budget.
+5. **Remember.** Follow-ups ("a bit less", "undo that") reuse the regions and layers already made.
+
+Every model call, plan, critique and failure is kept in a trace. [docs/evaluation.md](docs/evaluation.md) has the results on 15 CC0 photos.
+
 ## Models
 
 | Task | Model | Where it runs |
@@ -26,7 +40,7 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
 | Find regions | SAM 3.1 (`sam-3.1`) | Meta Model API |
 | Redraw a region | Muse Image (`muse-image-1.0`) | Meta Model API |
 | Plan and judge with open weights | Muse Spark Open | A hosting provider (Baseten or Modal) |
-| Plan and judge on this Mac | Muse Glimmer | Locally, if your Mac can hold it |
+| Plan and judge on this Mac | Muse Glimmer | Locally through llama.cpp; measured on an M4 Max with 36 GB: about 33 s to load, 70–90 s per plan or check |
 
 Lumen uses your own Meta API key. Set `META_API_KEY`, or enter it in Lumen Studio, which keeps it in the Keychain. No model weights are included here; each model is used under its own license.
 

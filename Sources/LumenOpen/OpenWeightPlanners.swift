@@ -22,7 +22,7 @@ public struct HostedSparkOpenPlanner: Planner {
         try fromEnvironment(ProcessInfo.processInfo.environment)
     }
 
-    static func fromEnvironment(_ environment: [String: String]) throws -> HostedSparkOpenPlanner {
+    public static func fromEnvironment(_ environment: [String: String]) throws -> HostedSparkOpenPlanner {
         let baseURL = environment["SPARK_OPEN_BASE_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = environment["SPARK_OPEN_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = environment["SPARK_OPEN_MODEL"]?.trimmingCharacters(in: .whitespacesAndNewlines)

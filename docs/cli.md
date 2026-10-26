@@ -14,7 +14,7 @@ The default result is `coat-lumen.jpg` beside the original. Output extensions se
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--area x,y,w,h` | Whole photo | A search boundary in normalised coordinates from the top-left. Width and height must be positive; all edges must lie inside the photo. |
-| `--backend meta\|glimmer\|spark-open` | `meta` | Planner backend. Local Muse Glimmer and hosted Muse Spark Open currently return their own unavailable messages. |
+| `--backend meta\|glimmer\|spark-open` | `meta` | Who plans and checks: Muse Spark through the Meta API, Muse Glimmer on this Mac (a running llama-server at `LUMEN_GLIMMER_URL`, or one Lumen starts), or Muse Spark Open on a provider (`SPARK_OPEN_BASE_URL`, `SPARK_OPEN_API_KEY`). SAM 3.1 and Muse Image always use `META_API_KEY`. See [open-weights.md](open-weights.md). |
 | `--out <file>` | `<photo name>-lumen.jpg` | Full-size result, including any planned crop. |
 | `--trace <file.json>` | No trace file | JSON record written after the result. |
 | `--max-steps N` | `12` | Attempted steps across all plans, including select and finish. Zero skips models. |

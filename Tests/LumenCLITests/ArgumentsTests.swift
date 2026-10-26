@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import LumenCore
+import LumenOpen
 import Testing
 @testable import lumen
 
@@ -76,7 +77,11 @@ struct ArgumentsTests {
         #expect(glimmer.segmenter.modelID == "sam-3.1" && glimmer.generator.modelID == "muse-image-1.0")
         #expect(Backend.glimmerURL(["LUMEN_GLIMMER_URL": "http://127.0.0.1:9999/v1"]).port == 9999)
         #expect(Backend.glimmerURL([:]).absoluteString == "http://127.0.0.1:8786/v1")
-        #expect(throws: LumenError.notBuilt("Muse Spark Open planning")) { try Backend.sparkOpen.models(environment: [:]) }
+        #expect(throws: LumenError.missingKey) { try Backend.sparkOpen.models(environment: [:]) }
+        #expect(throws: HostedSparkOpenPlanner.ConfigurationError.self) { try Backend.sparkOpen.models(environment: ["META_API_KEY": "key"]) }
+        let spark = try Backend.sparkOpen.models(environment: ["META_API_KEY": "key", "SPARK_OPEN_BASE_URL": "https://host.example/v1",
+                                                               "SPARK_OPEN_API_KEY": "host-key"])
+        #expect(spark.planner.modelID == "meta-models/muse-spark-open-1026")
         #expect(Lumen.message(for: LumenError.missingKey) == LumenError.missingKey.localizedDescription)
         #expect(Lumen.exitCode(for: LumenError.missingKey) != .success)
     }

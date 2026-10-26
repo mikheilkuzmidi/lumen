@@ -56,7 +56,7 @@ enum EvaluationRunner {
             switch options.backend {
             case .meta: planner = "muse-spark-1.3"
             case .glimmer: planner = "muse-glimmer on this Mac"
-            case .sparkOpen: planner = "Muse Spark Open (unavailable)"
+            case .sparkOpen: planner = "Muse Spark Open on its hosting provider"
             }
             return [description,
                     "  Plan: \(planner); select: sam-3.1 when a region is needed; redraw/remove: muse-image-1.0 when requested by the plan; critique: \(planner).",

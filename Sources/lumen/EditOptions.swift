@@ -26,7 +26,13 @@ enum Backend: String, ExpressibleByArgument, Codable, Sendable {
                               segmenter: MetaSegmenter(configuration: configuration),
                               generator: MetaGenerator(configuration: configuration))
         case .sparkOpen:
-            throw LumenError.notBuilt("Muse Spark Open planning")
+            // Muse Spark Open plans and checks on a hosting provider; SAM 3.1 and Muse Image answer through the Meta API.
+            guard let key = environment["META_API_KEY"],
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
+            let configuration = MetaConfiguration(apiKey: key)
+            return EditModels(planner: try HostedSparkOpenPlanner.fromEnvironment(environment),
+                              segmenter: MetaSegmenter(configuration: configuration),
+                              generator: MetaGenerator(configuration: configuration))
         }
     }
 }

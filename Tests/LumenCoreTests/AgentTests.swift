@@ -45,16 +45,17 @@ struct AgentTests {
         #expect(await agent.assets.get(patchMaskID) == .mask(generateRequest.mask.resized(to: AgentGenerator.image.size)))
         #expect(await host.crops.map(\.maxLongEdge) == [2048])
         #expect(await host.crops.map(\.rect) == [rect])
-        #expect(await host.previews == [900, 900])
+        #expect(await host.previews == [900, 900, 900], "the plan, the selection and the check")
         let request = try #require(await planner.plans.first)
         #expect(request.instruction == "Make the coat navy")
         #expect(request.regions.isEmpty && request.done.isEmpty)
         #expect(events.stepIndices == [0, 1, 2, 3])
-        #expect(events.reasons == ["The coat is ready."])
-        #expect(await planner.critiques.isEmpty)
+        // The plan said it was ready before any result existed; the critic looked once and agreed.
+        #expect(events.reasons == ["Done."])
+        #expect(await planner.critiques.count == 1)
         let calls = events.traces.filter { $0.model != nil }
-        #expect(calls.map(\.kind) == [.plan, .select, .regenerate])
-        #expect(calls.map(\.model) == ["muse-spark-1.3", "sam-3.1", "muse-image-1.0"])
+        #expect(calls.map(\.kind) == [.plan, .select, .regenerate, .critique])
+        #expect(calls.map(\.model) == ["muse-spark-1.3", "sam-3.1", "muse-image-1.0", "muse-spark-1.3"])
         #expect(calls.allSatisfy { !$0.detail.isEmpty && $0.duration >= 0 && $0.started <= Date() })
     }
 
@@ -116,7 +117,7 @@ struct AgentTests {
         #expect(events.traces.contains { $0.detail == "Nothing found for coat." })
         #expect(events.traces.filter { $0.detail.hasPrefix("Skipped") }.count == 3)
         #expect(await planner.critiques.first?.regions.isEmpty == true)
-        #expect(await planner.critiques.first?.done == ["Photo: exposure +0.2"])
+        #expect(await planner.critiques.first?.done == ["Coat: nothing found for “coat”", "Photo: exposure +0.2"])
     }
 
     @Test func critiqueRevisesUsingTheSelectedRegionAndCompletedSteps() async throws {
@@ -204,7 +205,24 @@ struct AgentTests {
         #expect(await host.layers.map(\.label) == ["Coat: exposure −0.4"])
         #expect(events.traces.contains { $0.kind == .failure && $0.detail.contains("declined") })
         #expect(events.traces.filter { $0.model == "muse-image-1.0" }.count == 1)
-        #expect(events.reasons == ["Adjusted the coat."])
+        // The plan said it was finished, but a step failed, so the critic looked before finishing.
+        #expect(await planner.critiques.count == 1)
+        #expect(events.reasons == ["Done."])
+    }
+
+    @Test func aPlannersBoxThatFindsNothingIsDroppedForASecondLook() async throws {
+        let segmenter = AgentSegmenter(answers: [[], [segment()]])
+        let planner = AgentPlanner(plan: EditPlan(summary: "Coat", steps: [
+            .select(Selection(id: "coat", concept: "coat", box: NormalizedRect(x: 0.9, y: 0.9, width: 0.1, height: 0.1))),
+            .adjust(Adjustment(region: "coat", values: [.exposure: -0.2])),
+            .finish(Finish(reason: "Darker coat.")),
+        ]))
+        let host = AgentHost()
+        let events = try await collect(EditAgent(planner: planner, segmenter: segmenter, generator: AgentGenerator(), host: host).run("Darken the coat"))
+        let requests = await segmenter.requests
+        #expect(requests.count == 2 && requests[0].box != nil && requests[1].box == nil)
+        #expect(await host.layers.map(\.label) == ["Coat: exposure −0.2"])
+        #expect(events.reasons == ["Done."])
     }
 
     @Test func refusedPlanFailsTheStream() async throws {
@@ -401,13 +419,18 @@ private actor AgentPlanner: Planner {
 private actor AgentSegmenter: Segmenter {
     let modelID = "sam-3.1"
     private let segments: [Segment]
+    /// Answers in turn, before falling back to `segments`.
+    private var answers: [[Segment]]
     private(set) var requests: [SegmentRequest] = []
 
-    init(segments: [Segment]) { self.segments = segments }
+    init(segments: [Segment] = [], answers: [[Segment]] = []) {
+        self.segments = segments
+        self.answers = answers
+    }
 
     func segment(_ request: SegmentRequest) async throws -> [Segment] {
         requests.append(request)
-        return segments
+        return answers.isEmpty ? segments : answers.removeFirst()
     }
 }
 

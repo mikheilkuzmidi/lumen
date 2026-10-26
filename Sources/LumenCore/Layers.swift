@@ -35,7 +35,8 @@ public struct Layer: Codable, Equatable, Identifiable, Sendable {
     public enum Content: Codable, Equatable, Sendable {
         /// Develop settings, inside a mask or (nil) on the whole photo.
         case adjustment(values: [AdjustmentKey: Double], mask: AssetID?)
-        /// Generated pixels placed over `rect`, shown through the mask.
+        /// Generated pixels placed over `rect`, shown through the mask. The image and the mask both cover
+        /// exactly `rect` (the mask is usually at the image's size).
         case patch(image: AssetID, mask: AssetID, rect: NormalizedRect)
         case crop(NormalizedRect)
     }

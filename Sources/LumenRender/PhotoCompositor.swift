@@ -43,15 +43,19 @@ enum PhotoCompositor {
         ]).cropped(to: background.extent)
     }
 
+    /// Moves a redrawn patch's overall light and colour back to the photo's, measured in a ring just outside its mask.
     static func colorMatched(_ patch: CIImage, to photo: CIImage, mask: CIImage, context: CIContext) -> CIImage {
         let radius = max(1, min(patch.extent.width, patch.extent.height) * 0.06)
         let padded = mask.composited(over: CIImage(color: .black))
         let outside = padded.applyingFilter("CIColorInvert")
         let ring = padded.applyingFilter("CIMorphologyMaximum", parameters: ["inputRadius": radius])
             .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: outside])
-        let ringBounds = patch.extent.insetBy(dx: -radius, dy: -radius).intersection(photo.extent)
+        // The redrawn crop's own surroundings against the photo's in the same ring: that measures how the
+        // generator shifted the light and colour overall, without pulling an intended new colour inside the mask
+        // toward what is around it.
+        let ringBounds = patch.extent.intersection(photo.extent)
         guard let surroundings = statistics(photo, mask: ring, bounds: ringBounds, context: context),
-              let generated = statistics(patch, mask: padded, bounds: patch.extent, context: context) else { return patch }
+              let generated = statistics(patch, mask: ring, bounds: ringBounds, context: context) else { return patch }
         var gain = [Double]()
         var offset = [Double]()
         for channel in 0..<3 {

@@ -104,36 +104,33 @@ struct PhotoPixelTests {
         #expect(replaced[64, 48].red < original[64, 48].red)
     }
 
+    /// A redrawn crop whose surroundings came back 40 levels brighter than the photo, with a new colour inside
+    /// the mask: the drift is taken out, the new colour stays, and only the mask shows.
     @Test
-    func patchLandsInItsRectAndMatchesSurroundingLight() async throws {
+    func patchShowsThroughItsMaskWithTheGeneratorsDriftTakenOut() async throws {
         let folder = try PhotoFolder()
         defer { folder.remove() }
         let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 120, 140) })
         let before = try await folder.pixels(document)
         let assets = AssetStore()
-        let patchURL = try folder.photo(width: 32, height: 24) { _, _ in RGB(220, 170, 120) }
-        let patch = EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 32, height: 24))
-        let imageID = await assets.put(.image(patch))
-        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), filledWith: 255)))
-        let layer = Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
-                                                         rect: NormalizedRect(x: 0.25, y: 0.125, width: 0.5, height: 0.5)))
-        try await document.apply(layer, assets: assets)
-        await assets.remove(imageID)
-        await assets.remove(maskID)
+        // The patch covers x 32..<96, y 12..<60 of the 128 × 96 photo; its mask is its middle half.
+        let inside: (Int, Int) -> Bool = { x, y in x >= 16 && x < 48 && y >= 12 && y < 36 }
+        let patchURL = try folder.photo(width: 64, height: 48) { x, y in inside(x, y) ? RGB(220, 170, 120) : RGB(140, 160, 180) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 64, height: 48))))
+        let coverage = (0..<(64 * 48)).map { inside($0 % 64, $0 / 64) ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 64, height: 48), coverage: coverage)))
+        try await document.apply(Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.125, width: 0.5, height: 0.5))), assets: assets)
         let after = try await folder.pixels(document)
-        let generated = try Pixels(data: patch.data)[16, 12]
-        let surrounding = before[64, 36]
-        let matched = after[64, 36]
-        #expect(matched.distance(to: surrounding) < generated.distance(to: surrounding) * 0.8)
-        #expect(matched.distance(to: surrounding) > 0.03)
-        #expect(after[64, 20].distance(to: surrounding) > 0.03)
-        #expect(after[64, 75].distance(to: before[64, 75]) <= 1.0 / 255)
-        #expect(after[15, 36].distance(to: before[15, 36]) <= 1.0 / 255)
-        #expect(after[32, 36].distance(to: surrounding) < matched.distance(to: surrounding))
+        let middle = after[64, 36], generated = RGB(220, 170, 120)
+        #expect(middle.red > before[64, 36].red + 0.15, "the new colour shows inside the mask")
+        #expect(middle.red < generated.red - 0.03, "and is brought down by the generator's drift")
+        #expect(after[40, 20].distance(to: before[40, 20]) <= 2.0 / 255, "the patch's own surroundings never show")
+        #expect(after[64, 80].distance(to: before[64, 80]) <= 1.0 / 255, "outside the patch nothing changes")
     }
 
     @Test
-    func patchHonoursThePhotoMask() async throws {
+    func patchShowsOnlyThroughItsOwnMask() async throws {
         let folder = try PhotoFolder()
         defer { folder.remove() }
         let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(80, 80, 80) })
@@ -142,38 +139,15 @@ struct PhotoPixelTests {
         let patchURL = try folder.photo(width: 64, height: 48) { _, _ in RGB(200, 180, 160) }
         let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
                                                           size: PixelSize(width: 64, height: 48))))
-        let coverage = (0..<(128 * 96)).map { index -> UInt8 in
-            let x = index % 128
-            let y = index / 128
-            return x >= 40 && x < 64 && y >= 24 && y < 72 ? 255 : 0
-        }
-        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), coverage: coverage)))
+        // The left half of the patch only; the patch sits over x 32..<96 of the photo.
+        let coverage = (0..<(64 * 48)).map { $0 % 64 < 32 ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 64, height: 48), coverage: coverage)))
         try await document.apply(Layer(label: "Patch", content: .patch(image: imageID, mask: maskID,
                                                                        rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
         let after = try await folder.pixels(document)
-        #expect(after[50, 40].red > before[50, 40].red + 0.05)
-        #expect(after[80, 40].distance(to: before[80, 40]) <= 1.0 / 255)
-    }
-
-    @Test
-    func patchSpreadMovesTowardTheSurroundings() async throws {
-        let folder = try PhotoFolder()
-        defer { folder.remove() }
-        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 110, 120) })
-        let patchURL = try folder.photo(width: 64, height: 48) { x, _ in
-            x < 32 ? RGB(120, 120, 120) : RGB(200, 200, 200)
-        }
-        let assets = AssetStore()
-        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
-                                                          size: PixelSize(width: 64, height: 48))))
-        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), filledWith: 255)))
-        try await document.apply(Layer(label: "Patch", content: .patch(image: imageID, mask: maskID,
-                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
-        let matched = try await folder.pixels(document)
-        let spread = linear(matched[84, 48].red) - linear(matched[44, 48].red)
-        let originalSpread = linear(200.0 / 255) - linear(120.0 / 255)
-        #expect(spread > originalSpread * 0.4)
-        #expect(spread < originalSpread * 0.85)
+        #expect(after[44, 48].red > before[44, 48].red + 0.05)
+        #expect(after[84, 48].distance(to: before[84, 48]) <= 1.0 / 255)
+        #expect(after[10, 48].distance(to: before[10, 48]) <= 1.0 / 255)
     }
 
     @Test(arguments: [AdjustmentKey.highlights, .shadows, .whites, .blacks])

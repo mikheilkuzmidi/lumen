@@ -160,7 +160,9 @@ public actor EditAgent {
             events.yield(.planned(next))
             var revisions = 0
             while true {
-                if let reason = try await carryOut(next, area: area, run: &run, events: events) {
+                // The first plan was written before any result existed, so its own finish still gets one look;
+                // a revision's finish ends the edit.
+                if let reason = try await carryOut(next, area: area, run: &run, events: events), revisions > 0 {
                     finish(reason, events: events)
                     return
                 }
@@ -202,6 +204,8 @@ public actor EditAgent {
     }
 
     private func carryOut(_ plan: EditPlan, area: NormalizedRect?, run: inout Run, events: Events) async throws -> String? {
+        // A plan's own finish is only believed when every step before it worked; otherwise the critic looks.
+        var troubled = false
         for step in plan.steps {
             try checkCancellation()
             guard run.steps < configuration.maxSteps else { return "Step limit reached." }
@@ -210,6 +214,7 @@ public actor EditAgent {
             events.yield(.stepStarted(index: index, step: step))
             if let region = step.region, run.missing.contains(region) {
                 note(.failure, "Skipped \(step.type): nothing was found for \(region).", events: events)
+                troubled = true
                 continue
             }
             do {
@@ -222,6 +227,9 @@ public actor EditAgent {
                         run.regions[selection.id] = region
                         run.missing.remove(selection.id)
                         run.done.append("\(title(selection.id)): selected")
+                    } else {
+                        troubled = true
+                        run.done.append("\(title(selection.id)): nothing found for “\(selection.concept ?? selection.id)”")
                     }
                 case .adjust(let adjustment):
                     let region = try adjustment.region.map { try region($0, run: run) }
@@ -251,11 +259,16 @@ public actor EditAgent {
                     try await apply(layer, events: events)
                     run.done.append(layer.label)
                 case .finish(let finish):
+                    if troubled {
+                        note(.plan, "Not finishing yet: a step didn't work, so the result is checked first.", events: events)
+                        return nil
+                    }
                     return finish.reason
                 }
             } catch {
                 let error = cancellationError(error)
                 if error as? LumenError == .cancelled { throw error }
+                troubled = true
                 note(.failure, "\(step.type): \(error.localizedDescription)", events: events)
             }
         }
@@ -267,9 +280,17 @@ public actor EditAgent {
         try checkCancellation()
         let request = SegmentRequest(image: image, concept: selection.concept,
                                      box: selection.box ?? area, points: selection.points)
-        let segments = try await call(.select, model: segmenter.modelID,
+        var segments = try await call(.select, model: segmenter.modelID,
                                       detail: "Find \(selection.concept ?? selection.id)", events: events) {
             try await self.segmenter.segment(request)
+        }
+        // The planner's own box is a guess; when it rules out everything, search the whole photo (or the user's area).
+        if segments.isEmpty, selection.box != nil, selection.concept != nil {
+            note(.select, "Nothing found inside the planner's box for \(selection.id); looking again without it.", events: events)
+            let wider = SegmentRequest(image: image, concept: selection.concept, box: area, points: selection.points)
+            segments = try await call(.select, model: segmenter.modelID, detail: "Find \(selection.concept ?? selection.id) again", events: events) {
+                try await self.segmenter.segment(wider)
+            }
         }
         guard let first = segments.first else {
             note(.select, "Nothing found for \(selection.id).", events: events)

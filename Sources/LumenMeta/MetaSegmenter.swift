@@ -12,7 +12,9 @@ public struct MetaSegmenter: Segmenter {
         self.transport = transport
     }
 
-    /// A concept with a box uses object prompts and keeps only segments contained in that box.
+    /// A concept is always searched for by name, which SAM answers best; a box beside it only chooses among
+    /// what was found (most of a segment must lie inside it). Without a concept, the box and points are
+    /// SAM's object prompts.
     public func segment(_ request: SegmentRequest) async throws -> [Segment] {
         try await segment(request, negativePoints: [])
     }
@@ -41,11 +43,11 @@ public struct MetaSegmenter: Segmenter {
     static func prompt(_ request: SegmentRequest, negativePoints: [NormalizedPoint] = []) throws -> String {
         let size = request.image.size
         guard size.width > 0, size.height > 0 else { throw MetaHTTP.invalid("The photo needs positive pixel dimensions.") }
-        if request.box == nil && request.points.isEmpty && negativePoints.isEmpty {
-            guard let concept = request.concept?.trimmingCharacters(in: .whitespacesAndNewlines), !concept.isEmpty else {
-                throw MetaHTTP.invalid("Selection needs a concept, box or point.")
-            }
+        if let concept = request.concept?.trimmingCharacters(in: .whitespacesAndNewlines), !concept.isEmpty {
             return concept
+        }
+        guard request.box != nil || !request.points.isEmpty || !negativePoints.isEmpty else {
+            throw MetaHTTP.invalid("Selection needs a concept, box or point.")
         }
         var text = "<0f>1"
         let dimensions = "w=\(size.width);h=\(size.height)"

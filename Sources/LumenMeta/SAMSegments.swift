@@ -35,6 +35,14 @@ enum SAMSegments {
         func contains(_ other: PixelBox) -> Bool {
             left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
         }
+
+        /// The share of `other`'s area that lies inside this box.
+        func covered(_ other: PixelBox) -> Double {
+            let width = max(0, min(right, other.right) - max(left, other.left))
+            let height = max(0, min(bottom, other.bottom) - max(top, other.top))
+            let area = (other.right - other.left) * (other.bottom - other.top)
+            return area > 0 ? Double(width * height) / Double(area) : 0
+        }
     }
 
     static func parse(_ text: String, request: SegmentRequest) throws -> [Segment] {
@@ -80,7 +88,8 @@ enum SAMSegments {
                 guard let boxToken, let maskToken else { throw MetaHTTP.invalid(line) }
                 let box = try boxToken.box(size: size)
                 let raster = try maskToken.raster()
-                if request.concept != nil, let boundary, !boundary.contains(box) { continue }
+                // A box beside a concept says which of the things found is meant: most of it must lie inside.
+                if request.concept != nil, let boundary, boundary.covered(box) < 0.5 { continue }
                 let boxWidth = box.right - box.left, boxHeight = box.bottom - box.top
                 var coverage = [UInt8](repeating: 0, count: area)
                 for y in box.top..<box.bottom {

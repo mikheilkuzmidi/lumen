@@ -33,20 +33,32 @@ import Testing
     ])
 }
 
-@Test func segmenterUsesPixelObjectPromptsAndFiltersOutsideSegments() async throws {
+@Test func withoutAConceptTheBoxAndPointsAreObjectPrompts() async throws {
     let transport = ReplayTransport([try .init(file: "sam.sse")])
     let segmenter = MetaSegmenter(configuration: testConfiguration, transport: transport)
-    let request = SegmentRequest(image: testPhoto, concept: "coat",
-                                 box: NormalizedRect(x: 0.2, y: 0, width: 0.4, height: 1),
+    let request = SegmentRequest(image: testPhoto, box: NormalizedRect(x: 0.2, y: 0, width: 0.4, height: 1),
                                  points: [NormalizedPoint(x: 1, y: -0.2)])
-    let segments = try await segmenter.segment(request, negativePoints: [NormalizedPoint(x: 0.3, y: 0.5)])
-    #expect(segments.isEmpty)
+    _ = try await segmenter.segment(request, negativePoints: [NormalizedPoint(x: 0.3, y: 0.5)])
     let call = try #require(await transport.requests.first)
     let body = try json(#require(call.httpBody))
     let content = try #require((body["input"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
     #expect(content[0]["text"] as? String == "<0f>1<|box;x1=2;y1=0;x2=5;y2=5;w=10;h=6|><|point;x=9;y=0;w=10;h=6|>-<|point;x=3;y=3;w=10;h=6|>")
-    let contained = SegmentRequest(image: testPhoto, concept: "coat", box: .whole)
-    #expect(try SAMSegments.parse(segmentLine(), request: contained).count == 1)
+}
+
+@Test func aConceptIsSearchedByNameAndABoxChoosesAmongWhatIsFound() async throws {
+    let transport = ReplayTransport([try .init(file: "sam.sse")])
+    let segmenter = MetaSegmenter(configuration: testConfiguration, transport: transport)
+    // The planner's rough box covers most of the coat (x 0.2...0.6 of its 0.2...0.8): kept.
+    let rough = SegmentRequest(image: testPhoto, concept: "coat", box: NormalizedRect(x: 0.2, y: 0, width: 0.4, height: 1))
+    #expect(try await segmenter.segment(rough).count == 1)
+    let call = try #require(await transport.requests.first)
+    let sent = try json(#require(call.httpBody))
+    let content = try #require((sent["input"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
+    #expect(content[0]["text"] as? String == "coat", "searched by name, not by the box")
+    // A box over a different part of the photo leaves it out.
+    let elsewhere = SegmentRequest(image: testPhoto, concept: "coat", box: NormalizedRect(x: 0.7, y: 0, width: 0.3, height: 1))
+    #expect(try SAMSegments.parse(segmentLine(), request: elsewhere).isEmpty)
+    #expect(try SAMSegments.parse(segmentLine(), request: SegmentRequest(image: testPhoto, concept: "coat", box: .whole)).count == 1)
 }
 
 @Test func promptSupportsPointsAndWholePhotoEdges() throws {

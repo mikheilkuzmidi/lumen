@@ -68,6 +68,25 @@ struct MaskRefinementTests {
         #expect(MaskRefinement.refined(full, guide: guide, radius: 5) == full)
     }
 
+    @Test func aChangeFadesOutAcrossASmoothGradientButStopsAtAnEdge() {
+        let width = 200, height = 60
+        // Left half: a smooth gradient with the mask ending abruptly in it. Right half: the mask ends on a hard edge.
+        let guide = (0..<(width * height)).map { index -> Float in
+            let x = index % width
+            return x < 100 ? 0.3 + Float(x) * 0.002 : (x < 150 ? 0.2 : 0.8)
+        }
+        let coverage = (0..<(width * height)).map { index -> UInt8 in
+            let x = index % width
+            return (x < 50 || (x >= 100 && x < 150)) ? 255 : 0
+        }
+        let softened = MaskRefinement.softenedWhereFlat(MaskData(size: PixelSize(width: width, height: height), coverage: coverage),
+                                                        guide: guide, radius: 12)
+        let row = 30 * width
+        #expect(softened.coverage[row + 46] < 230 && softened.coverage[row + 54] > 25, "the gradient gets a gradual transition")
+        #expect(softened.coverage[row + 148] > 200 && softened.coverage[row + 152] < 55, "the hard edge stays sharp")
+        #expect(softened.coverage[row + 20] == 255 && softened.coverage[row + 80] == 0, "far from the boundary nothing changes")
+    }
+
     @Test func radiusGrowsWithTheMask() {
         #expect(MaskRefinement.radius(for: PixelSize(width: 100, height: 80)) == 3)
         #expect(MaskRefinement.radius(for: PixelSize(width: 1536, height: 1024)) == 10)

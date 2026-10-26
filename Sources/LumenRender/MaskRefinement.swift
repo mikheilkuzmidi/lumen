@@ -36,6 +36,33 @@ enum MaskRefinement {
         return MaskData(size: mask.size, coverage: coverage)
     }
 
+    /// Where the photo is smooth, such as a sunset's gradient, any boundary of a change shows, and there is no edge
+    /// for the guided filter to follow; there the mask's transition is widened, by as much as the photo is flat.
+    /// Flatness is the mean squared step between neighbouring pixels: tiny across a gradient, large at an edge or
+    /// in texture.
+    static func softenedWhereFlat(_ mask: MaskData, guide: [Float], radius: Int, flatness: Double = 0.0001) -> MaskData {
+        let width = mask.size.width, height = mask.size.height
+        guard width > 0, height > 0, radius > 0, guide.count == width * height, mask.coverage.count == guide.count else { return mask }
+        let light = guide.map(Double.init)
+        let cover = mask.coverage.map { Double($0) / 255 }
+        let steps = light.indices.map { index -> Double in
+            let x = index % width, y = index / width
+            let across = x + 1 < width ? light[index + 1] - light[index] : 0
+            let down = y + 1 < height ? light[index + width] - light[index] : 0
+            return across * across + down * down
+        }
+        let roughness = boxMean(steps, width: width, height: height, radius: radius)
+        // Two box passes of half the reach approximate a Gaussian of the full reach.
+        let half = max(1, radius / 2)
+        let wide = boxMean(boxMean(cover, width: width, height: height, radius: half), width: width, height: height, radius: half)
+        let coverage = cover.indices.map { index -> UInt8 in
+            let flat = exp(-roughness[index] / flatness)
+            let value = flat * wide[index] + (1 - flat) * cover[index]
+            return UInt8((min(1, max(0, value)) * 255).rounded())
+        }
+        return MaskData(size: mask.size, coverage: coverage)
+    }
+
     /// The photo's lightness at `size`, for `refined(_:guide:radius:)`.
     static func guide(_ photo: CIImage, size: PixelSize, context: CIContext) -> [Float]? {
         guard size.width > 0, size.height > 0, photo.extent.width > 0, photo.extent.height > 0 else { return nil }

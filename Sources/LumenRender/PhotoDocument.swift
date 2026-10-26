@@ -118,9 +118,11 @@ public actor PhotoDocument: EditHost {
     private func refined(_ mask: MaskData) -> MaskData {
         guard min(mask.size.width, mask.size.height) >= 64,
               let guide = MaskRefinement.guide(photo, size: mask.size, context: context) else { return mask }
-        // A second pass fits the edge again from the first pass's better start.
+        // A second pass fits the edge again from the first pass's better start; then smooth parts of the photo
+        // get a wider transition, about 8% of the mask's short side.
         let radius = MaskRefinement.radius(for: mask.size)
-        return MaskRefinement.refined(MaskRefinement.refined(mask, guide: guide, radius: radius), guide: guide, radius: radius)
+        let fitted = MaskRefinement.refined(MaskRefinement.refined(mask, guide: guide, radius: radius), guide: guide, radius: radius)
+        return MaskRefinement.softenedWhereFlat(fitted, guide: guide, radius: radius * 8)
     }
 
     private static func image(of mask: MaskData) throws -> CIImage {

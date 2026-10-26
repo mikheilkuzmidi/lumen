@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "Insufficient credit.",
+    "type": "payment_required",
+    "code": "insufficient_credit"
+  }
+}

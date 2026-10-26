@@ -1,0 +1,14 @@
+{
+  "id": "critique-recorded",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"satisfied\": true, \"notes\": \"The sky is darker and natural.\", \"steps\": []}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

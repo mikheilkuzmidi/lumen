@@ -1,0 +1,12 @@
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "item_id": "sam-recorded", "output_index": 0, "content_index": 0, "delta": "<0f>7<|box;x1=2;y1=1;x2=7;y2=4;w=10;h=6;c=0.75|><|mask;x=0;y"}
+
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "item_id": "sam-recorded", "output_index": 0, "content_index": 0, "delta": "=0;data=2,3,~!!!!.!0^zlTde]:)]`W|>\n"}
+
+event: response.output_text.done
+data: {"type": "response.output_text.done", "item_id": "sam-recorded", "output_index": 0, "content_index": 0, "text": "<0f>7<|box;x1=2;y1=1;x2=7;y2=4;w=10;h=6;c=0.75|><|mask;x=0;y=0;data=2,3,~!!!!.!0^zlTde]:)]`W|>\n"}
+
+event: response.completed
+data: {"type": "response.completed", "response": {"status": "completed"}}
+

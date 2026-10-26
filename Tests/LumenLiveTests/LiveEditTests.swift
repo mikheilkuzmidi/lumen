@@ -46,6 +46,43 @@ struct LiveEditTests {
         var cases: [Case]
     }
 
+    /// Three instructions on one photo: an edit, a follow-up that should reuse its region, and an undo.
+    @Test func followsUpOnTheSameEdit() async throws {
+        let configuration = try MetaConfiguration.fromEnvironment()
+        let document = try PhotoDocument(contentsOf: Self.fixtures.appendingPathComponent("photos/jacket-with-a-hood.jpg"))
+        let agent = EditAgent(planner: MetaPlanner(configuration: configuration), segmenter: MetaSegmenter(configuration: configuration),
+                              generator: MetaGenerator(configuration: configuration), host: document,
+                              configuration: AgentConfiguration(maxSteps: 8, maxRevisions: 1))
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("lumen-live", isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        var log: [String] = []
+        var turns: [(selections: Int, applied: Int, reverted: Int)] = []
+        for (turn, instruction) in ["Make his jacket bright yellow", "A bit less yellow", "Undo that"].enumerated() {
+            log.append("Instruction: \(instruction)")
+            var selections = 0, applied = 0, reverted = 0
+            for try await event in agent.run(instruction) {
+                switch event {
+                case .planned(let plan): log.append("Plan: \(plan.summary) — \(plan.steps.map(\.type).joined(separator: ", "))")
+                case .selected(let region, _): selections += 1; log.append("Selected \(region)")
+                case .applied(let layer): applied += 1; log.append("Layer: \(layer.label)")
+                case .reverted(let id): reverted += 1; log.append("Reverted layer \(id)")
+                case .critiqued(let critique): log.append("Critique: \(critique.satisfied ? "satisfied" : "not yet") — \(critique.notes)")
+                case .finished(let reason): log.append("Finished: \(reason)")
+                case .trace(let trace) where trace.model != nil:
+                    log.append(String(format: "  [%@ %@] %.1f s", trace.kind.rawValue, trace.model ?? "", trace.duration))
+                default: break
+                }
+            }
+            turns.append((selections, applied, reverted))
+            try await document.export(to: out.appendingPathComponent("follow-up-\(turn + 1).jpg"), format: .jpeg)
+        }
+        try log.joined(separator: "\n").write(to: out.appendingPathComponent("follow-up.log"), atomically: true, encoding: .utf8)
+        print(log.joined(separator: "\n"))
+        #expect(turns[0].applied > 0, "the first instruction changes the photo")
+        #expect(turns[1].selections == 0 && turns[1].applied > 0, "the follow-up reuses the jacket without selecting it again")
+        #expect(turns[2].reverted > 0, "the undo takes a layer off")
+    }
+
     static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Fixtures", isDirectory: true)
 }

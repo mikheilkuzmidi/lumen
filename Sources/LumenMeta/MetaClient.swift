@@ -51,7 +51,7 @@ public struct MetaPlanner: Planner {
     public func critique(_ request: CritiqueRequest) async throws -> Critique {
         do {
             let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
-                                      done: request.done, layers: request.layers)
+                                      done: request.done, layers: request.layers, history: request.history)
             return try await answer(Critique.self, prompt: Self.critiquePrompt,
                                     content: [.text(try context.text()), .text("Before"), .image(request.before),
                                               .text("After"), .image(request.after)],
@@ -103,7 +103,10 @@ public struct MetaPlanner: Planner {
 
     Compare the labelled Before and After photos against the instruction, using Before as the photo
     at the start of this instruction. The layers list includes earlier layers and those applied during
-    this run; reuse their regions and revert a layer by id when needed.
+    this run; reuse their regions and revert a layer by id when needed. The history lists earlier
+    instructions, oldest first: read "that", "less", "more" and "undo" against the latest of them. Undoing
+    takes off only that latest instruction's change, so Before already shows it and After should look as
+    the photo did before it; never take off earlier changes for an undo.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating

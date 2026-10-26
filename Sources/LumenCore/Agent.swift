@@ -186,8 +186,11 @@ public actor EditAgent {
             events.yield(.planned(next))
             var revisions = 0
             while true {
-                // The first plan's finish still gets a look; only successful, simple revisions can finish directly.
-                if let reason = try await carryOut(next, area: area, run: &run, redraws: &redraws, events: events), revisions > 0 {
+                // The first plan's finish still gets a look, unless it only took layers off, which leaves the photo
+                // exactly as it was; only successful, simple revisions can finish directly.
+                let onlyReverts = next.steps.contains { $0.type == "revert" } && next.steps.allSatisfy { ["revert", "finish"].contains($0.type) }
+                if let reason = try await carryOut(next, area: area, run: &run, redraws: &redraws, events: events),
+                   revisions > 0 || onlyReverts {
                     finish(reason, events: events)
                     return
                 }
@@ -199,7 +202,8 @@ public actor EditAgent {
                 let after = try await host.render(maxLongEdge: configuration.previewLongEdge)
                 try checkCancellation()
                 let request = CritiqueRequest(instruction: instruction, before: before, after: after,
-                                              regions: regionInfo, done: run.done, layers: layerInfo)
+                                              regions: regionInfo, done: run.done, layers: layerInfo,
+                                              history: Array(history.dropLast()))
                 let critique = try await call(.critique, model: planner.modelID, detail: "Check the edit", events: events) {
                     try await self.planner.critique(request)
                 }

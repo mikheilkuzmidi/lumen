@@ -51,14 +51,14 @@ import Testing
     let after = EncodedImage(data: Data([4, 5]), format: .png, size: testPhoto.size)
     let layer = LayerInfo(id: UUID().uuidString, label: "Sky: exposure −0.4", kind: "adjust", region: "sky")
     let critique = try await planner.critique(CritiqueRequest(instruction: "Darken the sky", before: testPhoto, after: after,
-                                                            layers: [layer]))
+                                                            layers: [layer], history: ["Make it warmer"]))
     #expect(critique == Critique(satisfied: true, notes: "The sky is darker and natural."))
     let call = try #require(await transport.requests.first)
     let body = try json(#require(call.httpBody))
     let messages = try #require(body["messages"] as? [[String: Any]])
     let content = try #require(messages[1]["content"] as? [[String: Any]])
     let text = try #require(content[0]["text"] as? String)
-    try expectJSON(Data(text.utf8), equals: ["instruction": "Darken the sky", "regions": [], "done": [], "history": [],
+    try expectJSON(Data(text.utf8), equals: ["instruction": "Darken the sky", "regions": [], "done": [], "history": ["Make it warmer"],
         "layers": [["id": layer.id, "label": layer.label, "kind": "adjust", "region": "sky"]]])
     try expectJSON(#require(call.httpBody), equals: ["model": "muse-spark-1.3", "messages": [
         ["role": "system", "content": MetaPlanner.critiquePrompt],

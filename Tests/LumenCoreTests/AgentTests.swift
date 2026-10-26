@@ -42,6 +42,8 @@ struct AgentTests {
         #expect(critiques[1].before == AgentPhoto.preview(layers: 1))
         #expect(critiques[1].after == AgentPhoto.preview(layers: 2))
         #expect(critiques[1].layers.map(\.id) == [originalLayer.id.uuidString, adjustment.id.uuidString])
+        #expect(critiques[0].history.isEmpty)
+        #expect(critiques[1].history == ["Darken the sky"], "the critic reads \"a bit less\" against the earlier instruction")
 
         await planner.setPlan(EditPlan(summary: "Undo the first darkening", steps: [
             .revert(Revert(layer: originalLayer.id.uuidString)),
@@ -66,6 +68,25 @@ struct AgentTests {
         #expect(nextRequest.history == ["Darken the sky", "a bit less", "Undo the first darkening"])
         #expect(nextRequest.layers.map(\.id) == [adjustment.id.uuidString])
         #expect(nextRequest.regions.map(\.id) == ["sky"])
+    }
+
+    @Test func anUndoThatOnlyRevertsEndsWithoutAnotherLook() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Darken the sky", steps: [
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sky", values: [.exposure: -0.4])),
+        ]))
+        let host = AgentHost()
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [segment()]), generator: AgentGenerator(), host: host)
+        let layer = try #require(try await collect(agent.run("Darken the sky")).layers.first)
+        let looks = await planner.critiques.count
+        await planner.setPlan(EditPlan(summary: "Undo it", steps: [
+            .revert(Revert(layer: layer.id.uuidString)), .finish(Finish(reason: "The darkening is undone.")),
+        ]))
+        let undo = try await collect(agent.run("Undo that"))
+        #expect(undo.reverted == [layer.id])
+        #expect(undo.reasons == ["The darkening is undone."])
+        #expect(await planner.critiques.count == looks, "taking a layer off leaves the photo exactly as it was, so the critic is not asked")
+        #expect(await host.layers.isEmpty)
     }
 
     @Test func resetForgetsThePhotoWithoutRemovingItsLayers() async throws {

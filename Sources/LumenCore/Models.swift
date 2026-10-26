@@ -65,15 +65,18 @@ public struct CritiqueRequest: Sendable {
     public var regions: [RegionInfo]
     public var done: [String]
     public var layers: [LayerInfo]
+    /// Earlier instructions for this photo, oldest first, so "that" and "undo" can be read against them.
+    public var history: [String]
 
     public init(instruction: String, before: EncodedImage, after: EncodedImage, regions: [RegionInfo] = [],
-                done: [String] = [], layers: [LayerInfo] = []) {
+                done: [String] = [], layers: [LayerInfo] = [], history: [String] = []) {
         self.instruction = instruction
         self.before = before
         self.after = after
         self.regions = regions
         self.done = done
         self.layers = layers
+        self.history = history
     }
 }
 

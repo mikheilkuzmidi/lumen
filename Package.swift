@@ -26,7 +26,7 @@ let package = Package(
         // Layers applied to a photo with Core Image.
         .target(name: "LumenRender", dependencies: ["LumenCore"]),
         // Open-weight planners: Muse Spark Open on a hosting provider, Muse Glimmer on this Mac.
-        .target(name: "LumenOpen", dependencies: ["LumenCore"]),
+        .target(name: "LumenOpen", dependencies: ["LumenCore", "LumenMeta"]),
         .executableTarget(name: "lumen", dependencies: [
             "LumenCore", "LumenMeta", "LumenRender", "LumenOpen",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),

@@ -80,31 +80,35 @@ struct PhotoStatistics: Sendable {
                            tilt: tilt, capturedAt: capturedAt)
     }
 
-    /// Moves median lightness toward 0.45 by at most one linear-light stop. After exposure, the 0.5% and
-    /// 99.5% points set blacks and whites, capped at 20%. Flat photos keep their tone range. Grey-world
-    /// channel differences set temperature and tint at half strength, capped at 15%; saturation below 0.25
-    /// adds 10% vibrance. Exposure under 0.03 stop and colour or tone under 0.5% are left alone.
+    /// A gentle Auto that leaves a photo's intent alone: a high-key or night photo stays bright or dark.
+    /// Exposure moves only when median lightness is outside 0.35...0.6, halfway toward that range, by at most
+    /// 0.7 stop. After exposure, the 0.5% and 99.5% points set blacks and whites, capped at 10%; flat photos
+    /// keep their tone range. Grey-world channel differences set temperature and tint at 30% strength, capped
+    /// at 8%, so a sunset or a warm room keeps its colour. Saturation below 0.25 adds 10% vibrance, except in
+    /// a black-and-white photo. Exposure under 0.03 stop and colour or tone under 0.5% are left alone.
     var autoValues: [AdjustmentKey: Double] {
         var values: [AdjustmentKey: Double] = [:]
-        let exposure = min(1, max(-1, log2(Self.linear(0.45) / max(0.0001, Self.linear(median)))))
+        let target = min(0.6, max(0.35, median))
+        let wanted = log2(Self.linear(target) / max(0.0001, Self.linear(median)))
+        let exposure = min(0.7, max(-0.7, wanted / 2))
         if abs(exposure) >= 0.03 { values[.exposure] = exposure }
         let gain = pow(2, values[.exposure] ?? 0)
         if whitePoint - blackPoint >= 0.1 {
             let black = Self.encoded(Self.linear(blackPoint) * gain)
             let white = Self.encoded(Self.linear(whitePoint) * gain)
-            let blacks = -min(20, black / 0.08 * 100)
-            let whites = min(20, max(0, 1 - white) / 0.08 * 100)
+            let blacks = -min(10, black / 0.15 * 100)
+            let whites = min(10, max(0, 1 - white) / 0.15 * 100)
             if abs(blacks) >= 0.5 { values[.blacks] = blacks }
             if whites >= 0.5 { values[.whites] = whites }
         }
         let grey = (meanRed + meanGreen + meanBlue) / 3
         if grey > 0.02 {
-            let temperature = min(15, max(-15, (meanBlue - meanRed) / grey * 25))
-            let tint = min(15, max(-15, ((meanRed + meanBlue) / 2 - meanGreen) / grey * 25))
+            let temperature = min(8, max(-8, (meanBlue - meanRed) / grey * 15))
+            let tint = min(8, max(-8, ((meanRed + meanBlue) / 2 - meanGreen) / grey * 15))
             if abs(temperature) >= 0.5 { values[.temperature] = temperature }
             if abs(tint) >= 0.5 { values[.tint] = tint }
         }
-        if saturation < 0.25 { values[.vibrance] = 10 }
+        if saturation < 0.25, saturation > 0.03 { values[.vibrance] = 10 }
         return values
     }
 

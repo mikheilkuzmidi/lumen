@@ -69,19 +69,21 @@ struct PhotoMeasurementsTests {
         #expect(abs(try statistics(fine).facts.sharpness - 16 / 16.01) < 0.000001)
     }
 
-    @Test func autoUsesLightnessPercentilesAndHalfStrengthGreyWorldColour() throws {
+    @Test func autoMovesOnlyLightnessOutOfRangeAndDampsGreyWorldColour() throws {
         let folder = try LibraryFolder()
         defer { folder.remove() }
-        for (name, level, exposure) in [("dark.png", UInt8(40), 1.0), ("bright.png", 240, -1)] {
+        // Halfway toward 0.35...0.6, at most 0.7 stop either way.
+        for (name, level, exposure) in [("dark.png", UInt8(40), 0.7), ("bright.png", 240, -0.7)] {
             let photo = try folder.photo(name: name) { _, _ in (level, level, level) }
             #expect(try statistics(photo).autoValues[.exposure] == exposure)
         }
         let balanced = try folder.photo(name: "balanced.png") { _, _ in (115, 115, 115) }
-        #expect(try statistics(balanced).autoValues == [.vibrance: 10])
+        // A neutral grey in range needs nothing, and black and white gets no vibrance.
+        #expect(try statistics(balanced).autoValues == [:])
         let cast = try folder.photo(name: "cast.png") { _, _ in (150, 100, 90) }
         let values = try statistics(cast).autoValues
-        #expect(abs((values[.temperature] ?? 0) - (-60.0 / (340.0 / 3) * 25)) < 0.001)
-        #expect(abs((values[.tint] ?? 0) - (20.0 / (340.0 / 3) * 25)) < 0.001)
+        #expect(abs((values[.temperature] ?? 0) - (-60.0 / (340.0 / 3) * 15)) < 0.001)
+        #expect(abs((values[.tint] ?? 0) - (20.0 / (340.0 / 3) * 15)) < 0.001)
         #expect(values[.vibrance] == nil)
         let narrow = try folder.photo(name: "narrow.png", width: 512, height: 384) { x, _ in
             let value = UInt8(25 + Double(x) / 511 * 180)

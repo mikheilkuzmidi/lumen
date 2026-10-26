@@ -186,8 +186,8 @@ struct FolderPhotoTests {
             return
         }
         #expect(label.hasPrefix("Auto: ") && layer.label == label)
-        #expect(mask == nil && values[.exposure] == 1 && values[.vibrance] == 10)
-        #expect(try await library.facts(dark).exposure > before.exposure + 0.05)
+        #expect(mask == nil && values[.exposure] == 0.7 && values[.vibrance] == nil)
+        #expect(try await library.facts(dark).exposure > before.exposure + 0.03, "0.7 stop lifts a dark grey visibly")
         _ = try await library.applyAuto(balanced)
         let balancedDocument = try #require(try await library.editHost(balanced) as? PhotoDocument)
         let balancedLayer = try #require(await balancedDocument.layers.first)

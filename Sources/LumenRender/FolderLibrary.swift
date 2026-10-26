@@ -21,9 +21,10 @@ public actor FolderLibrary: LibraryHost {
         }
         let entries = try FileManager.default.contentsOfDirectory(at: folder,
                                                                   includingPropertiesForKeys: [.isRegularFileKey])
+        // A link to a photo elsewhere counts as a photo; a link to a folder does not.
         let photos = try entries.filter { url in
             guard ["jpg", "jpeg", "png", "heic"].contains(url.pathExtension.lowercased()) else { return false }
-            return try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
+            return try url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         var originals: [PhotoID: URL] = [:]
         var destinations: [PhotoID: URL] = [:]

@@ -77,12 +77,18 @@ actor ScriptedPlanner: Planner {
     }
 }
 
-struct ScriptedSegmenter: Segmenter {
+actor ScriptedSegmenter: Segmenter {
     let modelID = "sam-3.1"
+    private var looks = 0
+
+    /// The first look finds the coat in the photo's top 40%; a later look, at the redraw's crop, finds the coat
+    /// filling it, so the check agrees with the selection.
     func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        looks += 1
         let size = request.image.size
         var coverage = [UInt8](repeating: 0, count: size.width * size.height)
-        for index in 0..<(coverage.count * 18 / 100) { coverage[index] = 255 }
+        let share = looks == 1 ? 40 : 100
+        for index in 0..<(coverage.count * share / 100) { coverage[index] = 255 }
         let mask = MaskData(size: size, coverage: coverage)
         return [Segment(label: "coat", box: mask.boundingBox!, mask: mask)]
     }

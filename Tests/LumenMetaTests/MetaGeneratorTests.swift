@@ -23,8 +23,10 @@ import UniformTypeIdentifiers
     #expect(call.url?.absoluteString == "https://models.example/v1/images/edits")
     #expect(call.httpMethod == "POST")
     #expect(call.timeoutInterval == 180)
+    // Muse Image keeps a small crop's layout better at its own scale, so the crop is sent at a 1024 px long edge.
+    let sent = try PhotoPNG.encode(photo.data, size: PixelSize(width: 1024, height: 683))
     try expectJSON(#require(call.httpBody), equals: [
-        "model": "muse-image-1.0", "prompt": "Navy wool coat", "images": [["image_url": photo.dataURL]],
+        "model": "muse-image-1.0", "prompt": "Navy wool coat", "images": [["image_url": sent.dataURL]],
         "n": 1, "output_format": "png", "response_format": "b64_json",
     ])
 }
@@ -63,8 +65,8 @@ import UniformTypeIdentifiers
     let data = try #require(Data(base64Encoded: String(url.dropFirst("data:image/png;base64,".count))))
     let png = try #require(CGImageSourceCreateWithData(data as CFData, nil))
     let sent = try #require(CGImageSourceCreateImageAtIndex(png, 0, nil))
-    #expect(sent.width == 1)
-    #expect(sent.height == 2)
+    #expect(sent.width == 512)
+    #expect(sent.height == 1024)
 }
 
 @Test func generatorRejectsMalformedAnswers() async throws {

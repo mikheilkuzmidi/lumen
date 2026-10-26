@@ -169,6 +169,7 @@ public actor EditAgent {
         do {
             try checkCancellation()
             var run = Run()
+            var redraws: [String: Layer.ID] = [:]
             guard configuration.maxSteps > 0 else {
                 finish("Step limit reached.", events: events)
                 return
@@ -185,9 +186,8 @@ public actor EditAgent {
             events.yield(.planned(next))
             var revisions = 0
             while true {
-                // The first plan was written before any result existed, so its own finish still gets one look;
-                // a revision's finish ends the edit.
-                if let reason = try await carryOut(next, area: area, run: &run, events: events), revisions > 0 {
+                // The first plan's finish still gets a look; only successful, simple revisions can finish directly.
+                if let reason = try await carryOut(next, area: area, run: &run, redraws: &redraws, events: events), revisions > 0 {
                     finish(reason, events: events)
                     return
                 }
@@ -228,9 +228,11 @@ public actor EditAgent {
         return checked.plan
     }
 
-    private func carryOut(_ plan: EditPlan, area: NormalizedRect?, run: inout Run, events: Events) async throws -> String? {
+    private func carryOut(_ plan: EditPlan, area: NormalizedRect?, run: inout Run,
+                          redraws: inout [String: Layer.ID], events: Events) async throws -> String? {
         // A plan's own finish is only believed when every step before it worked; otherwise the critic looks.
         var troubled = false
+        var needsLook = false
         for step in plan.steps {
             try checkCancellation()
             guard run.steps < configuration.maxSteps else { return "Step limit reached." }
@@ -245,6 +247,7 @@ public actor EditAgent {
             do {
                 switch step {
                 case .select(let selection):
+                    needsLook = true
                     // A failed reselection must not leave a previous mask active under the same name.
                     regions[selection.id] = nil
                     run.missing.insert(selection.id)
@@ -269,15 +272,19 @@ public actor EditAgent {
                     try await apply(layer, kind: step.type, region: adjustment.region, events: events)
                     run.done.append(label)
                 case .regenerate(let regeneration):
+                    needsLook = true
                     let label = "\(title(regeneration.region)): redrawn as \(regeneration.prompt)"
-                    try await redraw(try region(regeneration.region), prompt: regeneration.prompt,
-                                     label: label, kind: .regenerate, events: events)
+                    let notes = try await redraw(try region(regeneration.region), prompt: regeneration.prompt,
+                                                 label: label, kind: .regenerate, redraws: &redraws, events: events)
                     run.done.append(label)
+                    run.done.append(contentsOf: notes)
+                    troubled = troubled || !notes.isEmpty
                 case .remove(let removal):
+                    needsLook = true
                     let label = "\(title(removal.region)): removed"
-                    try await redraw(try region(removal.region),
+                    _ = try await redraw(try region(removal.region),
                                      prompt: "Remove the selected object and fill the area naturally from its surroundings",
-                                     label: label, kind: .remove, events: events)
+                                     label: label, kind: .remove, redraws: &redraws, events: events)
                     run.done.append(label)
                 case .crop(let crop):
                     let layer = Layer(label: "Photo: cropped", content: .crop(crop.rect))
@@ -290,6 +297,7 @@ public actor EditAgent {
                     let started = Date()
                     try await host.remove(layer.id)
                     layers.removeAll { $0.id == layer.id }
+                    redraws = redraws.filter { $0.value != layer.id }
                     run.done.append("Reverted \(layer.info.label)")
                     events.yield(.reverted(layer.id))
                     events.yield(.trace(TraceEvent(kind: .revert, detail: "Reverted \(layer.info.label) (\(layer.info.id))",
@@ -300,6 +308,7 @@ public actor EditAgent {
                         note(.plan, "Not finishing yet: a step didn't work, so the result is checked first.", events: events)
                         return nil
                     }
+                    if needsLook { return nil }
                     return finish.reason
                 }
             } catch {
@@ -356,7 +365,9 @@ public actor EditAgent {
                       mask: mask, asset: asset)
     }
 
-    private func redraw(_ region: Region, prompt: String, label: String, kind: TraceEvent.Kind, events: Events) async throws {
+    private func redraw(_ region: Region, prompt: String, label: String, kind: TraceEvent.Kind,
+                        redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+        try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
         let expanded = NormalizedRect(x: box.x - box.width * 0.15, y: box.y - box.height * 0.15,
                                       width: box.width * 1.3, height: box.height * 1.3)
@@ -366,21 +377,94 @@ public actor EditAgent {
         // SAM's edge sits right on the object, so a sliver of its old colour would ring the redrawn one; the redraw
         // shows a little past it, where the generator redrew the boundary too.
         let edge = max(2, Int((Double(min(image.size.width, image.size.height)) * 0.012).rounded()))
-        let mask = region.mask.cropped(to: rect).resized(to: image.size).grown(by: edge)
+        let original = region.mask.cropped(to: rect).resized(to: image.size)
+        var mask = original.grown(by: edge)
         let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
-        let generated = try await call(kind, model: generator.modelID, detail: prompt, events: events) {
-            try await self.generator.generate(request)
+        let concept = kind == .regenerate ? region.info.concept : nil
+        var attempt = try await redrawAttempt(request, original: original, concept: concept,
+                                              region: region.info.id, kind: kind, events: events)
+        var notes: [String] = []
+        if let overlap = attempt.overlap, overlap < 0.5 {
+            do {
+                let retry = try await redrawAttempt(request, original: original, concept: concept,
+                                                    region: region.info.id, kind: kind, events: events)
+                if let detail = retry.note { notes.append(detail) }
+                if let nextOverlap = retry.overlap, nextOverlap > overlap { attempt = retry }
+            } catch {
+                let error = cancellationError(error)
+                if error as? LumenError == .cancelled { throw error }
+                notes.append("Could not retry the redraw of \(region.info.id): \(error.localizedDescription)")
+            }
         }
+        if let detail = attempt.note { notes.append(detail) }
+        if let overlap = attempt.overlap {
+            if overlap >= 0.5, let object = attempt.object {
+                mask = mask.union(object.grown(by: edge))
+            } else {
+                let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
+                notes.append("The redraw moved or resized the \(region.info.id) (overlap \(value)).")
+            }
+        }
+        for detail in notes { note(kind, detail, events: events) }
+        let generated = attempt.image
         let imageAsset = await assets.put(.image(generated))
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
             let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect))
             try await apply(layer, kind: kind.rawValue, region: region.info.id, events: events)
+            redraws[region.info.id] = layer.id
         } catch {
             await assets.remove(imageAsset)
             await assets.remove(maskAsset)
             throw error
         }
+        return notes
+    }
+
+    private struct RedrawAttempt {
+        var image: EncodedImage
+        var object: MaskData?
+        var overlap: Double?
+        var note: String?
+    }
+
+    private func redrawAttempt(_ request: GenerateRequest, original: MaskData, concept: String?, region: String,
+                               kind: TraceEvent.Kind, events: Events) async throws -> RedrawAttempt {
+        let image = try await call(kind, model: generator.modelID, detail: request.prompt, events: events) {
+            try await self.generator.generate(request)
+        }
+        guard let concept else { return RedrawAttempt(image: image) }
+        do {
+            let request = SegmentRequest(image: image, concept: concept)
+            let segments = try await call(.select, model: segmenter.modelID,
+                                          detail: "Check the redraw of \(region)", events: events) {
+                try await self.segmenter.segment(request)
+            }
+            let matches = segments.map { segment in
+                let mask = segment.mask.resized(to: original.size)
+                return (mask: mask, overlap: original.intersectionOverUnion(mask))
+            }.filter { $0.mask.boundingBox != nil }
+            guard let best = matches.max(by: { $0.overlap < $1.overlap }) else {
+                return RedrawAttempt(image: image, note: "Could not check the redraw of \(region): nothing found for “\(concept)”.")
+            }
+            return RedrawAttempt(image: image, object: best.mask, overlap: best.overlap)
+        } catch {
+            let error = cancellationError(error)
+            if error as? LumenError == .cancelled { throw error }
+            return RedrawAttempt(image: image, note: "Could not check the redraw of \(region): \(error.localizedDescription)")
+        }
+    }
+
+    private func replaceRedraw(of region: String, redraws: inout [String: Layer.ID], events: Events) async throws {
+        guard let id = redraws[region], let layer = layers.first(where: { $0.id == id }) else { return }
+        let started = Date()
+        try await host.remove(id)
+        layers.removeAll { $0.id == id }
+        redraws[region] = nil
+        events.yield(.reverted(id))
+        events.yield(.trace(TraceEvent(kind: .revert, detail: "Reverted \(layer.info.label) (\(layer.info.id))",
+                                       started: started, duration: max(0, Date().timeIntervalSince(started)))))
+        try checkCancellation()
     }
 
     private func apply(_ layer: Layer, kind: String, region: String? = nil, events: Events) async throws {

@@ -17,7 +17,13 @@ public struct MetaGenerator: Generator {
 
     public func generate(_ request: GenerateRequest) async throws -> EncodedImage {
         do {
-            let png = try PhotoPNG.encode(request.image.data, size: request.image.size)
+            var inputSize = request.image.size
+            if inputSize.width > 0, inputSize.height > 0, inputSize.longEdge < 1024 {
+                let scale = 1024.0 / Double(inputSize.longEdge)
+                inputSize = PixelSize(width: max(1, Int((Double(inputSize.width) * scale).rounded())),
+                                      height: max(1, Int((Double(inputSize.height) * scale).rounded())))
+            }
+            let png = try PhotoPNG.encode(request.image.data, size: inputSize)
             let call = try MetaHTTP.request(baseURL: configuration.baseURL, path: "images/edits", key: configuration.apiKey,
                                             timeout: configuration.timeout, body: [
                 "model": modelID, "prompt": request.prompt, "images": [["image_url": png.dataURL]],

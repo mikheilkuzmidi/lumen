@@ -23,8 +23,8 @@ struct EditTests {
         #expect(result.failure == nil)
         #expect(result.exported)
         #expect(result.stepsApplied == 1)
-        #expect(result.modelCalls == 4)
-        #expect(result.events.map(\.kind) == [.plan, .select, .regenerate, .critique, .finish])
+        #expect(result.modelCalls == 5)
+        #expect(result.events.map(\.kind) == [.plan, .select, .regenerate, .select, .critique, .finish])
         #expect(try Data(contentsOf: photo) == original.data)
         #expect(PhotoFixtures.size(of: output) == original.size)
         #expect(try Data(contentsOf: output).starts(with: [137, 80, 78, 71]))
@@ -32,8 +32,8 @@ struct EditTests {
         #expect(await planner.requests.first?.area == options.area)
         #expect(lines.lines.map { $0.replacingOccurrences(of: #"\d+\.\d s"#, with: "<time>", options: .regularExpression) } == [
             "Plan: Make the coat navy.",
-            "→ select coat (SAM 3.1, <time>): 1 region, 18% of the photo",
-            "→ redraw coat (Muse Image, <time>)",
+            "→ select coat (SAM 3.1, <time>): 1 region, 40% of the photo",
+            "→ redraw coat (Muse Image, <time>; checked by SAM 3.1, <time>)",
             "Critique: satisfied: The coat is navy.",
             "Finished: The coat is navy.",
         ])
@@ -43,7 +43,7 @@ struct EditTests {
         #expect(object["instruction"] as? String == "Make the coat navy")
         #expect(object["backend"] as? String == "meta")
         #expect(object["modelIDs"] as? [String: String] == ["planner": "muse-spark-1.3", "segmenter": "sam-3.1", "generator": "muse-image-1.0"])
-        #expect((object["events"] as? [[String: Any]])?.count == 5)
+        #expect((object["events"] as? [[String: Any]])?.count == 6)
         #expect((object["plans"] as? [[String: Any]])?.count == 1)
         #expect(object["layerLabels"] as? [String] == ["Coat: redrawn as A navy coat"])
         #expect((object["totalTime"] as? Double ?? -1) >= 0)
@@ -68,7 +68,7 @@ struct EditTests {
         #expect(result.revisions == 1)
         #expect(result.stepsApplied == 2)
         #expect(result.verdict == "Satisfied")
-        #expect(result.modelCalls == 5)
+        #expect(result.modelCalls == 6)
     }
 
     @Test func eventLinesUseMeasuredTimesAndKeepEachEventOnOneLine() {

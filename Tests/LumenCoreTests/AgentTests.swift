@@ -163,7 +163,13 @@ struct AgentTests {
             .finish(Finish(reason: "The coat is ready.")),
         ])
         let planner = AgentPlanner(plan: plan)
-        let segmenter = AgentSegmenter(segments: [segment()])
+        // SAM's check finds the redrawn coat where the old one was.
+        let box = try #require(segment().mask.boundingBox)
+        let crop = NormalizedRect(x: box.x - box.width * 0.15, y: box.y - box.height * 0.15,
+                                  width: box.width * 1.3, height: box.height * 1.3)
+        let redrawn = segment().mask.cropped(to: crop).resized(to: AgentGenerator.image.size)
+        let segmenter = AgentSegmenter(segments: [segment()],
+                                       answers: [[segment()], [Segment(label: "coat", box: .whole, mask: redrawn)]])
         let generator = AgentGenerator()
         let host = AgentHost()
         let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host,
@@ -209,8 +215,9 @@ struct AgentTests {
         #expect(events.reasons == ["Done."])
         #expect(await planner.critiques.count == 1)
         let calls = events.traces.filter { $0.model != nil }
-        #expect(calls.map(\.kind) == [.plan, .select, .regenerate, .critique])
-        #expect(calls.map(\.model) == ["muse-spark-1.3", "sam-3.1", "muse-image-1.0", "muse-spark-1.3"])
+        // SAM looks at the redraw too, to check the coat kept its place and size.
+        #expect(calls.map(\.kind) == [.plan, .select, .regenerate, .select, .critique])
+        #expect(calls.map(\.model) == ["muse-spark-1.3", "sam-3.1", "muse-image-1.0", "sam-3.1", "muse-spark-1.3"])
         #expect(calls.allSatisfy { !$0.detail.isEmpty && $0.duration >= 0 && $0.started <= Date() })
     }
 

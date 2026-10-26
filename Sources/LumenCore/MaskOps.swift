@@ -1,6 +1,18 @@
 import Foundation
 
 extension MaskData {
+    /// Measures shared coverage against combined coverage at this mask's size; empty masks overlap by zero.
+    public func intersectionOverUnion(_ other: MaskData) -> Double {
+        let other = other.size == size ? other : other.resized(to: size)
+        var intersection = 0.0
+        var union = 0.0
+        for (first, second) in zip(coverage, other.coverage) {
+            intersection += Double(min(first, second))
+            union += Double(max(first, second))
+        }
+        return union > 0 ? intersection / union : 0
+    }
+
     /// The smallest rectangle containing every pixel with coverage.
     public var boundingBox: NormalizedRect? {
         guard size.width > 0, size.height > 0 else { return nil }

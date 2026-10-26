@@ -14,21 +14,22 @@ struct ConsoleOutput: Sendable {
 /// Pairs model timings with the plan, region or layer they describe.
 struct EventLines {
     private var step: EditStep?
-    private var timing: TraceEvent?
+    /// The step's model calls by stage; a redraw has its own call and SAM's check of it.
+    private var timings: [TraceEvent.Kind: TraceEvent] = [:]
 
     mutating func accept(_ event: AgentEvent) -> String? {
         switch event {
         case .planned(let plan): return "Plan: \(oneLine(plan.summary))"
         case .stepStarted(_, let next):
             step = next
-            timing = nil
+            timings = [:]
             return nil
         case .selected(let region, let segment):
-            return "→ select \(oneLine(region))\(stage()): 1 region, \(Int((segment.mask.area * 100).rounded()))% of the photo"
+            return "→ select \(oneLine(region))\(stage(.select)): 1 region, \(Int((segment.mask.area * 100).rounded()))% of the photo"
         case .applied(let layer):
             switch step {
-            case .regenerate(let redraw): return "→ redraw \(oneLine(redraw.region))\(stage())"
-            case .remove(let removal): return "→ remove \(oneLine(removal.region))\(stage())"
+            case .regenerate(let redraw): return "→ redraw \(oneLine(redraw.region))\(stage(.regenerate, checked: true))"
+            case .remove(let removal): return "→ remove \(oneLine(removal.region))\(stage(.remove))"
             default: return "→ \(step?.type ?? "apply"): \(oneLine(layer.label))"
             }
         case .reverted:
@@ -39,21 +40,26 @@ struct EventLines {
         case .finished(let reason): return "Finished: \(oneLine(reason))"
         case .trace(let trace):
             if trace.model != nil {
-                timing = trace
+                timings[trace.kind] = trace
                 return nil
             }
             switch trace.kind {
             case .failure: return "Failed: \(oneLine(trace.detail))"
             case .plan: return "Plan: \(oneLine(trace.detail))"
-            case .select: return "→ select\(stage()): \(oneLine(trace.detail))"
+            case .select: return "→ select\(stage(.select)): \(oneLine(trace.detail))"
             default: return nil
             }
         }
     }
 
-    private func stage() -> String {
-        guard let timing, let model = timing.model else { return "" }
-        return " (\(modelName(model)), \(seconds(timing.duration)))"
+    /// The model and time of one stage of the step; a checked redraw adds SAM's look at it.
+    private func stage(_ kind: TraceEvent.Kind, checked: Bool = false) -> String {
+        guard let timing = timings[kind], let model = timing.model else { return "" }
+        var text = "\(modelName(model)), \(seconds(timing.duration))"
+        if checked, let check = timings[.select], let checker = check.model {
+            text += "; checked by \(modelName(checker)), \(seconds(check.duration))"
+        }
+        return " (\(text))"
     }
 
     private func modelName(_ id: String) -> String {

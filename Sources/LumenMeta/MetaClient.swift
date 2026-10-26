@@ -92,9 +92,10 @@ public struct MetaPlanner: Planner {
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
     either way for a visible but natural change.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and
-    asks to keep its shape, folds, shadows and the scene's light. To improve a redraw, regenerate the same
-    region again with a better prompt; remove is only for taking something out of the photo, never for
-    changing how it looks.
+    asks to keep its shape, folds, shadows and the scene's light. To fix a redraw that went wrong,
+    regenerate the same region id again with a better prompt, because Lumen replaces the earlier redraw
+    from this run. Do not select the object again for that. Remove is only for taking something out of
+    the photo, never for changing how it looks.
     Return only the JSON described by the supplied schema.
     """
     static let planPrompt = editingRules + "\nPlan the fewest steps needed to meet the instruction in the supplied photo."

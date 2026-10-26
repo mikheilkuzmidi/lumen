@@ -1,2 +1,440 @@
+import CoreGraphics
+import CoreImage
+import Foundation
+import ImageIO
+import LumenCore
 import Testing
+import UniformTypeIdentifiers
 @testable import LumenRender
+
+@Suite(.enabled(if: Rendering.isAvailable, "Core Image rendering is unavailable on this host."))
+struct PhotoPixelTests {
+    @Test(arguments: [UTType.png, .jpeg, .heic])
+    func loadsPhotosWithOrientation(type: UTType) async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let url = try folder.photo(width: 80, height: 48, type: type, orientation: 6) { x, _ in
+            x < 40 ? RGB(220, 30, 20) : RGB(20, 40, 220)
+        }
+        let document = try PhotoDocument(contentsOf: url)
+        #expect(await document.size() == PixelSize(width: 48, height: 80))
+        let rendered = try await document.render(maxLongEdge: 200)
+        let pixels = try Pixels(data: rendered.data)
+        #expect(rendered.format == .jpeg)
+        #expect(rendered.size == PixelSize(width: 48, height: 80))
+        #expect(pixels[24, 15].red > 0.7)
+        #expect(pixels[24, 65].blue > 0.7)
+    }
+
+    @Test
+    func exposureDoublesLinearLight() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(90, 90, 90) })
+        let before = try await folder.pixels(document)
+        try await document.apply(Layer(label: "Exposure", content: .adjustment(values: [.exposure: 1], mask: nil)),
+                                 assets: AssetStore())
+        let after = try await folder.pixels(document)
+        let ratio = linear(after[64, 48].red) / linear(before[64, 48].red)
+        #expect(abs(ratio - 2) < 0.06)
+    }
+
+    @Test
+    func maskUsesTopRowsAndLeavesOutsidePixelsUnchanged() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(90, 90, 90) })
+        let assets = AssetStore()
+        let mask = MaskData(size: PixelSize(width: 16, height: 12),
+                            coverage: (0..<192).map { $0 / 16 < 6 && $0 % 16 < 8 ? 255 : 0 })
+        let id = await assets.put(.mask(mask))
+        let before = try await folder.pixels(document)
+        try await document.apply(Layer(label: "Top left", content: .adjustment(values: [.exposure: 1], mask: id)), assets: assets)
+        let after = try await folder.pixels(document)
+        #expect(after[20, 20].red > before[20, 20].red + 0.1)
+        #expect(abs(after[20, 75].red - before[20, 75].red) <= 1.0 / 255)
+        for y in 0..<after.height {
+            for x in 68..<after.width {
+                #expect(after[x, y].distance(to: before[x, y]) <= 1.0 / 255)
+            }
+        }
+    }
+
+    @Test
+    func layerControlsPreserveTheOriginalAndCachedAssets() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, y in RGB(UInt8(40 + x), UInt8(60 + y), 90) })
+        let original = try await document.render(maxLongEdge: 128)
+        let layer = Layer(label: "Exposure", content: .adjustment(values: [.exposure: 1], mask: nil))
+        try await document.apply(layer, assets: AssetStore())
+        await document.setEnabled(false, for: layer.id)
+        #expect(try await document.render(maxLongEdge: 128) == original)
+        await document.setEnabled(true, for: layer.id)
+        await document.setOpacity(0, for: layer.id)
+        #expect(try await document.render(maxLongEdge: 128) == original)
+        await document.setOpacity(0.5, for: layer.id)
+        let half = try await folder.pixels(document)
+        await document.setOpacity(1, for: layer.id)
+        let full = try await folder.pixels(document)
+        #expect(half[30, 30].red < full[30, 30].red)
+        #expect(await document.layers.count == 1)
+        try await document.remove(layer.id)
+        #expect(await document.layers.isEmpty)
+        #expect(try await document.render(maxLongEdge: 128) == original)
+    }
+
+    @Test
+    func cachedMasksSurviveAssetRemovalAndLayerReplacement() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(90, 90, 90) })
+        let original = try await folder.pixels(document)
+        let assets = AssetStore()
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 2, height: 2), filledWith: 255)))
+        var layer = Layer(label: "Exposure", content: .adjustment(values: [.exposure: 1], mask: maskID))
+        try await document.apply(layer, assets: assets)
+        await assets.remove(maskID)
+        let cached = try await folder.pixels(document)
+        #expect(cached[64, 48].red > original[64, 48].red)
+        layer.content = .adjustment(values: [.exposure: -1], mask: nil)
+        try await document.apply(layer, assets: assets)
+        #expect(await document.layers.count == 1)
+        let replaced = try await folder.pixels(document)
+        #expect(replaced[64, 48].red < original[64, 48].red)
+    }
+
+    @Test
+    func patchLandsInItsRectAndMatchesSurroundingLight() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 120, 140) })
+        let before = try await folder.pixels(document)
+        let assets = AssetStore()
+        let patchURL = try folder.photo(width: 32, height: 24) { _, _ in RGB(220, 170, 120) }
+        let patch = EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 32, height: 24))
+        let imageID = await assets.put(.image(patch))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), filledWith: 255)))
+        let layer = Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
+                                                         rect: NormalizedRect(x: 0.25, y: 0.125, width: 0.5, height: 0.5)))
+        try await document.apply(layer, assets: assets)
+        await assets.remove(imageID)
+        await assets.remove(maskID)
+        let after = try await folder.pixels(document)
+        let generated = try Pixels(data: patch.data)[16, 12]
+        let surrounding = before[64, 36]
+        let matched = after[64, 36]
+        #expect(matched.distance(to: surrounding) < generated.distance(to: surrounding) * 0.8)
+        #expect(matched.distance(to: surrounding) > 0.03)
+        #expect(after[64, 20].distance(to: surrounding) > 0.03)
+        #expect(after[64, 75].distance(to: before[64, 75]) <= 1.0 / 255)
+        #expect(after[15, 36].distance(to: before[15, 36]) <= 1.0 / 255)
+        #expect(after[32, 36].distance(to: surrounding) < matched.distance(to: surrounding))
+    }
+
+    @Test
+    func patchHonoursThePhotoMask() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(80, 80, 80) })
+        let before = try await folder.pixels(document)
+        let assets = AssetStore()
+        let patchURL = try folder.photo(width: 64, height: 48) { _, _ in RGB(200, 180, 160) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 64, height: 48))))
+        let coverage = (0..<(128 * 96)).map { index -> UInt8 in
+            let x = index % 128
+            let y = index / 128
+            return x >= 40 && x < 64 && y >= 24 && y < 72 ? 255 : 0
+        }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), coverage: coverage)))
+        try await document.apply(Layer(label: "Patch", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let after = try await folder.pixels(document)
+        #expect(after[50, 40].red > before[50, 40].red + 0.05)
+        #expect(after[80, 40].distance(to: before[80, 40]) <= 1.0 / 255)
+    }
+
+    @Test
+    func patchSpreadMovesTowardTheSurroundings() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 110, 120) })
+        let patchURL = try folder.photo(width: 64, height: 48) { x, _ in
+            x < 32 ? RGB(120, 120, 120) : RGB(200, 200, 200)
+        }
+        let assets = AssetStore()
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 64, height: 48))))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 128, height: 96), filledWith: 255)))
+        try await document.apply(Layer(label: "Patch", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let matched = try await folder.pixels(document)
+        let spread = linear(matched[84, 48].red) - linear(matched[44, 48].red)
+        let originalSpread = linear(200.0 / 255) - linear(120.0 / 255)
+        #expect(spread > originalSpread * 0.4)
+        #expect(spread < originalSpread * 0.85)
+    }
+
+    @Test(arguments: [AdjustmentKey.highlights, .shadows, .whites, .blacks])
+    func positiveTonalSettingsLiftTheirRange(key: AdjustmentKey) async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in
+            x < 64 ? RGB(60, 60, 60) : RGB(210, 210, 210)
+        })
+        let original = try await folder.pixels(document)
+        var layer = Layer(label: "Tone", content: .adjustment(values: [key: 50], mask: nil))
+        try await document.apply(layer, assets: AssetStore())
+        let lifted = try await folder.pixels(document)
+        layer.content = .adjustment(values: [key: -50], mask: nil)
+        try await document.apply(layer, assets: AssetStore())
+        let lowered = try await folder.pixels(document)
+        let x = key == .shadows || key == .blacks ? 30 : 100
+        #expect(lifted[x, 48].red > original[x, 48].red + 0.01)
+        #expect(lowered[x, 48].red < original[x, 48].red - 0.01)
+    }
+
+    @Test
+    func lastEnabledCropWinsWithoutChangingOriginalSize() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 120, 140) })
+        let first = Layer(label: "First crop", content: .crop(NormalizedRect(x: 0, y: 0, width: 0.5, height: 0.5)))
+        let second = Layer(label: "Second crop", content: .crop(NormalizedRect(x: 0.25, y: 0, width: 0.75, height: 1)))
+        try await document.apply(first, assets: AssetStore())
+        try await document.apply(second, assets: AssetStore())
+        #expect(try await document.render(maxLongEdge: 1000).size == PixelSize(width: 96, height: 96))
+        #expect(await document.size() == PixelSize(width: 128, height: 96))
+        await document.setEnabled(false, for: second.id)
+        #expect(try await document.render(maxLongEdge: 1000).size == PixelSize(width: 64, height: 48))
+        await document.setOpacity(0, for: first.id)
+        #expect(try await document.render(maxLongEdge: 1000).size == PixelSize(width: 128, height: 96))
+    }
+
+    @Test
+    func regionUsesFullResolutionAndTopLeftCoordinates() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 320, height: 240) { x, y in
+            x < 160 && y < 120 ? RGB(200, 60, 30) : RGB(30, 60, 200)
+        })
+        #expect(try await document.render(maxLongEdge: 80).size == PixelSize(width: 80, height: 60))
+        let region = NormalizedRect(x: 0, y: 0, width: 0.5, height: 0.5)
+        let full = try await document.render(region: region, maxLongEdge: 1000)
+        #expect(full.size == PixelSize(width: 160, height: 120))
+        #expect(try Pixels(data: full.data)[80, 60].red > 0.7)
+        let capped = try await document.render(region: region, maxLongEdge: 80)
+        #expect(capped.size == PixelSize(width: 80, height: 60))
+        try await document.apply(Layer(label: "Light", content: .adjustment(values: [.exposure: -1], mask: nil)), assets: AssetStore())
+        let adjusted = try await document.render(region: region, maxLongEdge: 1000)
+        #expect(try Pixels(data: adjusted.data)[80, 60].red < Pixels(data: full.data)[80, 60].red - 0.1)
+        try await document.apply(Layer(label: "Crop", content: .crop(region)), assets: AssetStore())
+        let croppedRegion = try await document.render(region: NormalizedRect(x: 0.5, y: 0, width: 0.5, height: 1), maxLongEdge: 1000)
+        #expect(croppedRegion.size == PixelSize(width: 80, height: 120))
+        #expect(try Pixels(data: croppedRegion.data)[40, 60].red > 0.5)
+    }
+
+    @Test(arguments: [EncodedImage.Format.jpeg, .png])
+    func exportReopensInSourceColorSpaceWithAppliedOrientation(format: EncodedImage.Format) async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let url = try folder.photo(width: 80, height: 48, orientation: 6,
+                                   colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!) { _, _ in RGB(180, 80, 40) }
+        let document = try PhotoDocument(contentsOf: url)
+        try await document.apply(Layer(label: "Crop", content: .crop(NormalizedRect(x: 0, y: 0, width: 1, height: 0.5))), assets: AssetStore())
+        let destination = folder.url.appendingPathComponent("export.\(format.rawValue)")
+        try await document.export(to: destination, format: format)
+        let reopened = try PhotoDocument(contentsOf: destination)
+        #expect(await reopened.size() == PixelSize(width: 48, height: 40))
+        let source = try #require(CGImageSourceCreateWithURL(destination as CFURL, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(image.colorSpace?.name == CGColorSpace.displayP3)
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        #expect((properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1 == 1)
+    }
+
+    @Test(arguments: AdjustmentKey.allCases)
+    func everyAdjustmentRenders(key: AdjustmentKey) async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, y in RGB(UInt8(40 + x), UInt8(60 + y), 90) })
+        for value in [key.range.lowerBound, 0, key.range.upperBound] {
+            let layer = Layer(label: key.rawValue, content: .adjustment(values: [key: value], mask: nil))
+            try await document.apply(layer, assets: AssetStore())
+            let rendered = try await document.render(maxLongEdge: 64)
+            #expect(rendered.size == PixelSize(width: 64, height: 48))
+            #expect(try Pixels(data: rendered.data).width == 64)
+            try await document.remove(layer.id)
+        }
+    }
+}
+
+@Test(arguments: [1, 2, 3, 4, 5, 6, 7, 8], [UTType.png, .jpeg])
+func loadingUsesOrientedDimensions(orientation: Int, type: UTType) async throws {
+    let folder = try PhotoFolder()
+    defer { folder.remove() }
+    let url = try folder.photo(width: 80, height: 48, type: type, orientation: orientation) { _, _ in RGB(100, 120, 140) }
+    let document = try PhotoDocument(contentsOf: url)
+    let size = orientation >= 5 ? PixelSize(width: 48, height: 80) : PixelSize(width: 80, height: 48)
+    #expect(await document.size() == size)
+}
+
+@Test
+func layerStateKeepsOrderAndClampsOpacity() async throws {
+    let folder = try PhotoFolder()
+    defer { folder.remove() }
+    let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(100, 120, 140) })
+    let assets = AssetStore()
+    let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 4, height: 3), filledWith: 255)))
+    var first = Layer(label: "Light", content: .adjustment(values: [.exposure: 1], mask: maskID))
+    let second = Layer(label: "Crop", content: .crop(.whole), opacity: 2)
+    try await document.apply(first, assets: assets)
+    try await document.apply(second, assets: assets)
+    await assets.remove(maskID)
+    await document.setEnabled(false, for: first.id)
+    await document.setOpacity(-1, for: first.id)
+    var layers = await document.layers
+    #expect(layers.map(\.id) == [first.id, second.id])
+    #expect(layers[0].isEnabled == false)
+    #expect(layers[0].opacity == 0)
+    #expect(layers[1].opacity == 1)
+    first.label = "Updated light"
+    first.content = .adjustment(values: [.exposure: -1], mask: nil)
+    try await document.apply(first, assets: assets)
+    layers = await document.layers
+    #expect(layers.count == 2)
+    #expect(layers[0].label == "Updated light")
+    await document.setOpacity(.nan, for: first.id)
+    #expect(await document.layers[0].opacity == 0)
+    try await document.remove(first.id)
+    try await document.remove(first.id)
+    #expect(await document.layers.map(\.id) == [second.id])
+}
+
+@Test
+func missingAndUnreadablePhotosFail() throws {
+    let folder = try PhotoFolder()
+    defer { folder.remove() }
+    #expect(throws: LumenError.self) { try PhotoDocument(contentsOf: folder.url.appendingPathComponent("missing.png")) }
+    let url = folder.url.appendingPathComponent("broken.png")
+    try Data("not a photo".utf8).write(to: url)
+    #expect(throws: LumenError.self) { try PhotoDocument(contentsOf: url) }
+}
+
+@Test
+func invalidAssetsAndRegionsDoNotChangeTheStack() async throws {
+    let folder = try PhotoFolder()
+    defer { folder.remove() }
+    let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(90, 90, 90) })
+    let layer = Layer(label: "Missing", content: .adjustment(values: [.exposure: 1], mask: AssetID()))
+    await #expect(throws: LumenError.self) { try await document.apply(layer, assets: AssetStore()) }
+    #expect(await document.layers.isEmpty)
+    await #expect(throws: LumenError.self) { try await document.render(maxLongEdge: 0) }
+    await #expect(throws: LumenError.self) {
+        try await document.render(region: NormalizedRect(x: 2, y: 0, width: 1, height: 1), maxLongEdge: 128)
+    }
+    await #expect(throws: LumenError.self) {
+        try await document.render(region: NormalizedRect(x: .nan, y: 0, width: 1, height: 1), maxLongEdge: 128)
+    }
+    await #expect(throws: LumenError.self) {
+        try await document.apply(Layer(label: "Empty crop", content: .crop(NormalizedRect(x: 0, y: 0, width: 0, height: 1))), assets: AssetStore())
+    }
+    #expect(await document.layers.isEmpty)
+}
+
+private enum Rendering {
+    static let isAvailable: Bool = {
+        let image = CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return CIContext().createCGImage(image, from: image.extent) != nil
+    }()
+}
+
+private struct PhotoFolder {
+    let url: URL
+
+    init() throws {
+        url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    func remove() { try? FileManager.default.removeItem(at: url) }
+
+    func photo(width: Int = 128, height: Int = 96, type: UTType = .png, orientation: Int = 1,
+               colorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!,
+               pixel: (Int, Int) -> RGB) throws -> URL {
+        var bytes = [UInt8]()
+        for y in 0..<height {
+            for x in 0..<width {
+                let value = pixel(x, y)
+                bytes.append(contentsOf: [UInt8((value.red * 255).rounded()), UInt8((value.green * 255).rounded()),
+                                          UInt8((value.blue * 255).rounded()), 255])
+            }
+        }
+        let provider = try #require(CGDataProvider(data: Data(bytes) as CFData))
+        let image = try #require(CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                        bytesPerRow: width * 4, space: colorSpace,
+                                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let destinationURL = url.appendingPathComponent(UUID().uuidString).appendingPathExtension(type.preferredFilenameExtension ?? "png")
+        let destination = try #require(CGImageDestinationCreateWithURL(destinationURL as CFURL, type.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: orientation,
+                                                       kCGImageDestinationLossyCompressionQuality: 1] as CFDictionary)
+        #expect(CGImageDestinationFinalize(destination))
+        return destinationURL
+    }
+
+    func pixels(_ document: PhotoDocument) async throws -> Pixels {
+        let destination = url.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
+        try await document.export(to: destination, format: .png)
+        return try Pixels(data: Data(contentsOf: destination))
+    }
+}
+
+private struct RGB {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    init(_ red: UInt8, _ green: UInt8, _ blue: UInt8) {
+        self.red = Double(red) / 255
+        self.green = Double(green) / 255
+        self.blue = Double(blue) / 255
+    }
+
+    func distance(to other: RGB) -> Double {
+        max(abs(red - other.red), abs(green - other.green), abs(blue - other.blue))
+    }
+}
+
+private struct Pixels {
+    var width: Int
+    var height: Int
+    var bytes: [UInt8]
+
+    init(data: Data) throws {
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        width = image.width
+        height = image.height
+        bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let width = width
+        let height = height
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try #require(CGContext(data: buffer.baseAddress, width: width, height: height,
+                                                 bitsPerComponent: 8, bytesPerRow: width * 4,
+                                                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    subscript(x: Int, y: Int) -> RGB {
+        let index = (y * width + x) * 4
+        return RGB(bytes[index], bytes[index + 1], bytes[index + 2])
+    }
+}
+
+private func linear(_ value: Double) -> Double {
+    value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+}

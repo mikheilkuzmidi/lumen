@@ -25,6 +25,45 @@ Progress prints the plan summary, completed selections and changes with model ti
 
 Missing keys, unavailable backends and other failures exit nonzero with the error message. Step failures retained by the agent also make the command exit nonzero, even when later steps succeed. Completed layers can still be exported after a model failure. Ctrl-C cancels the active edit and stops an evaluation before its next case. When possible, an interrupted edit still writes its trace.
 
+## Edit a folder
+
+```sh
+lumen batch Fixtures/library "Make everyone's shirts blue" --out results/library
+lumen batch Fixtures/library "Make everyone's shirts blue" --out results/library \
+  --mode plan --straighten yes --max-calls 150
+lumen batch Fixtures/library --out results/library --mode autonomous --concurrency 3
+```
+
+`lumen batch <folder> ["instruction"] --out <folder>` reviews the library with Muse Spark, flags misfires, applies automatic tone and colour, and offers to straighten tilted horizons. Low-quality photos get a closer look from their own editing agent. When an instruction is supplied, the library reviewer groups the matching photos and writes each group's edit. Each photo's changes remain separate layers. JPEG, PNG and HEIC files directly inside the folder are included; HEIC exports use `.jpg`. The output folder is created as needed and must be separate from the originals.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--mode autonomous\|ask\|plan` | `ask` | `autonomous` takes recommendations without prompting. `ask` pauses for personal choices. `plan` reviews and asks, then shows the plan and estimated remaining model calls before changing photos. |
+| `--no-auto` | Auto enabled | Skip automatic tone and colour. |
+| `--straighten yes\|no\|ask` | `ask` | Straighten tilted horizons, leave them, or ask once for the library. |
+| `--no-flag` | Flag misfires | Include misfires in the editing pass. Flagging normally leaves them out of edits and contact sheets. |
+| `--quality 0...1` | `0.5` | Photos reviewed below this quality get an individual improvement pass. |
+| `--concurrency N` | `3` | Maximum photos edited at once; must be positive. |
+| `--max-calls N` | No limit | Whole-batch model call budget, including review and failed calls. Zero skips models. Edits that cannot fit the remaining reservation are listed as skipped. |
+| `--answers file.json` | No file | Question ids mapped to exact option text, used without reading stdin. Invalid option text stops the batch. |
+| `--yes` | Ask for approval | Approve a plan automatically; personal-choice questions still follow the mode and answer file. |
+| `--backend meta\|glimmer\|spark-open` | `meta` | Per-photo planner and critic. Library review and group planning always use Muse Spark through `MetaBatchPlanner` and require `META_API_KEY`. |
+
+Questions print numbered options with the recommendation marked. Enter accepts it. When stdin is not a terminal, unanswered questions take their recommendations and print that choice. Answers from stdin or a file are recorded as the person's choices; automatic recommendations are recorded separately. For example, a file can contain `{"straighten":"Leave them"}`. Other question ids and option text appear during planning.
+
+In plan mode, `Go ahead? [y/N]` requires `y` or `yes`, including when stdin is redirected. An empty answer, end of input or any other reply declines the plan and exits nonzero without changing photos. Use `--yes` for unattended approval. The estimate is approximate; selections, redraws and revisions determine the actual call count.
+
+Progress reports found and measured counts, compact photo reviews, flags, automatic adjustments, straightening, group plans, named per-photo editing events and a completion counter. Measurements do not print a line per photo.
+
+The output folder contains:
+
+- Exported photos and `<exported name>.lumen.json` sidecars, including unchanged photos and flags. Originals stay untouched.
+- `batch-summary.md`: every photo's flag, auto adjustment, straightening, instruction and outcome, followed by questions, answers and their source (`stdin`, `answers file` or `recommendation`).
+- `batch-trace.json`: the shared `BatchSummary`, including per-photo results, answers, model calls and duration in seconds. Each answer's `byPerson` distinguishes personal choices from automatic recommendations.
+- `contact-before.jpg` and `contact-after.jpg`: matching grids of all unflagged photos in library order, labelled with filenames. An unreadable photo retains a named empty cell. An all-flagged or empty library produces an empty sheet.
+
+A completed batch exits zero even if individual photos fail; failures and budget skips appear in the report. A batch-level failure, declined plan or cancellation exits nonzero. Ctrl-C cancels active model calls and stdin prompts. A failed or cancelled batch may leave photos already exported; final reports and sheets are written only after the agent completes. Reserved report filenames cannot overlap exported photo names or inputs.
+
 ## Evaluation
 
 ```sh

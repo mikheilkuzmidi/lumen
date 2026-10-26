@@ -7,7 +7,7 @@ import LumenCore
 struct Lumen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Edit a photo by describing the change.",
-        subcommands: [Edit.self, Evaluate.self]
+        subcommands: [Edit.self, Evaluate.self, Batch.self]
     )
 }
 

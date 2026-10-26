@@ -57,3 +57,13 @@ Source: [edit image](https://dev.meta.ai/docs/api-reference/images/edit-image).
 - HTTP 402: the account has no credit.
 - HTTP 429: rate limited; honour `retry-after`.
 - A refusal comes back as a refusal content part or a refusal event in a stream.
+
+## Measured on October 26, 2026
+
+One run each on CC0 fixtures, with the user's own key. These are single measurements, not benchmarks.
+
+- **Muse Spark, a plan (one image, strict schema):** HTTP 200 in 6.2–7.7 s. It used about 1,000 reasoning tokens out of 1,144 completion tokens; the answer followed the schema exactly.
+- **Muse Spark, a critique (before and after):** 8.0 s.
+- **SAM 3.1, "jacket" on 512 × 768 and on 854 × 1280 photos:** HTTP 200 in 1.5–2.9 s. One record with confidence 0.79–0.82. The mask raster had exactly the box's size (for example 463 × 241 for a 241 × 463 box), lossless encoding.
+- **Muse Image, redrawing a 0.62 × 0.78 crop of the photo:** 10.4–23.9 s.
+- **A complete edit ("Make his jacket bright yellow"):** plan, select, redraw and check took 27 s.

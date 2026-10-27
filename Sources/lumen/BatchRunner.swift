@@ -29,8 +29,8 @@ enum BatchRunner {
                     case .answered(var answer):
                         if let choice = choices[answer.question.id] { answer.byPerson = choice.byPerson }
                         for text in lines.accept(.answered(answer)) { line(text) }
-                    case .awaitingApproval(_, let estimate):
-                        line("Estimate: \(estimate) more model calls; actual calls depend on each edit.")
+                    case .awaitingApproval(let plan, let estimate):
+                        line("Estimate: About \(estimate) more model calls" + (plan.estimatedCost.map { ", about " + dollars($0, estimated: true) + " USD" } ?? "") + "; actual cost and calls depend on each edit.")
                         if !approve {
                             let accepted = try await input.approve(line: line)
                             if !accepted {

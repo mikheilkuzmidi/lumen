@@ -3,7 +3,8 @@ import LumenCore
 import LumenMeta
 
 /// Muse Spark Open on a hosting provider's OpenAI-compatible endpoint (Baseten or Modal).
-public struct HostedSparkOpenPlanner: Planner {
+public struct HostedSparkOpenPlanner: Planner, PhotoCostEstimating {
+    public var estimatedCostPerPhoto: Double { MetaPricing.photoCost(includingPlanning: false) }
     public var endpoint: URL
     public var apiKey: String
     public var modelID: String
@@ -53,7 +54,7 @@ public struct HostedSparkOpenPlanner: Planner {
     }
 
     private var planner: MetaPlanner {
-        MetaPlanner(configuration: MetaConfiguration(apiKey: apiKey, baseURL: endpoint, planningModel: modelID), transport: transport)
+        MetaPlanner(configuration: MetaConfiguration(apiKey: apiKey, baseURL: endpoint, planningModel: modelID, recordsCost: false), transport: transport)
     }
 
     public func plan(_ request: PlanRequest) async throws -> EditPlan { try await planner.plan(request) }
@@ -61,7 +62,8 @@ public struct HostedSparkOpenPlanner: Planner {
 }
 
 /// Muse Glimmer running on this Mac.
-public struct LocalGlimmerPlanner: Planner {
+public struct LocalGlimmerPlanner: Planner, PhotoCostEstimating {
+    public var estimatedCostPerPhoto: Double { MetaPricing.photoCost(includingPlanning: false) }
     public var modelID: String
     public var baseURL: URL
     public let transport: any MetaTransport
@@ -74,7 +76,7 @@ public struct LocalGlimmerPlanner: Planner {
     }
 
     private var planner: MetaPlanner {
-        MetaPlanner(configuration: MetaConfiguration(apiKey: "local-glimmer", baseURL: baseURL, planningModel: modelID),
+        MetaPlanner(configuration: MetaConfiguration(apiKey: "local-glimmer", baseURL: baseURL, planningModel: modelID, recordsCost: false),
                     transport: GlimmerChatTransport(transport: transport))
     }
 

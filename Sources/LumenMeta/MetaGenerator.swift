@@ -17,6 +17,7 @@ public struct MetaGenerator: Generator {
 
     public func generate(_ request: GenerateRequest) async throws -> EncodedImage {
         do {
+            ModelUsageReporting.report?(ModelUsage(cost: configuration.recordsCost ? MetaPricing.cost(model: modelID, images: 0) : nil))
             var inputSize = request.image.size
             if inputSize.width > 0, inputSize.height > 0, inputSize.longEdge < 1024 {
                 let scale = 1024.0 / Double(inputSize.longEdge)
@@ -30,21 +31,28 @@ public struct MetaGenerator: Generator {
                 "n": 1, "output_format": "png", "response_format": "b64_json",
             ])
             let (data, response) = try await transport.data(for: call)
-            try Task.checkCancellation()
             try MetaHTTP.validate(response, data: data)
             let answer: Answer
             do { answer = try JSONDecoder().decode(Answer.self, from: data) }
             catch { throw MetaHTTP.invalid(String(decoding: data, as: UTF8.self)) }
+            var usage = ModelUsage(cost: configuration.recordsCost ? MetaPricing.cost(model: modelID, images: 0) : nil,
+                                   inputTokens: answer.usage?.input_tokens, outputTokens: answer.usage?.output_tokens)
+            ModelUsageReporting.report?(usage)
             guard let base64 = answer.data.first?.b64_json, let image = Data(base64Encoded: base64) else {
                 throw MetaHTTP.invalid("No valid image in data[0].b64_json.")
             }
-            return try PhotoPNG.encode(image, size: request.image.size)
+            let photo = try PhotoPNG.encode(image, size: request.image.size)
+            usage.cost = configuration.recordsCost ? MetaPricing.cost(model: modelID, images: answer.data.count) : nil
+            ModelUsageReporting.report?(usage)
+            return photo
         } catch { throw MetaHTTP.error(error) }
     }
 
     private struct Answer: Decodable {
         struct Image: Decodable { var b64_json: String }
+        struct Usage: Decodable { var input_tokens: Int; var output_tokens: Int }
         var data: [Image]
+        var usage: Usage?
     }
 }
 

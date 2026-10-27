@@ -59,7 +59,7 @@ struct BatchEventLines {
         case .finished(let summary):
             let flagged = summary.photos.filter { $0.flagged != nil }.count
             let failed = summary.photos.filter(\.failed).count
-            lines.append("Finished: \(summary.photos.count) photos, \(flagged) flagged, \(failed) failed; \(summary.modelCalls) model calls, \(seconds(summary.duration)).")
+            lines.append("Finished: \(summary.photos.count) photos, \(flagged) flagged, \(failed) failed; \(summary.modelCalls) model calls, \(seconds(summary.duration)); \(dollars(summary.totalCost)) USD.")
         default: break
         }
         return lines

@@ -194,11 +194,14 @@ public struct BatchPlan: Codable, Equatable, Sendable {
     public var groups: [BatchGroup]
     /// Open questions; a plan written with every answer has none.
     public var questions: [BatchQuestion]
+    /// The estimated remaining charge in US dollars, set when approval is requested.
+    public var estimatedCost: Double?
 
-    public init(summary: String, groups: [BatchGroup], questions: [BatchQuestion] = []) {
+    public init(summary: String, groups: [BatchGroup], questions: [BatchQuestion] = [], estimatedCost: Double? = nil) {
         self.summary = summary
         self.groups = groups
         self.questions = questions
+        self.estimatedCost = estimatedCost
     }
 }
 
@@ -240,9 +243,11 @@ public struct BatchPhotoResult: Codable, Equatable, Sendable {
     /// The per-photo agent's last word, or why it stopped.
     public var outcome: String?
     public var failed: Bool
+    /// The charge for this photo's edits, excluding shared library review and planning.
+    public var cost: Double?
 
     public init(photo: PhotoID, flagged: String? = nil, auto: String? = nil, straightened: Double? = nil,
-                instruction: String? = nil, outcome: String? = nil, failed: Bool = false) {
+                instruction: String? = nil, outcome: String? = nil, failed: Bool = false, cost: Double? = nil) {
         self.photo = photo
         self.flagged = flagged
         self.auto = auto
@@ -250,6 +255,7 @@ public struct BatchPhotoResult: Codable, Equatable, Sendable {
         self.instruction = instruction
         self.outcome = outcome
         self.failed = failed
+        self.cost = cost
     }
 }
 
@@ -259,12 +265,25 @@ public struct BatchSummary: Codable, Equatable, Sendable {
     public var answers: [BatchAnswer]
     public var modelCalls: Int
     public var duration: TimeInterval
+    /// Library calls and per-photo calls, each recorded once; nil in older summaries.
+    public var events: [TraceEvent]?
 
-    public init(photos: [BatchPhotoResult], answers: [BatchAnswer], modelCalls: Int, duration: TimeInterval) {
+    public var totalCost: Double { events?.reduce(0) { $0 + ($1.cost ?? 0) } ?? photos.reduce(0) { $0 + ($1.cost ?? 0) } }
+    public var costPerPhoto: Double { photos.isEmpty ? 0 : totalCost / Double(photos.count) }
+
+    /// Uses completed photos with a measured edit charge before falling back to the price estimate.
+    public func estimatedCost(for photoCount: Int, defaultCostPerPhoto: Double) -> Double {
+        let measured = photos.filter { !$0.failed && $0.instruction != nil }.compactMap(\.cost)
+        let average = measured.isEmpty ? defaultCostPerPhoto : measured.reduce(0, +) / Double(measured.count)
+        return Double(max(0, photoCount)) * average
+    }
+
+    public init(photos: [BatchPhotoResult], answers: [BatchAnswer], modelCalls: Int, duration: TimeInterval, events: [TraceEvent]? = nil) {
         self.photos = photos
         self.answers = answers
         self.modelCalls = modelCalls
         self.duration = duration
+        self.events = events
     }
 }
 

@@ -9,15 +9,18 @@ public struct MetaConfiguration: Sendable {
     public var segmentationModel: String
     public var imageModel: String
     public var timeout: TimeInterval
+    /// False for compatible providers whose bills are outside Lumen. Token usage is still reported.
+    public var recordsCost: Bool
 
     public init(apiKey: String, baseURL: URL = URL(string: "https://api.meta.ai/v1")!, planningModel: String = "muse-spark-1.3",
-                segmentationModel: String = "sam-3.1", imageModel: String = "muse-image-1.0", timeout: TimeInterval = 180) {
+                segmentationModel: String = "sam-3.1", imageModel: String = "muse-image-1.0", timeout: TimeInterval = 180, recordsCost: Bool = true) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.planningModel = planningModel
         self.segmentationModel = segmentationModel
         self.imageModel = imageModel
         self.timeout = timeout
+        self.recordsCost = recordsCost
     }
 
     /// The user's own key, from META_API_KEY. Lumen Studio keeps it in the Keychain instead.
@@ -28,7 +31,8 @@ public struct MetaConfiguration: Sendable {
 }
 
 /// Muse Spark plans an instruction into steps and judges the result.
-public struct MetaPlanner: Planner {
+public struct MetaPlanner: Planner, PhotoCostEstimating {
+    public var estimatedCostPerPhoto: Double { MetaPricing.photoCost(includingPlanning: configuration.recordsCost) }
     public let configuration: MetaConfiguration
     public let transport: any MetaTransport
     public var modelID: String { configuration.planningModel }
@@ -65,9 +69,8 @@ public struct MetaPlanner: Planner {
                                                    model: modelID, timeout: configuration.timeout)
         let request = try builder.request(systemPrompt: prompt, content: content, schemaName: name, schema: schema)
         let (data, response) = try await transport.data(for: request)
-        try Task.checkCancellation()
         try MetaHTTP.validate(response, data: data)
-        return try ChatCompletionRequestBuilder.decode(type, from: data)
+        return try ChatCompletionRequestBuilder.decode(type, from: data, model: modelID, recordsCost: configuration.recordsCost)
     }
 
     static let editingRules = """

@@ -288,11 +288,11 @@ extension StudioModels {
             reviewConfiguration = configuration
         case .glimmer:
             planner = LocalGlimmerPlanner(baseURL: glimmerURL)
-            reviewConfiguration = MetaConfiguration(apiKey: "local-glimmer", baseURL: glimmerURL, planningModel: planner.modelID)
+            reviewConfiguration = MetaConfiguration(apiKey: "local-glimmer", baseURL: glimmerURL, planningModel: planner.modelID, recordsCost: false)
         case .sparkOpen:
             guard let provider else { throw StudioScriptError.message("Save the Muse Spark Open provider in Settings.") }
             planner = HostedSparkOpenPlanner(endpoint: provider.baseURL, apiKey: provider.key, modelID: provider.modelID)
-            reviewConfiguration = MetaConfiguration(apiKey: provider.key, baseURL: provider.baseURL, planningModel: provider.modelID)
+            reviewConfiguration = MetaConfiguration(apiKey: provider.key, baseURL: provider.baseURL, planningModel: provider.modelID, recordsCost: false)
         }
         return StudioModels(planner: planner, segmenter: MetaSegmenter(configuration: configuration),
                             generator: MetaGenerator(configuration: configuration),

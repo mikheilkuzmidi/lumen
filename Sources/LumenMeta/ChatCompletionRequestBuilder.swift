@@ -44,7 +44,10 @@ public struct ChatCompletionRequestBuilder: Sendable {
     }
 
     /// Reads the first answer, preserving refusals as a typed failure.
-    public static func decode<Answer: Decodable>(_ type: Answer.Type, from data: Data) throws -> Answer {
+    public static func decode<Answer: Decodable>(_ type: Answer.Type, from data: Data, model: String? = nil, recordsCost: Bool = true) throws -> Answer {
+        if let model, let usage = try? JSONDecoder().decode(UsageAnswer.self, from: data).usage {
+            ModelUsageReporting.report?(usage.usage(model: model, recordsCost: recordsCost))
+        }
         let completion: Completion
         do { completion = try JSONDecoder().decode(Completion.self, from: data) }
         catch { throw MetaHTTP.invalid(String(decoding: data, as: UTF8.self)) }
@@ -63,6 +66,8 @@ public struct ChatCompletionRequestBuilder: Sendable {
         do { return try JSONDecoder().decode(type, from: Data(text.utf8)) }
         catch { throw MetaHTTP.invalid(text) }
     }
+
+    private struct UsageAnswer: Decodable { var usage: MetaTokenUsage? }
 
     private struct Completion: Decodable {
         struct Choice: Decodable { var message: Message }

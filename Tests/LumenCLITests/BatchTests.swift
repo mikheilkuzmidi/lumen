@@ -130,7 +130,7 @@ struct BatchTests {
         #expect(await host.saved.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: output.path))
         #expect(lines.lines.contains("Go ahead? [y/N]"))
-        #expect(lines.lines.contains { $0.hasPrefix("Estimate: 5 more model calls") })
+        #expect(lines.lines.contains { $0.hasPrefix("Estimate: About 5 more model calls") })
         #expect(Lumen.exitCode(for: LumenError.cancelled) != .success)
     }
 

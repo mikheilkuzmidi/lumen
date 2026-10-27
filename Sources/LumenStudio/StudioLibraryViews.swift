@@ -25,7 +25,7 @@ struct StudioLibraryView: View {
                         if model.isRunning { ProgressView().controlSize(.mini) }
                         Text(model.backends.isLoading ? model.backends.status ?? model.status : model.status).lineLimit(1)
                         Spacer()
-                        Text("\(model.done)/\(model.total) · \(model.modelCalls) model calls")
+                        Text("\(model.done)/\(model.total) · \(model.modelCalls) model calls · \(studioDollars(model.totalCost))")
                             .monospacedDigit()
                     }
                     .font(.system(size: 10)).foregroundStyle(.secondary).padding(18)
@@ -232,7 +232,7 @@ struct StudioLibraryView: View {
                 }
             }.frame(maxHeight: 180)
             HStack {
-                Text("About \(calls) more model calls").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? "")).font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel", action: model.stop)
                 Button("Go ahead") { Task { await model.approve() } }.buttonStyle(.borderedProminent).foregroundStyle(StudioStyle.canvas)

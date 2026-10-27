@@ -23,6 +23,9 @@ struct EditTrace: Codable, Sendable {
     var finalReason: String?
     var failure: String?
 
+    var totalCost: Double { events.reduce(0) { $0 + ($1.cost ?? 0) } }
+    var costSummary: String { "Cost: \(dollars(totalCost)) USD · \(modelCalls) model calls" }
+
     var modelCalls: Int { events.filter { $0.model != nil }.count }
     var verdict: String {
         critiques.last.map { $0.satisfied ? "Satisfied" : "Needs revision" } ?? "Not critiqued"

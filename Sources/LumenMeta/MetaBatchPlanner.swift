@@ -106,9 +106,8 @@ public struct MetaBatchPlanner: BatchPlanner {
                                                    model: model, timeout: configuration.timeout)
         let request = try builder.request(systemPrompt: prompt, content: content, schemaName: name, schema: schema)
         let (data, response) = try await transport.data(for: request)
-        try Task.checkCancellation()
         try MetaHTTP.validate(response, data: data)
-        return try ChatCompletionRequestBuilder.decode(type, from: data)
+        return try ChatCompletionRequestBuilder.decode(type, from: data, model: model, recordsCost: configuration.recordsCost)
     }
 
     private static func text(_ context: [String: Any]) throws -> String {

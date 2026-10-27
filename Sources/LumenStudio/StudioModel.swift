@@ -130,6 +130,9 @@ final class StudioModel {
     var canUndo: Bool { !isBusy && historyPosition > 0 }
     var canRedo: Bool { !isBusy && historyPosition + 1 < historyCount }
     var canExport: Bool { document != nil && preview != nil && !isBusy }
+    var modelCalls: Int { steps.flatMap(\.traces).filter { $0.model != nil }.count }
+    var totalCost: Double { steps.flatMap(\.traces).reduce(0) { $0 + ($1.cost ?? 0) } }
+
     var timelineFocus: UUID? { activeStep ?? steps.last(where: { $0.status != .waiting })?.id }
 
     var status: String {
@@ -530,7 +533,7 @@ final class StudioModel {
     }
 
     var timelineText: String {
-        var lines = ["Photo: \(photoURL?.path ?? "")", "Instruction: \(prompt)", "Plan: \(planSummary)"]
+        var lines = ["Photo: \(photoURL?.path ?? "")", "Instruction: \(prompt)", "Plan: \(planSummary)", "Model calls: \(modelCalls)", "Cost: \(studioDollars(totalCost)) USD"]
         for (index, step) in steps.enumerated() {
             lines.append("\n\(index + 1). [\(step.status.label)] \(step.title)")
             if let detail = step.detail { lines.append(detail) }

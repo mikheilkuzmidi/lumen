@@ -15,6 +15,7 @@ enum BatchReport {
     static func markdown(_ summary: BatchSummary, choices: [String: BatchChoice] = [:]) -> String {
         var lines = ["# Batch summary", "",
                      "\(summary.photos.count) photos; \(summary.modelCalls) model calls; \(seconds(summary.duration)).", "",
+                     "Total cost: \(dollars(summary.totalCost)) USD; \(dollars(summary.costPerPhoto)) per photo (including shared library calls).", "",
                      "| Photo | Flagged | Auto | Straightened | Instruction | Outcome |",
                      "| --- | --- | --- | --- | --- | --- |"]
         for photo in summary.photos {

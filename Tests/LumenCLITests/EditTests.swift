@@ -36,6 +36,7 @@ struct EditTests {
             "→ redraw coat (Muse Image, <time>; checked by SAM 3.1, <time>)",
             "Critique: satisfied: The coat is navy.",
             "Finished: The coat is navy.",
+            "Cost: $0.0000 USD · 5 model calls",
         ])
         #expect(lines.lines.allSatisfy { !$0.contains("\u{001B}") })
         let data = try Data(contentsOf: traceURL)

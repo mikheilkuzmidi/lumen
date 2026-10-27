@@ -53,6 +53,8 @@ There are three modes:
 
 Results are written to a separate folder with a sidecar per photo, a summary of every answer and who gave it, and before and after contact sheets. The originals are never written. Lumen Studio has the same flow in its Library window (File › Open Folder).
 
+![Lumen Studio's Library in plan-first mode: Muse Wonder's plan for "Make everyone's T-shirts blue", the photos it affects highlighted, waiting for approval](docs/images/studio-library-plan.jpg)
+
 ## Models
 
 | Task | Model | Where it runs |

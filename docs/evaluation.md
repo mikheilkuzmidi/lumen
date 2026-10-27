@@ -90,6 +90,7 @@ Each of these runs found something, and each was fixed and run again:
 | A recoloured shirt was checked for its old colour, called "moved" and redrawn again. | The redraw check searches without colour words, and a match outside the region counts as no check. |
 | The reviewer matched only one shirt photo to the instruction, so nothing was recoloured. | Every photo goes to Muse Wonder with the reviewer's impression as a hint; the planner decides. |
 | "Blue with the same subtle pattern" left a pale patterned shirt as it was. | Colour changes are asked for from what to what. |
+| After the portrait rule below, the reviewer called the tilted lake and street level: the October 27 autonomous run left both crooked, and so did one of two review-only runs. | Water and the horizon are always level, so a lake or horizon at the measured angle means tilted, whatever the hills or road do. In three review-only runs both were flagged each time, the grain elevators too, and once the forest, which is a false positive. |
 ## At scale
 
 The project's 126 local test photos cover portraits, faces, groups, pets, landscapes, cities, water, snow, night, indoor flash and studio. They are the maintainer's own test set, so they are not in the repository, and only the numbers are reported here.

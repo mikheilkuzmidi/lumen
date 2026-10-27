@@ -104,6 +104,9 @@ One Mac, one photo, single runs: these are observations, not benchmarks.
   SAM 3.1 and Muse Image took 1.6 s, 17.7 s and 3.9 s (the redraw check). The result matched the Muse Spark run of the same instruction, at about 4.5 minutes instead of 27 s.
 - **Before the key-order fix,** the same instruction failed: Glimmer's reasoning said to select the jacket and regenerate it, but its constrained answers used the region before selecting it, and every revision was dropped by the plan check.
 
+- **After the plan prompt said a selection changes nothing by itself** (commit 0a2311d), the same instruction run again from the command line: Glimmer's first plan selected the jacket and regenerated it (112.4 s), SAM 3.1 and Muse Image took 1.0 s, 19.7 s and 2.4 s, and one critique (85.5 s) was satisfied. 223 s in all, one critique fewer than before. Lumen started llama-server for the run and stopped it afterwards.
+- **In Lumen Studio** (scripted run, "Replace the blue sofa with a green velvet one", before that prompt change): Studio loaded Glimmer itself in 21.6 s (the model file was already in the page cache), and the edit finished in 5 minutes.
+
 So the whole planning loop runs on the Mac with open weights, and it works; on this machine, with other work open, it is slow. Muse Spark remains the default.
 
 ## What was verified

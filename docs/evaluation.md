@@ -57,6 +57,39 @@ The first full run, earlier the same day, had the critic satisfied with 11 of 15
 
 ![The cup after the fixes: redrawn in place](images/eval/coffee-in-montreal.jpg)
 
+## A whole library
+`Fixtures/library` is a small CC0 shoot of 16 photos:
+
+- people in T-shirts of several colours;
+- a black-and-white photo and silhouettes;
+- photos with nobody in them;
+- a shaken frame and a pocket shot;
+- two horizons tilted on purpose (+4° and −3°).
+```sh
+lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode autonomous
+```
+
+The last run on October 26 (commit 8933ec4) took 33 model calls and 169 s. Each part, judged by eye:
+
+| Part | Result |
+| --- | --- |
+| Misfires | Both flagged (the shaken frame, the pocket shot) and left out. |
+| Straightening | The lake (−3.6°) and the street (+1.8°) levelled; the grain elevators (+2.1°) as well, plausibly; the café, the city and the forest left alone. |
+| Questions | Asked and, in autonomous mode, answered with the recommendation: whether to straighten; in other runs, the shirt style, the black-and-white photo, partly hidden people, the shade of blue. |
+| Shirts | All four T-shirts on the hilltop blue, after one revision. In the forest photo the light grey patterned shirt stayed grey through three redraws; that led to the last change below, after which the same instruction turned both shirts blue on the first try. |
+
+Lumen Studio's Library (plan-first, 37 calls) and Photoeditor's prompt bar (plan-first, 34 calls) ran the same library with the same agent.
+
+Each of these runs found something, and each was fixed and run again:
+
+| Problem found live | Change |
+| --- | --- |
+| Auto darkened high-key photos by a full stop and stretched whites and blacks on almost every photo. | A gentle Auto: exposure moves only outside 0.35–0.6 median lightness, at most 0.7 stop. |
+| Core Image found no tilt in either tilted photo; Vision then read perspective lines in a café and a forest as tilt. | Vision measures; the reviewer says whether the camera was visibly tilted; at most 6°. |
+| A white T-shirt stayed white: SAM didn't find it by name, so its neighbour's blue shirt was selected each time. | The planner's point or box decides which segment is meant; otherwise they become SAM's own prompt. |
+| A recoloured shirt was checked for its old colour, called "moved" and redrawn again. | The redraw check searches without colour words, and a match outside the region counts as no check. |
+| The reviewer matched only one shirt photo to the instruction, so nothing was recoloured. | Every photo goes to Muse Wonder with the reviewer's impression as a hint; the planner decides. |
+| "Blue with the same subtle pattern" left a pale patterned shirt as it was. | Colour changes are asked for from what to what. |
 ## Follow-ups and undo
 
 A gated live test (`LUMEN_LIVE=1 swift test --filter followsUpOnTheSameEdit`) runs three instructions on one photo. On October 26 it took 49 s:

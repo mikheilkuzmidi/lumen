@@ -298,6 +298,37 @@ struct PhotoPixelTests {
         #expect((properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1 == 1)
     }
 
+    /// A black-and-white photo whose shirts were redrawn blue came out grey: the export kept the source's grey space.
+    @Test func aGreyscalePhotoGivenColourIsExportedInColourAndOtherwiseStaysGrey() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let grey = try #require(CGColorSpace(name: CGColorSpace.genericGrayGamma2_2))
+        let context = try #require(CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 64, space: grey,
+                                             bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.setFillColor(gray: 0.5, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        let source = folder.url.appendingPathComponent("grey.jpg")
+        let destination = try #require(CGImageDestinationCreateWithURL(source as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+        #expect(CGImageDestinationFinalize(destination))
+        func model(_ url: URL) throws -> CGColorSpaceModel? {
+            let image = try #require(CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) })
+            return image.colorSpace?.model
+        }
+
+        let document = try PhotoDocument(contentsOf: source)
+        try await document.apply(Layer(label: "Light", content: .adjustment(values: [.exposure: 0.5], mask: nil)), assets: AssetStore())
+        let tonal = folder.url.appendingPathComponent("tonal.jpg")
+        try await document.export(to: tonal, format: .jpeg)
+        #expect(try model(tonal) == .monochrome, "a tonal edit keeps it greyscale")
+        try await document.apply(Layer(label: "Warm", content: .adjustment(values: [.temperature: 60], mask: nil)), assets: AssetStore())
+        let warm = folder.url.appendingPathComponent("warm.jpg")
+        try await document.export(to: warm, format: .jpeg)
+        #expect(try model(warm) == .rgb)
+        let pixel = try Pixels(data: Data(contentsOf: warm))[32, 24]
+        #expect(pixel.red > pixel.blue + 0.05, "the warmth is kept: \(pixel.red) vs \(pixel.blue)")
+    }
+
     @Test(arguments: AdjustmentKey.allCases)
     func everyAdjustmentRenders(key: AdjustmentKey) async throws {
         let folder = try PhotoFolder()

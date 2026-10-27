@@ -134,9 +134,26 @@ public actor PhotoDocument: EditHost {
     /// Exports pixels and returns the edit state from the same moment.
     func exportSnapshot(to url: URL, format: EncodedImage.Format) throws -> (labels: [String], angle: Double) {
         let image = rendered(scale: 1).cropped(to: cropBounds())
-        let data = try encoded(image, format: format, colorSpace: sourceColorSpace)
+        let data = try encoded(image, format: format, colorSpace: exportColorSpace)
         try data.write(to: url, options: .atomic)
         return (layers.map(\.label), straighteningAngle)
+    }
+
+    /// The source's colour space, unless the source is greyscale and an edit gave it colour (a redraw, or a colour
+    /// setting): written in grey, a black-and-white photo whose shirts were redrawn blue came out grey again.
+    private var exportColorSpace: CGColorSpace {
+        guard sourceColorSpace.model == .monochrome, layers.contains(where: { $0.isEnabled && Self.addsColour($0) }) else {
+            return sourceColorSpace
+        }
+        return CGColorSpace(name: CGColorSpace.sRGB)!
+    }
+
+    private static func addsColour(_ layer: Layer) -> Bool {
+        switch layer.content {
+        case .patch: true
+        case .adjustment(let values, _): [AdjustmentKey.temperature, .tint, .vibrance, .saturation].contains { (values[$0] ?? 0) != 0 }
+        default: false
+        }
     }
 
     func statistics() throws -> PhotoStatistics {

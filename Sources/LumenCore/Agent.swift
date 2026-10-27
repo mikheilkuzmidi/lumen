@@ -274,7 +274,7 @@ public actor EditAgent {
                         run.done.append("\(title(selection.id)): nothing found for “\(selection.concept ?? selection.id)”")
                     }
                 case .adjust(let adjustment):
-                    let region = try adjustment.region.map { try region($0) }
+                    let target = try adjustment.region.map { try self.region($0) }
                     let settings = AdjustmentKey.allCases.compactMap { key -> String? in
                         guard let value = adjustment.values[key] else { return nil }
                         let name = key == .noiseReduction ? "noise reduction" : key.rawValue
@@ -282,7 +282,7 @@ public actor EditAgent {
                         return "\(name) \(value < 0 ? "−" : "+")\(magnitude)"
                     }.joined(separator: ", ")
                     let label = "\(title(adjustment.region ?? "photo")): \(settings)"
-                    let layer = Layer(label: label, content: .adjustment(values: adjustment.values, mask: region?.asset))
+                    let layer = Layer(label: label, content: .adjustment(values: adjustment.values, mask: target?.asset))
                     try await apply(layer, kind: step.type, region: adjustment.region, events: events)
                     run.done.append(label)
                 case .regenerate(let regeneration):

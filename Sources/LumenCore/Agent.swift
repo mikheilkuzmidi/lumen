@@ -400,12 +400,37 @@ public actor EditAgent {
                     return size.width > 0 && size.height > 0 && segment.mask[x, y] > 127
                 }
             }
-            if !under.isEmpty || box == nil { return under }
+            // A point says exactly where; nothing under it means SAM missed that one, not that a neighbour will do.
+            return under
         }
         guard let box else { return segments }
         let fits = segments.map { overlap($0.box, box) }
         let best = fits.max() ?? 0
-        return best < 0.25 ? [] : zip(segments, fits).filter { $0.1 >= best * 0.6 }.map(\.0)
+        return best < 0.4 ? [] : zip(segments, fits).filter { $0.1 >= best * 0.6 }.map(\.0)
+    }
+
+    /// How much of a mask's coverage lies within another mask's bounding box, 0...1.
+    static func share(of mask: MaskData, inside other: MaskData) -> Double {
+        guard let box = other.boundingBox, mask.size.width > 0, mask.size.height > 0 else { return 0 }
+        let left = Int(box.x * Double(mask.size.width)), right = Int(ceil((box.x + box.width) * Double(mask.size.width)))
+        let top = Int(box.y * Double(mask.size.height)), bottom = Int(ceil((box.y + box.height) * Double(mask.size.height)))
+        var total = 0.0, inside = 0.0
+        for y in 0..<mask.size.height {
+            for x in 0..<mask.size.width {
+                let value = Double(mask[x, y])
+                total += value
+                if x >= left && x < right && y >= top && y < bottom { inside += value }
+            }
+        }
+        return total > 0 ? inside / total : 0
+    }
+
+    /// A concept without colour words, for finding a thing after its colour changed; nil when nothing is left.
+    static func withoutColour(_ concept: String) -> String? {
+        let colours: Set<String> = ["white", "black", "grey", "gray", "red", "blue", "green", "yellow", "orange", "purple",
+                                    "pink", "brown", "beige", "tan", "navy", "maroon", "dark", "light", "bright", "pale"]
+        let words = concept.split(separator: " ").filter { !colours.contains($0.lowercased()) }
+        return words.isEmpty ? nil : words.joined(separator: " ")
     }
 
     /// Intersection over union of two rectangles.
@@ -432,10 +457,19 @@ public actor EditAgent {
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         var mask = original.grown(by: edge)
         let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
-        let concept = kind == .regenerate ? region.info.concept : nil
+        // The redraw changes how the thing looks, so it is looked for without the old colour: a "white t-shirt"
+        // redrawn blue is found as a "t-shirt".
+        let concept = kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : nil
         var attempt = try await redrawAttempt(request, original: original, concept: concept,
                                               region: region.info.id, kind: kind, events: events)
         var notes: [String] = []
+        // What the check found mostly outside the region's box is something else, not this redraw moved or shrunk:
+        // there is nothing to compare, so nothing to retry.
+        if attempt.overlap != nil, let object = attempt.object, Self.share(of: object, inside: original) < 0.5 {
+            notes.append("Could not check the redraw of \(region.info.id): what was found is elsewhere.")
+            attempt.overlap = nil
+            attempt.object = nil
+        }
         if let overlap = attempt.overlap, overlap < 0.5 {
             do {
                 let retry = try await redrawAttempt(request, original: original, concept: concept,

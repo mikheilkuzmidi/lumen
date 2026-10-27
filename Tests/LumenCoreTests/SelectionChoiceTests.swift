@@ -20,8 +20,9 @@ struct SelectionChoiceTests {
         let shirts = (0..<3).map(shirt)
         let box = NormalizedRect(x: 0.25, y: 0.35, width: 0.25, height: 0.6)
         #expect(EditAgent.meant(shirts, points: [], box: box).map(\.box) == [shirts[1].box])
-        // A point that misses every shirt leaves the box to decide.
-        #expect(EditAgent.meant(shirts, points: [NormalizedPoint(x: 0.3, y: 0.1)], box: box).map(\.box) == [shirts[1].box])
+        // A point that misses every shirt means SAM missed the one meant: nothing is kept, so the point and box
+        // become SAM's own prompt.
+        #expect(EditAgent.meant(shirts, points: [NormalizedPoint(x: 0.3, y: 0.1)], box: box).isEmpty)
     }
 
     @Test func aBoxOverAShirtSAMDidNotFindKeepsNone() {
@@ -29,5 +30,13 @@ struct SelectionChoiceTests {
         let shirts = (0..<3).map(shirt)
         let fourth = NormalizedRect(x: 0.77, y: 0.35, width: 0.2, height: 0.6)
         #expect(EditAgent.meant(shirts, points: [], box: fourth).isEmpty)
+    }
+
+    @Test func aRedrawIsCheckedWithoutItsOldColour() {
+        #expect(EditAgent.withoutColour("white t-shirt") == "t-shirt")
+        #expect(EditAgent.withoutColour("Light Grey hoodie") == "hoodie")
+        #expect(EditAgent.withoutColour("red gate") == "gate")
+        #expect(EditAgent.withoutColour("blue") == nil)
+        #expect(EditAgent.withoutColour("sofa") == "sofa")
     }
 }

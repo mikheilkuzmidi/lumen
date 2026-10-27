@@ -85,6 +85,18 @@ struct RedrawTests {
         #expect(patch.mask[52, 52] == 255 && patch.mask[0, 0] == 0)
     }
 
+    @Test func aCheckThatFindsSomethingElseDoesNotRetry() async throws {
+        // A "white cup" redrawn black is not found as itself; what the check finds lies outside the cup's box.
+        let elsewhere = RedrawPhoto.mask(x: 0..<6, y: 0..<6)
+        let segmenter = RedrawSegmenter(checks: [.success([RedrawPhoto.segment(elsewhere)])])
+        let generator = RedrawGenerator()
+        let agent = EditAgent(planner: RedrawPlanner(), segmenter: segmenter, generator: generator, host: RedrawHost())
+        let events = try await redrawEvents(agent.run("Make the cup matte black"))
+        #expect(await generator.requests.count == 1)
+        #expect(events.redrawTraces.contains { $0.detail == "Could not check the redraw of cup: what was found is elsewhere." })
+        #expect(!events.redrawTraces.contains { $0.detail.contains("moved or resized") })
+    }
+
     @Test func failedRetryKeepsTheFirstRedraw() async throws {
         let object = RedrawPhoto.mask(x: 22..<30, y: 22..<30)
         let segmenter = RedrawSegmenter(checks: [.success([RedrawPhoto.segment(object)])])

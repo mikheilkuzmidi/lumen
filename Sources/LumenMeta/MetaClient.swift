@@ -56,8 +56,9 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
 
     public func critique(_ request: CritiqueRequest) async throws -> Critique {
         do {
-            let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
+            var context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
                                       done: request.done, layers: request.layers, history: request.history)
+            if !request.measurements.isEmpty { context.measurements = request.measurements.map(Measured.init) }
             // The rules and the Before photo stay the same through a run's revisions: they go first, for the cache.
             // Close-ups follow the whole photos, each region's Before first, so what stays the same through a run comes first.
             var content: [ChatContentPart] = [.text("Before"), .image(request.before), .text("After"), .image(request.after)]
@@ -137,6 +138,16 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     melted edge or a changed neighbouring object is a visible flaw, to be redrawn again.
     Judge the look the words ask for, not only its direction: golden hour is warm, low light with golden
     highlights, so a photo that is only warmer than before has not met it.
+    Measurements give each region changed in this run, and the rest of the photo, before and after: CIELAB
+    lightness (0 black, 100 white), chroma (0 grey, 30 and above vivid), hue in degrees and a colour name,
+    with the change between them (under 3 is hard to see). Read them with the photos:
+    - A change the instruction asks for, even "a little", must be visible: a region it names that changed by
+      less than 3 has not met it; ask for a clearly stronger step.
+    - A colour the instruction names must be the region's colour now, by its name: black is lightness under
+      about 15 with chroma under 10, so charcoal, dark grey or dark teal is not black; white is lightness over
+      about 88 with chroma under 10. If the colour is short of it, redraw again, naming the new colour more
+      strongly.
+    - The rest of the photo should change only as much as the instruction asks for the whole photo.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating
@@ -150,11 +161,41 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         var done: [String]
         var layers: [LayerInfo]
         var history: [String] = []
+        var measurements: [Measured]?
 
         func text() throws -> String {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             return String(decoding: try encoder.encode(self), as: UTF8.self)
+        }
+    }
+
+    /// A region's colour before and after, in whole numbers.
+    private struct Measured: Encodable {
+        struct Colour: Encodable {
+            var lightness: Int
+            var chroma: Int
+            var hue: Int
+            var colour: String
+
+            init(_ measurement: ColourMeasurement) {
+                lightness = Int(measurement.lightness.rounded())
+                chroma = Int(measurement.chroma.rounded())
+                hue = Int(measurement.hue.rounded()) % 360
+                colour = measurement.name
+            }
+        }
+
+        var region: String
+        var before: Colour
+        var after: Colour
+        var change: Double
+
+        init(_ change: RegionChange) {
+            region = change.region
+            before = Colour(change.before)
+            after = Colour(change.after)
+            self.change = (change.change * 10).rounded() / 10
         }
     }
 }

@@ -164,6 +164,12 @@ public actor EditAgent {
         var missing: Set<String> = []
         var done: [String] = []
         var steps = 0
+        /// The regions this run changed, in the order it first changed them.
+        var edited: [String] = []
+
+        mutating func edit(_ region: String) {
+            if !edited.contains(region) { edited.append(region) }
+        }
     }
 
     private typealias Events = AsyncThrowingStream<AgentEvent, Error>.Continuation
@@ -229,10 +235,12 @@ public actor EditAgent {
                     let now = try await host.render(region: shot.rect, maxLongEdge: configuration.closeUpLongEdge)
                     closeUps.append(CloseUp(region: shot.region, before: shot.image, after: now))
                 }
+                let measurements = try await measured(before: before, after: after, edited: run.edited)
                 try checkCancellation()
                 let request = CritiqueRequest(instruction: instruction, before: before, after: after,
                                               regions: regionInfo, done: run.done, layers: layerInfo,
-                                              history: Array(history.dropLast()), closeUps: closeUps)
+                                              history: Array(history.dropLast()), closeUps: closeUps,
+                                              measurements: measurements)
                 let critique = try await call(.critique, model: planner.modelID, detail: "Check the edit", events: events) {
                     try await self.planner.critique(request)
                 }
@@ -253,6 +261,29 @@ public actor EditAgent {
             note(.failure, error.localizedDescription, events: events)
             events.finish(throwing: error)
         }
+    }
+
+    /// Each region this run changed and the rest of the photo, or the whole photo when no region was changed, measured
+    /// at the start of the instruction and now.
+    private func measured(before: EncodedImage, after: EncodedImage, edited: [String]) async throws -> [RegionChange] {
+        // A crop in this run frames the two renders differently, so their regions can't be compared.
+        guard before.size == after.size else { return [] }
+        let masks = edited.compactMap { id in regions[id].map { (id, $0.mask) } }
+        var parts: [(name: String, mask: MaskData?)] = masks.map { ($0.0, $0.1) }
+        if let first = masks.first?.1 {
+            let rest = masks.dropFirst().reduce(first) { $0.union($1.1) }.inverted()
+            if rest.boundingBox != nil { parts.append(("rest of the photo", rest)) }
+        } else {
+            parts = [("photo", nil)]
+        }
+        var changes: [RegionChange] = []
+        for part in parts {
+            try checkCancellation()
+            guard let was = try await host.measure(before, mask: part.mask),
+                  let now = try await host.measure(after, mask: part.mask) else { continue }
+            changes.append(RegionChange(region: part.name, before: was, after: now))
+        }
+        return changes
     }
 
     private func checked(_ plan: EditPlan, events: Events) -> EditPlan {
@@ -304,11 +335,13 @@ public actor EditAgent {
                     let layer = Layer(label: label, content: .adjustment(values: adjustment.values, mask: target?.asset))
                     try await apply(layer, kind: step.type, region: adjustment.region, events: events)
                     run.done.append(label)
+                    if let region = adjustment.region { run.edit(region) }
                 case .regenerate(let regeneration):
                     needsLook = true
                     let label = "\(title(regeneration.region)): redrawn as \(regeneration.prompt)"
                     let notes = try await redraw(try region(regeneration.region), prompt: regeneration.prompt,
                                                  label: label, kind: .regenerate, redraws: &redraws, events: events)
+                    run.edit(regeneration.region)
                     run.done.append(label)
                     run.done.append(contentsOf: notes)
                     troubled = troubled || !notes.isEmpty
@@ -317,6 +350,7 @@ public actor EditAgent {
                     let label = "\(title(removal.region)): removed"
                     let notes = try await redraw(try region(removal.region), prompt: nil, label: label, kind: .remove,
                                                  redraws: &redraws, events: events)
+                    run.edit(removal.region)
                     run.done.append(label)
                     run.done.append(contentsOf: notes)
                     troubled = troubled || !notes.isEmpty

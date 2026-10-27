@@ -280,6 +280,36 @@ struct PhotoPixelTests {
         }
     }
 
+    /// The critic is told each region's colour before and after, so a change too slight to see or a colour short of
+    /// the one asked for is a number, not a judgment from two small photos.
+    @Test
+    func measuresTheColourMostOfAMaskedRenderHas() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // The left 40% black, the rest a mid teal.
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 100, height: 50) { x, _ in
+            x < 40 ? RGB(0, 0, 0) : RGB(40, 110, 120)
+        })
+        let render = try await document.render(maxLongEdge: 100)
+        let left = MaskData(size: PixelSize(width: 10, height: 5), coverage: (0..<50).map { $0 % 10 < 4 ? 255 : 0 })
+        let black = try #require(await document.measure(render, mask: left))
+        #expect(black.lightness < 3 && black.name == "black")
+        let teal = try #require(await document.measure(render, mask: left.inverted()))
+        #expect(abs(teal.lightness - 42.7) < 2 && teal.name.hasSuffix("teal"), "\(teal)")
+        // Most of the photo is teal: a black part doesn't pull it toward grey.
+        let whole = try #require(await document.measure(render, mask: nil))
+        #expect(abs(whole.lightness - teal.lightness) < 1 && whole.name == teal.name)
+        #expect(try await document.measure(render, mask: MaskData(size: left.size, filledWith: 0)) == nil)
+        // Cropped to its right half, the render shows none of the left half's mask.
+        try await document.apply(Layer(label: "Photo: cropped", content: .crop(NormalizedRect(x: 0.5, y: 0, width: 0.5, height: 1))),
+                                 assets: AssetStore())
+        let cropped = try await document.render(maxLongEdge: 100)
+        #expect(try await document.measure(cropped, mask: left) == nil)
+        #expect(try await document.measure(cropped, mask: left.inverted())?.name.hasSuffix("teal") == true)
+        let white = ColourMeasuring.lab(red: 255, green: 255, blue: 255)
+        #expect(abs(white.lightness - 100) < 0.01 && white.chroma < 0.01)
+    }
+
     /// A recolour's mask held to the photo: SAM's mask a few pixels off a light shirt's edge moves onto it, so the
     /// redraw neither spills onto the black backpack beside it nor misses the shirt's last pixels.
     @Test

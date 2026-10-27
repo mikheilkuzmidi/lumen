@@ -89,6 +89,12 @@ public actor PhotoDocument: EditHost {
         })
     }
 
+    public func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
+        // A render shows the photo as it is framed now; a mask over the whole photo is cut to that frame first.
+        let framed = mask.map { mask in cropRect().map { mask.cropped(to: $0) } ?? mask }
+        return try ColourMeasuring.measure(image, mask: framed)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?
@@ -203,6 +209,13 @@ public actor PhotoDocument: EditHost {
             throw LumenError.invalidResponse("The layer's mask is missing or unreadable.")
         }
         return CIImage(cgImage: image, options: [.colorSpace: NSNull()])
+    }
+
+    private func cropRect() -> NormalizedRect? {
+        for layer in stack.layers.reversed() where layer.isEnabled && layer.opacity > 0 {
+            if case .crop(let rect) = layer.content, (try? Self.bounds(of: rect, in: canvas.extent)) != nil { return rect }
+        }
+        return nil
     }
 
     private func cropBounds() -> CGRect {

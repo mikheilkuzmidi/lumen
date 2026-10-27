@@ -30,7 +30,7 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
    - SAM then looks at the redraw: if the object moved or changed size, Lumen redraws once more and keeps the better attempt.
    - A removal gets a crop three times the thing's size, to fill its place from what is around it. SAM then looks for the thing again; if it is still there, Lumen tries once more.
    - The patch is composited through the mask, with the generator's colour drift measured on a ring around the region and taken out.
-4. **Check.** Muse Spark compares the result with the photo before the instruction. If something is missing or looks wrong, it writes the next steps; a redraw that went wrong is replaced, not stacked. Each revision with a redraw or a failure is checked again, within a step and revision budget.
+4. **Check.** Muse Spark compares the result with the photo before the instruction. It also gets each changed region's colour before and after, measured on the Mac (CIELAB lightness, chroma, hue and a name), so a change too slight to see or a "black" that is really charcoal is a number, not a guess from two small photos. If something is missing or looks wrong, it writes the next steps; a redraw that went wrong is replaced, not stacked. Each revision with a redraw or a failure is checked again, within a step and revision budget.
 5. **Remember.** Follow-ups ("a bit less", "undo that") reuse the regions and layers already made.
 
 Every model call, plan, critique and failure is kept in a trace. [docs/evaluation.md](docs/evaluation.md) has the results on 15 CC0 photos.

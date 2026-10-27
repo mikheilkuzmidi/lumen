@@ -69,9 +69,13 @@ public struct CritiqueRequest: Sendable {
     public var history: [String]
     /// Each region redrawn in this run, close up, before and after: a smeared wheel is a few pixels of the whole photo.
     public var closeUps: [CloseUp]
+    /// The colour of each region changed in this run, and of the rest of the photo, before and after: a change too
+    /// slight to see, or a colour short of the one asked for, in numbers.
+    public var measurements: [RegionChange]
 
     public init(instruction: String, before: EncodedImage, after: EncodedImage, regions: [RegionInfo] = [],
-                done: [String] = [], layers: [LayerInfo] = [], history: [String] = [], closeUps: [CloseUp] = []) {
+                done: [String] = [], layers: [LayerInfo] = [], history: [String] = [], closeUps: [CloseUp] = [],
+                measurements: [RegionChange] = []) {
         self.instruction = instruction
         self.before = before
         self.after = after
@@ -80,7 +84,86 @@ public struct CritiqueRequest: Sendable {
         self.layers = layers
         self.history = history
         self.closeUps = closeUps
+        self.measurements = measurements
     }
+}
+
+/// The colour of part of a photo in CIELAB, the way a person sees it.
+public struct ColourMeasurement: Equatable, Sendable {
+    /// 0 black to 100 white.
+    public var lightness: Double
+    /// Green (negative) to red (positive).
+    public var a: Double
+    /// Blue (negative) to yellow (positive).
+    public var b: Double
+
+    public init(lightness: Double, a: Double, b: Double) {
+        self.lightness = lightness
+        self.a = a
+        self.b = b
+    }
+
+    /// 0 for grey; about 30 and above is vivid.
+    public var chroma: Double { (a * a + b * b).squareRoot() }
+
+    /// The hue angle in degrees: red near 40, yellow near 100, green near 140, teal near 200, blue near 290.
+    public var hue: Double {
+        let angle = atan2(b, a) * 180 / .pi
+        return angle < 0 ? angle + 360 : angle
+    }
+
+    /// How far apart two colours look (CIE76): under about 3 is hard to see.
+    public func difference(to other: ColourMeasurement) -> Double {
+        let l = lightness - other.lightness, a = self.a - other.a, b = self.b - other.b
+        return (l * l + a * a + b * b).squareRoot()
+    }
+
+    /// The colour in a few words, such as "black", "charcoal", "dark teal" or "muted blue".
+    public var name: String {
+        if chroma < 10 {
+            // A black cup in a lit room reads about 10; one that reads 20 looks charcoal, not black.
+            switch lightness {
+            case ..<15: return "black"
+            case ..<30: return "charcoal"
+            case ..<45: return "dark grey"
+            case ..<70: return "grey"
+            case ..<88: return "light grey"
+            default: return "white"
+            }
+        }
+        let hue = self.hue
+        let family: String
+        switch hue {
+        case 25..<55: family = "red"
+        case 55..<80: family = "orange"
+        case 80..<108: family = "yellow"
+        case 108..<170: family = "green"
+        case 170..<235: family = "teal"
+        case 235..<310: family = "blue"
+        case 310..<345: family = "purple"
+        default: family = "pink"
+        }
+        if (25..<108).contains(hue), lightness < 50, chroma < 45 { return lightness < 25 ? "dark brown" : "brown" }
+        let shade = lightness < 35 ? "dark " : lightness > 78 ? "light " : ""
+        return (chroma < 20 ? "muted " : "") + shade + family
+    }
+}
+
+/// Part of the photo measured at the start of an instruction and after its edit.
+public struct RegionChange: Equatable, Sendable {
+    /// A region's id, or "rest of the photo" or "photo".
+    public var region: String
+    public var before: ColourMeasurement
+    public var after: ColourMeasurement
+
+    public init(region: String, before: ColourMeasurement, after: ColourMeasurement) {
+        self.region = region
+        self.before = before
+        self.after = after
+    }
+
+    /// How far the colour moved, in CIE76: under about 3 is hard to see.
+    public var change: Double { before.difference(to: after) }
 }
 
 /// A redrawn region seen close up, before this run's redraw and as it is now.
@@ -193,9 +276,14 @@ public protocol EditHost: Sendable {
     func remove(_ layer: Layer.ID) async throws
     /// `mask`, over `region` at its own size, held to the photo's own edges there, as the photo is now.
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData
+    /// The colour most of `image` has, a render of the photo as it is framed now, where `mask` (over the whole photo)
+    /// covers it; all of it when `mask` is nil. Nil when nothing is covered.
+    func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement?
 }
 
 public extension EditHost {
     /// A host that can't look at its pixels uses the mask as it is.
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
+    /// A host that can't look at its pixels measures nothing, and the critic judges by eye alone.
+    func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { nil }
 }

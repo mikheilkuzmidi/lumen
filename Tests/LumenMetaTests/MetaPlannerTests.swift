@@ -91,6 +91,36 @@ import Testing
     #expect(MetaPlanner.critiquePrompt.contains("a smeared wheel, a\nmelted edge or a changed neighbouring object is a visible flaw"))
 }
 
+@Test func theCriticReadsEachRegionsColourBeforeAndAfter() async throws {
+    let transport = ReplayTransport([try .init(file: "critique.json")])
+    let planner = MetaPlanner(configuration: testConfiguration, transport: transport)
+    let cup = RegionChange(region: "cup", before: ColourMeasurement(lightness: 52.4, a: -14, b: -6),
+                           after: ColourMeasurement(lightness: 30.2, a: -12.4, b: -5.1))
+    _ = try await planner.critique(CritiqueRequest(instruction: "Make the cup matte black", before: testPhoto, after: testPhoto,
+                                                   measurements: [cup]))
+    let body = try json(#require(await transport.requests.first?.httpBody))
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    let content = try #require(messages[1]["content"] as? [[String: Any]])
+    let context = try json(Data(try #require(content.last?["text"] as? String).utf8))
+    let measured = try #require((context["measurements"] as? [[String: Any]])?.first)
+    #expect(measured["region"] as? String == "cup")
+    #expect(measured["change"] as? Double == 22.3)
+    let before = try #require(measured["before"] as? [String: Any])
+    let after = try #require(measured["after"] as? [String: Any])
+    #expect(before["lightness"] as? Int == 52 && before["chroma"] as? Int == 15 && before["hue"] as? Int == 203)
+    #expect(after["lightness"] as? Int == 30 && after["colour"] as? String == "muted dark teal")
+    #expect(MetaPlanner.critiquePrompt.contains("a region it names that changed by\n  less than 3 has not met it"))
+    #expect(MetaPlanner.critiquePrompt.contains("so charcoal, dark grey or dark teal is not black"))
+
+    // Without measurements, the context says nothing about them.
+    let quiet = ReplayTransport([try .init(file: "critique.json")])
+    _ = try await MetaPlanner(configuration: testConfiguration, transport: quiet)
+        .critique(CritiqueRequest(instruction: "Make the cup matte black", before: testPhoto, after: testPhoto))
+    let plain = try json(#require(await quiet.requests.first?.httpBody))
+    let text = try #require(((plain["messages"] as? [[String: Any]])?[1]["content"] as? [[String: Any]])?.last?["text"] as? String)
+    #expect(!text.contains("measurements"))
+}
+
 @Test func chatBuilderSupportsHostingProviders() throws {
     let builder = ChatCompletionRequestBuilder(baseURL: URL(string: "https://host.example/custom/v1/")!, apiKey: "host-key",
                                                model: "hosted-spark", extraHeaders: ["X-Deployment": "spark"], timeout: 42)

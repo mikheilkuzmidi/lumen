@@ -96,6 +96,7 @@ enum EvaluationRunner {
             try markdown(rows).write(to: summary, atomically: true, encoding: .utf8)
             if Task.isCancelled { throw LumenError.cancelled }
         }
+        line("Total cost: \(dollars(rows.reduce(0) { $0 + $1.1.totalCost })) USD")
         return rows.filter { $0.1.failure != nil }.count
     }
 
@@ -103,16 +104,17 @@ enum EvaluationRunner {
         var lines = [
             "# Evaluation", "",
             "Steps applied counts layers; selection steps do not add a layer. Model calls include failed calls. Times are seconds spent in each model stage.", "",
-            "| Case | Instruction | Steps applied | Revisions | Final verdict | Plan | Select | Redraw | Critique | Model calls | Failure | Judged |",
-            "| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+            "| Case | Instruction | Steps applied | Revisions | Final verdict | Plan | Select | Redraw | Critique | Model calls | Cost | Failure | Judged |",
+            "| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
         ]
         for (item, trace) in rows {
             let cells = [item.name, item.instruction, String(trace.stepsApplied), String(trace.revisions), trace.verdict,
                          seconds(trace.time(for: [.plan])), seconds(trace.time(for: [.select])),
                          seconds(trace.time(for: [.regenerate, .remove])), seconds(trace.time(for: [.critique])),
-                         String(trace.modelCalls), trace.failure ?? "", ""]
+                         String(trace.modelCalls), dollars(trace.totalCost), trace.failure ?? "", ""]
             lines.append("| " + cells.map(markdownCell).joined(separator: " | ") + " |")
         }
+        lines += ["", "Total cost: \(dollars(rows.reduce(0) { $0 + $1.1.totalCost })) USD."]
         return lines.joined(separator: "\n") + "\n"
     }
 

@@ -178,7 +178,7 @@ struct PromptBar: View {
                 else { Circle().fill(StudioStyle.accent.opacity(0.7)).frame(width: 4, height: 4) }
                 Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
                 Spacer(minLength: 0)
-                Text("Every edit, a layer").foregroundStyle(.tertiary)
+                Text("\(model.modelCalls) model calls · \(studioDollars(model.totalCost))").foregroundStyle(.tertiary)
             }
             .font(.system(size: 10))
             .foregroundStyle(.secondary)
@@ -386,7 +386,7 @@ struct TimelineRow: View {
         ForEach(Array(entry.traces.enumerated()), id: \.offset) { _, trace in
             VStack(alignment: .leading, spacing: 4) {
                 if let model = trace.studioModelName {
-                    Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s")
+                    Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s\(trace.cost.map { " · " + studioDollars($0) } ?? "")")
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
                 }
                 if !trace.detail.isEmpty, trace.detail != entry.detail, trace.detail != entry.status.message {
@@ -434,4 +434,8 @@ private struct LayerRow: View {
         .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(StudioStyle.line) }
         .disabled(model.isBusy)
     }
+}
+
+func studioDollars(_ cost: Double, estimated: Bool = false) -> String {
+    String(format: estimated ? "$%.2f" : "$%.4f", locale: Locale(identifier: "en_US_POSIX"), cost)
 }

@@ -80,3 +80,7 @@ func seconds(_ duration: TimeInterval) -> String {
 func oneLine(_ text: String) -> String {
     text.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " ")
 }
+
+func dollars(_ cost: Double, estimated: Bool = false) -> String {
+    String(format: estimated ? "$%.2f" : "$%.4f", locale: Locale(identifier: "en_US_POSIX"), cost)
+}

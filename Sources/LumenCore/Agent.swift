@@ -41,13 +41,23 @@ public struct TraceEvent: Codable, Equatable, Sendable {
     public var detail: String
     public var started: Date
     public var duration: TimeInterval
+    /// The reported charge in US dollars; nil when the price or usage is unknown.
+    public var cost: Double?
+    public var inputTokens: Int?
+    public var cachedInputTokens: Int?
+    public var outputTokens: Int?
 
-    public init(kind: Kind, model: String? = nil, detail: String, started: Date, duration: TimeInterval) {
+    public init(kind: Kind, model: String? = nil, detail: String, started: Date, duration: TimeInterval,
+                cost: Double? = nil, inputTokens: Int? = nil, cachedInputTokens: Int? = nil, outputTokens: Int? = nil) {
         self.kind = kind
         self.model = model
         self.detail = detail
         self.started = started
         self.duration = duration
+        self.cost = cost
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.outputTokens = outputTokens
     }
 }
 
@@ -576,16 +586,17 @@ public actor EditAgent {
                                        operation: @Sendable () async throws -> Value) async throws -> Value {
         try checkCancellation()
         let started = Date()
+        let usage = ModelUsageRecorder()
         do {
-            let value = try await operation()
+            let value = try await ModelUsageReporting.$report.withValue(usage.record) { try await operation() }
             try checkCancellation()
             events.yield(.trace(TraceEvent(kind: kind, model: model, detail: short(detail), started: started,
-                                           duration: max(0, Date().timeIntervalSince(started)))))
+                                           duration: max(0, Date().timeIntervalSince(started))).recording(usage.value)))
             return value
         } catch {
             let error = cancellationError(error)
             events.yield(.trace(TraceEvent(kind: kind, model: model, detail: short("\(detail): \(error.localizedDescription)"),
-                                           started: started, duration: max(0, Date().timeIntervalSince(started)))))
+                                           started: started, duration: max(0, Date().timeIntervalSince(started))).recording(usage.value)))
             throw error
         }
     }

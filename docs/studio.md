@@ -143,3 +143,16 @@ The script drives the same view model and batch agent as Run, in an offscreen, n
 | `7-photo-opened.png` | A result opened with its batch layers |
 
 The capture folder also receives `summary.json` with all photo results and answers, and `timeline.txt` with decisions and the latest events. Milestones not reached are omitted. A cancelled plan has no finished capture or summary. Failures write `error.txt` and exit with a nonzero status. Reusing a capture folder replaces these known output files. Running a library script uses the configured services and keys; the offline tests use hand-built responses and never call those services.
+
+## Cost
+
+The photo and Library windows show the running USD total beside the model call count. Timeline
+Details show each call's charge when known, and exported timelines include the total. The Library
+total includes shared review and planning and keeps accumulating when older timeline rows scroll
+out of the retained history. A photo window shows the calls in its current edit timeline.
+
+Plan first labels the remaining dollar amount as an estimate beside estimated calls. Its default is
+$0.031 per edit pass ($0.015 with an open-weight planner), using the same price table as actual
+charges. Completed batch photos supply a measured average when available. Review and planning
+already performed appear in the running total. Unknown prices or missing usage leave charges
+unpriced; see [cost accounting](meta-api.md#cost-accounting) for the dated prices and assumptions.

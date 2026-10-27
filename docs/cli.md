@@ -98,3 +98,16 @@ Evaluation accepts the same backend, area, step, revision and preview options as
 ## Trace format
 
 The JSON contains `instruction`, `backend`, `modelIDs` (planner, segmenter, generator), `events` (every shared `TraceEvent` in order), `plans`, `critiques`, `layerLabels`, `stepsApplied`, `revisions`, `exported` and `totalTime` in seconds. Optional `finalReason` and `failure` fields appear when available. Event dates use ISO 8601; event durations are seconds. Plans include the initial checked plan and each checked revision actually entered, while critiques retain the critic's original proposed steps. A trace stores layer labels, not the layer assets needed to reopen a document.
+
+## Cost
+
+`edit` ends with its known cost in USD and model call count, including calls that failed after reporting
+usage. `eval` prints each edit's cost and a final total; `summary.md` includes a Cost column and total.
+`batch` prints its total and writes total cost and cost per photo to `batch-summary.md`.
+`batch-trace.json` retains library and per-photo call events, including token counts and charges.
+
+Plan mode shows an estimate beside the remaining model calls, such as
+`Estimate: About 100 more model calls, about $0.62 USD`. The default is $0.031 per edit pass
+($0.015 with open-weight planning); a measured average from completed batch photos takes precedence.
+Actual charges use reported usage and the dated [Meta price table and counting rules](meta-api.md#cost-accounting).
+Unknown prices and missing token usage contribute no inferred charge, so a total covers known charges.

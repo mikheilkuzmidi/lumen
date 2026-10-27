@@ -24,6 +24,7 @@ actor BatchRun {
     private var questionWaiters: [String: CheckedContinuation<String, Error>] = [:]
     private var approved: Bool
     private var approvalWaiter: CheckedContinuation<Void, Error>?
+    private var traces: [TraceEvent] = []
     private var cancelled = false
 
     private let closerLook = "Improve this photo naturally: fix exposure, colour and contrast where they are off, and nothing else."
@@ -61,7 +62,12 @@ actor BatchRun {
             if options.mode == .planFirst {
                 let straighten = try await decideStraightening(kept)
                 plan = try await instructionPlan(kept)
-                let estimate = estimate(plan, kept: kept, straighten: straighten)
+                let estimate = estimate(plan, kept: kept)
+                if let pricing = planner as? any PhotoCostEstimating {
+                    let edits = estimatedEdits(plan, kept: kept)
+                    let measured = BatchSummary(photos: Array(results.values), answers: [], modelCalls: 0, duration: 0)
+                    plan.estimatedCost = measured.estimatedCost(for: edits, defaultCostPerPhoto: pricing.estimatedCostPerPhoto)
+                }
                 events.yield(.awaitingApproval(plan, estimatedModelCalls: estimate))
                 try await waitForApproval()
                 try await flagMisfires()
@@ -90,7 +96,7 @@ actor BatchRun {
                 complete(photo)
             }
             let summary = BatchSummary(photos: photos.compactMap { results[$0] }, answers: answers,
-                                       modelCalls: await calls.count, duration: max(0, Date().timeIntervalSince(started)))
+                                       modelCalls: await calls.count, duration: max(0, Date().timeIntervalSince(started)), events: traces)
             try checkCancellation()
             await onFinish()
             try checkCancellation()
@@ -418,10 +424,14 @@ actor BatchRun {
         try checkCancellation()
     }
 
-    private func estimate(_ plan: BatchPlan, kept: [PhotoID], straighten: Bool) -> Int {
-        let instructed = Set(plan.groups.filter { $0.instruction != nil }.flatMap(\.photos))
-        let edits = kept.filter { instructed.contains($0) || (reviews[$0]?.quality ?? 1) < options.qualityThreshold }.count
-        return edits * 5 + (straighten ? tilted(kept).count : 0)
+    private func estimate(_ plan: BatchPlan, kept: [PhotoID]) -> Int {
+        estimatedEdits(plan, kept: kept) * 5
+    }
+
+    private func estimatedEdits(_ plan: BatchPlan, kept: [PhotoID]) -> Int {
+        let instructed = plan.groups.filter { $0.instruction != nil }.reduce(0) { $0 + $1.photos.count }
+        let closer = kept.filter { (reviews[$0]?.quality ?? 1) < options.qualityThreshold }.count
+        return instructed + closer
     }
 
     private func edit(_ photo: PhotoID, instruction: String) async throws {
@@ -446,6 +456,11 @@ actor BatchRun {
                     try checkCancellation()
                     if case .trace(let trace) = event {
                         let recorded = await calls.record(trace, reservation: reservation)
+                        traces.append(recorded)
+                        if let cost = recorded.cost {
+                            let previous = results[photo]?.cost ?? 0
+                            results[photo]?.cost = previous + cost
+                        }
                         events.yield(.edit(photo, .trace(recorded)))
                     } else {
                         events.yield(.edit(photo, event))
@@ -498,17 +513,23 @@ actor BatchRun {
         try checkCancellation()
         try await calls.begin()
         let started = Date()
+        let usage = ModelUsageRecorder()
         do {
-            let value = try await operation()
+            let value = try await ModelUsageReporting.$report.withValue(usage.record) { try await operation() }
             try checkCancellation()
-            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: detail, started: started,
-                                           duration: max(0, Date().timeIntervalSince(started)))))
+            recordTrace(TraceEvent(kind: kind, model: model, detail: detail, started: started,
+                                           duration: max(0, Date().timeIntervalSince(started))).recording(usage.value))
             return value
         } catch {
-            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: error.localizedDescription, started: started,
-                                           duration: max(0, Date().timeIntervalSince(started)))))
+            recordTrace(TraceEvent(kind: kind, model: model, detail: error.localizedDescription, started: started,
+                                           duration: max(0, Date().timeIntervalSince(started))).recording(usage.value))
             throw error
         }
+    }
+
+    private func recordTrace(_ trace: TraceEvent) {
+        traces.append(trace)
+        events.yield(.trace(trace))
     }
 
     private func note(_ text: String, for photo: PhotoID) {

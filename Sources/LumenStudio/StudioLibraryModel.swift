@@ -45,6 +45,7 @@ final class StudioLibraryModel {
     private(set) var done = 0
     private(set) var total = 0
     private(set) var modelCalls = 0
+    private(set) var totalCost: Double = 0
     private(set) var question: BatchQuestion?
     private(set) var decisions: [BatchAnswer] = []
     private(set) var plan: BatchPlan?
@@ -266,7 +267,7 @@ final class StudioLibraryModel {
             title = "Decided: \(answer.answer)"; detail = answer.question.question; symbol = "text.bubble"
         case .awaitingApproval(let plan, let calls):
             self.plan = plan; estimatedModelCalls = calls
-            title = "Ready for your approval"; detail = "About \(calls) more model calls"; symbol = "pause.circle"
+            title = "Ready for your approval"; detail = "About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? ""); symbol = "pause.circle"
         case .editStarted(let photo, let instruction):
             title = "Editing \(photo.rawValue)"; detail = instruction; symbol = "paintbrush.pointed"
         case .edit(let photo, let event):
@@ -291,8 +292,11 @@ final class StudioLibraryModel {
             title = "Finished · \(summary.photos.count) photos"; symbol = "checkmark.seal"
         case .trace(let value): trace = value; title = value.kind.rawValue.capitalized; detail = value.detail; symbol = "waveform.path"
         }
-        if let trace, trace.model != nil { modelCalls += 1 }
-        if case .finished(let summary) = event { modelCalls = summary.modelCalls }
+        if let trace {
+            totalCost += trace.cost ?? 0
+            if trace.model != nil { modelCalls += 1 }
+        }
+        if case .finished(let summary) = event { modelCalls = summary.modelCalls; totalCost = summary.totalCost }
         if let title {
             status = title
             events.append(StudioStep(title: title, symbol: symbol, detail: detail,
@@ -305,7 +309,7 @@ final class StudioLibraryModel {
     var timelineText: String {
         let lines = events.map { "\($0.title)\($0.detail.map { "\n" + $0 } ?? "")" }
         let choices = decisions.map { "\($0.question.question)\nDecided: \($0.answer)" }
-        return (["Library: \(folder?.path ?? "")", "Instruction: \(instruction)", "Model calls: \(modelCalls)"] + choices + lines).joined(separator: "\n\n") + "\n"
+        return (["Library: \(folder?.path ?? "")", "Instruction: \(instruction)", "Model calls: \(modelCalls)", "Cost: \(studioDollars(totalCost)) USD"] + choices + lines).joined(separator: "\n\n") + "\n"
     }
 
     private func apply(_ result: BatchPhotoResult) {
@@ -325,7 +329,7 @@ final class StudioLibraryModel {
         decisionTask?.cancel()
         question = nil; recentDecision = nil; decisions = []; plan = nil; selectedGroup = nil
         estimatedModelCalls = nil; summary = nil; events = []; photoEvents = [:]
-        done = 0; modelCalls = 0; issue = nil
+        done = 0; modelCalls = 0; totalCost = 0; issue = nil
     }
 
     private func isCancellation(_ error: any Error) -> Bool {

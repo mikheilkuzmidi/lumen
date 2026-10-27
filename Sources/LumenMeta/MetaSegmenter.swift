@@ -22,6 +22,7 @@ public struct MetaSegmenter: Segmenter {
     /// Adds exclusion clicks while the shared point type represents positive clicks.
     public func segment(_ request: SegmentRequest, negativePoints: [NormalizedPoint]) async throws -> [Segment] {
         do {
+            ModelUsageReporting.report?(ModelUsage(cost: configuration.recordsCost ? MetaPricing.cost(model: modelID, images: 0) : nil))
             let text = try Self.prompt(request, negativePoints: negativePoints)
             var call = try MetaHTTP.request(baseURL: configuration.baseURL, path: "responses", key: configuration.apiKey,
                                             timeout: configuration.timeout, body: [
@@ -35,6 +36,7 @@ public struct MetaSegmenter: Segmenter {
             let (lines, response) = try await transport.lines(for: call)
             try MetaHTTP.validate(response)
             let answer = try await SAMResponseText.read(lines)
+            ModelUsageReporting.report?(ModelUsage(cost: configuration.recordsCost ? MetaPricing.cost(model: modelID, images: 1) : nil))
             try Task.checkCancellation()
             return try SAMSegments.parse(answer, request: request)
         } catch { throw MetaHTTP.error(error) }

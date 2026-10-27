@@ -87,3 +87,48 @@ One run each on CC0 fixtures, with the user's own key. These are single measurem
 
 Both schemas use an object root, reject additional properties and require every property, with optional
 values represented by null. Both calls use the same response decoding and error mapping as `MetaPlanner`.
+
+## Cost accounting
+
+Standard pay-as-you-go prices, recorded **October 26, 2026**, in US dollars:
+
+| Model | Input / million tokens | Cached input / million tokens | Output / million tokens | Per image |
+| --- | ---: | ---: | ---: | ---: |
+| `muse-spark-1.3` | $1.25 | $0.15 | $4.25 | |
+| `muse-wonder-1.0` | $4.00 | $0.20 | $20.00 | |
+| `muse-image-1.0` | | | | $0.01 successfully returned |
+| `sam-3.1` | | | | $0.0025 ($2.50 / 1,000) |
+
+Source: [Meta pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits).
+The versioned prices live in `MetaPricing.prices` in LumenMeta; estimates use that same table.
+
+Chat completions report `usage.prompt_tokens`, `usage.completion_tokens` and
+`usage.prompt_tokens_details.cached_tokens`. Lumen subtracts cached input from total input before
+applying the input rate, then adds cached input and output charges. Reasoning tokens are already
+included in completion tokens and are never charged twice. Missing cached-token details mean zero
+cached tokens. Usage is retained even if the answer is refused or cannot be decoded as a plan.
+
+Every model call's trace carries optional `cost` (USD), `inputTokens`, `cachedInputTokens` and
+`outputTokens`. A task-scoped `ModelUsageReporting` hook lets clients report to the agent without
+changing the planner, segmenter or generator protocols. Each concurrent call has its own collector.
+Muse Image also retains `usage.input_tokens` and `usage.output_tokens` for reference, without
+adding a token charge ([response shape](https://dev.meta.ai/docs/image-generation#response-shape)).
+SAM charges once for a completed image request, including a search with no matches. Muse Image
+charges for successfully decoded returned images; failed generations cost zero. Retries and redraw
+checks have their own call traces and charges, even when their layers are later removed.
+
+Unknown models retain token counts but have no price. Missing usage has no inferred token charge.
+Open-weight planners record no price, even when a provider's model ID matches a priced Meta model;
+provider bills are outside Lumen's total. Totals sum known charges and can therefore be incomplete
+when a model or response has no known price. They are a usage record, not an account invoice.
+
+Batch totals include shared review and planning as well as each photo's model calls, once each.
+Cost per photo divides that total by all photos in the batch, including flagged or failed photos.
+A photo result's own `cost` excludes shared calls. For estimates, the batch uses the average measured
+edit charge of completed, nonfailed photos when available. Otherwise each edit pass assumes two
+Spark calls with about 3,000 input and 1,000 output tokens each, no cached tokens, two SAM images
+and one Muse Image image: **$0.031 per edited photo**. With an open-weight planner the planning
+charge is omitted, giving **$0.015**. Low-quality photos receiving both an improvement pass and the
+instruction count as two edit passes. Auto and straightening run locally and add no model charge.
+Approval shows only the estimated remaining cost; review and planning charges already incurred
+remain in the running total. Estimates do not reserve credit or guarantee a final bill.

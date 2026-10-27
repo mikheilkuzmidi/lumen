@@ -12,7 +12,7 @@ enum EditRunner {
         var result = EditTrace(instruction: instruction, backend: options.backend, modelIDs: models.ids)
         do {
             let document = try PhotoDocument(contentsOf: photo)
-            result = await run(host: document, instruction: instruction, options: options, models: models, line: line)
+            result = await run(host: document, instruction: instruction, options: options, models: models, line: line, reportsCost: false)
             if Task.isCancelled { throw LumenError.cancelled }
             try await document.export(to: output, format: format)
             result.exported = true
@@ -21,12 +21,13 @@ enum EditRunner {
                 ? LumenError.cancelled.localizedDescription : error.localizedDescription
         }
         result.totalTime = max(0, Date().timeIntervalSince(started))
+        line(result.costSummary)
         if let trace { try result.write(to: trace) }
         return result
     }
 
     static func run(host: any EditHost, instruction: String, options: EditOptions, models: EditModels,
-                    line: @Sendable (String) -> Void) async -> EditTrace {
+                    line: @Sendable (String) -> Void, reportsCost: Bool = true) async -> EditTrace {
         let started = Date()
         let agent = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator,
                               host: host, configuration: options.agentConfiguration)
@@ -47,6 +48,7 @@ enum EditRunner {
                 ? LumenError.cancelled.localizedDescription : error.localizedDescription
         }
         progress.trace.totalTime = max(0, Date().timeIntervalSince(started))
+        if reportsCost { line(progress.trace.costSummary) }
         return progress.trace
     }
 }

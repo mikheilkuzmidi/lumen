@@ -18,7 +18,7 @@ struct ProgressTests {
         #expect(result.modelCalls == 5)
         #expect(result.layerLabels == ["Coat: redrawn as A navy coat"])
         #expect(await host.layers.map(\.label) == result.layerLabels)
-        #expect(lines.lines.count == 5)
+        #expect(lines.lines.count == 6)
         #expect(lines.lines[0] == "Plan: Make the coat navy.")
         #expect(lines.lines[1].contains("1 region, 40% of the photo"))
         #expect(lines.lines[2].hasPrefix("→ redraw coat (Muse Image, "))
@@ -96,7 +96,7 @@ struct ProgressTests {
         trace.events.append(TraceEvent(kind: .failure, detail: "Rate limited", started: Date(), duration: 0))
         let item = EvaluationCase(name: "coat", photo: URL(fileURLWithPath: "/coat.jpg"), instruction: trace.instruction)
         #expect(EvaluationRunner.markdown([(item, trace)]).contains(
-            "| coat | Navy &#124; coat | 2 | 1 | Needs revision | 1.0 s | 2.0 s | 7.0 s | 5.0 s | 5 | Rate limited |  |"))
+            "| coat | Navy &#124; coat | 2 | 1 | Needs revision | 1.0 s | 2.0 s | 7.0 s | 5.0 s | 5 | $0.0000 | Rate limited |  |"))
     }
 
     @Test func comparisonKeepsBeforeOnTheLeftAndAfterOnTheRight() async throws {

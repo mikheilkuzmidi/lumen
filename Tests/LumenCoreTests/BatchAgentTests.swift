@@ -197,7 +197,7 @@ struct BatchAgentTests {
             if case .awaitingApproval(let plan, let estimate) = event {
                 #expect(plan.questions.isEmpty)
                 #expect(Set(plan.groups.flatMap(\.photos)) == [low, other])
-                #expect(estimate == 11)
+                #expect(estimate == 15)
                 approved = true
                 await agent.approve()
             }

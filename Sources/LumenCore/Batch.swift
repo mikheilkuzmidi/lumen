@@ -137,9 +137,12 @@ public struct PhotoReview: Codable, Equatable, Sendable {
     public var group: String
     /// Whether the instruction applies to this photo.
     public var matchesInstruction: Bool
+    /// Whether the camera was visibly tilted (a horizon or verticals that should be level); nil when not judged.
+    /// Measured tilt alone is not enough: perspective lines read as tilt.
+    public var tilted: Bool?
 
     public init(photo: PhotoID, misfire: Bool, misfireReason: String? = nil, quality: Double, description: String,
-                group: String, matchesInstruction: Bool) {
+                group: String, matchesInstruction: Bool, tilted: Bool? = nil) {
         self.photo = photo
         self.misfire = misfire
         self.misfireReason = misfireReason
@@ -147,6 +150,7 @@ public struct PhotoReview: Codable, Equatable, Sendable {
         self.description = description
         self.group = group
         self.matchesInstruction = matchesInstruction
+        self.tilted = tilted
     }
 }
 

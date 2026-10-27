@@ -11,6 +11,7 @@ enum MetaBatchSchema {
             "description": ["type": "string"],
             "group": ["type": "string"],
             "matchesInstruction": ["type": "boolean"],
+            "tilted": ["type": "boolean"],
         ]))]))
     }
 

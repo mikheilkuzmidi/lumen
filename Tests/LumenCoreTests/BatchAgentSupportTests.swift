@@ -10,9 +10,10 @@ func batchTestFacts(sharpness: Double = 0.9, exposure: Double = 0.5, tilt: Doubl
     PhotoFacts(size: batchTestImage.size, sharpness: sharpness, exposure: exposure, tilt: tilt)
 }
 
-func batchTestReview(_ photo: PhotoID, quality: Double = 0.9, misfire: Bool = false, matches: Bool = true) -> PhotoReview {
+func batchTestReview(_ photo: PhotoID, quality: Double = 0.9, misfire: Bool = false, matches: Bool = true,
+                     tilted: Bool? = nil) -> PhotoReview {
     PhotoReview(photo: photo, misfire: misfire, misfireReason: misfire ? "Badly blurred" : nil, quality: quality,
-                description: "A person in a shirt", group: "people", matchesInstruction: matches)
+                description: "A person in a shirt", group: "people", matchesInstruction: matches, tilted: tilted)
 }
 
 func batchTestAgent(_ library: BatchTestLibrary, reviewer: (any BatchPlanner)? = nil,

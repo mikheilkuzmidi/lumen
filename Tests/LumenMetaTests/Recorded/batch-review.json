@@ -2,7 +2,7 @@
   "choices": [{
     "message": {
       "role": "assistant",
-      "content": "{\"photos\":[{\"number\":3,\"misfire\":false,\"misfireReason\":null,\"quality\":0.9,\"description\":\"Two friends outdoors, red and grey T-shirts\",\"group\":\"friends\",\"matchesInstruction\":true},{\"number\":1,\"misfire\":false,\"misfireReason\":null,\"quality\":0.7,\"description\":\"Two friends in evening light, red and grey T-shirts\",\"group\":\"friends\",\"matchesInstruction\":true},{\"number\":2,\"misfire\":true,\"misfireReason\":\"Accidental pocket shot\",\"quality\":0.05,\"description\":\"Black fabric close up\",\"group\":\"pocket\",\"matchesInstruction\":false}]}"
+      "content": "{\"photos\":[{\"number\":3,\"misfire\":false,\"misfireReason\":null,\"quality\":0.9,\"description\":\"Two friends outdoors, red and grey T-shirts\",\"group\":\"friends\",\"matchesInstruction\":true,\"tilted\":false},{\"number\":1,\"misfire\":false,\"misfireReason\":null,\"quality\":0.7,\"description\":\"Two friends in evening light, red and grey T-shirts\",\"group\":\"friends\",\"matchesInstruction\":true,\"tilted\":false},{\"number\":2,\"misfire\":true,\"misfireReason\":\"Accidental pocket shot\",\"quality\":0.05,\"description\":\"Black fabric close up\",\"group\":\"pocket\",\"matchesInstruction\":false,\"tilted\":false}]}"
     },
     "finish_reason": "stop"
   }]

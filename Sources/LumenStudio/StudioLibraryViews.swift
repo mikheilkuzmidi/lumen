@@ -222,7 +222,7 @@ struct StudioLibraryView: View {
                     ForEach(plan.groups) { group in
                         Button { model.selectedGroup = group.id } label: {
                             VStack(alignment: .leading, spacing: 5) {
-                                Text("\(group.title) · \(group.photos.count) photos").font(.system(size: 12, weight: .medium))
+                                Text("\(group.title) · \(group.photos.count) \(group.photos.count == 1 ? "photo" : "photos")").font(.system(size: 12, weight: .medium))
                                 Text(group.instruction ?? "Base pass").font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12)

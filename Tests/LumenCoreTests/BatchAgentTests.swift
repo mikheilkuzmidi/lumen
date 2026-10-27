@@ -48,6 +48,20 @@ struct BatchAgentTests {
         #expect(try batchTestSummary(events).answers.isEmpty)
     }
 
+    @Test func onlyTiltsTheReviewerSeesAndSmallOnesAreStraightened() async throws {
+        // Perspective lines read as tilt (photo-0, the reviewer sees it level), a 7.5° tilt is likely meant (photo-2),
+        // and an unjudged photo keeps its measurement (photo-3).
+        let library = BatchTestLibrary([batchTestFacts(tilt: 3), batchTestFacts(tilt: 4), batchTestFacts(tilt: 7.5),
+                                        batchTestFacts(tilt: -2)])
+        let reviewer = BatchTestReviewer(reviews: [
+            batchTestReview(PhotoID("photo-0"), tilted: false), batchTestReview(PhotoID("photo-1"), tilted: true),
+            batchTestReview(PhotoID("photo-2"), tilted: true), batchTestReview(PhotoID("photo-3")),
+        ])
+        let agent = batchTestAgent(library, reviewer: reviewer)
+        _ = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: true, qualityThreshold: 0)))
+        #expect(await library.rotations == [PhotoID("photo-1"): -4, PhotoID("photo-3"): 2])
+    }
+
     @Test(arguments: BatchMode.allCases)
     func undecidedStraighteningAsksOrTakesTheRecommendation(mode: BatchMode) async throws {
         let library = BatchTestLibrary([batchTestFacts(tilt: 0.8), batchTestFacts(tilt: 1), batchTestFacts(tilt: -2.5)])

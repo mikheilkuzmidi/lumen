@@ -37,7 +37,7 @@ import Testing
     let array = try #require(properties["photos"] as? [String: Any])
     let item = try #require(array["items"] as? [String: Any])
     let fields = try #require(item["properties"] as? [String: [String: Any]])
-    #expect(Set(fields.keys) == ["number", "misfire", "misfireReason", "quality", "description", "group", "matchesInstruction"])
+    #expect(Set(fields.keys) == ["number", "misfire", "misfireReason", "quality", "description", "group", "matchesInstruction", "tilted"])
     #expect(fields["misfireReason"]?["type"] as? [String] == ["string", "null"])
     for rule in ["badly blurred", "black or almost black", "ground or a pocket", "closed eyes or motion blur",
                  "when a better one exists", "dark mood or a soft background is not a misfire", "0 is unusable, 1 needs nothing",
@@ -216,11 +216,11 @@ import Testing
 
 let batchReviews = [
     PhotoReview(photo: PhotoID("evening.jpg"), misfire: false, quality: 0.7,
-                description: "Two friends in evening light, red and grey T-shirts", group: "friends", matchesInstruction: true),
+                description: "Two friends in evening light, red and grey T-shirts", group: "friends", matchesInstruction: true, tilted: false),
     PhotoReview(photo: PhotoID("pocket.jpg"), misfire: true, misfireReason: "Accidental pocket shot", quality: 0.05,
-                description: "Black fabric close up", group: "pocket", matchesInstruction: false),
+                description: "Black fabric close up", group: "pocket", matchesInstruction: false, tilted: false),
     PhotoReview(photo: PhotoID("daylight.jpg"), misfire: false, quality: 0.9,
-                description: "Two friends outdoors, red and grey T-shirts", group: "friends", matchesInstruction: true),
+                description: "Two friends outdoors, red and grey T-shirts", group: "friends", matchesInstruction: true, tilted: false),
 ]
 
 func batchPhotos() throws -> [ReviewPhoto] {
@@ -265,7 +265,7 @@ private func expectStrictBatchSchema(_ schema: [String: Any]) throws {
 
 private func batchReviewAnswer(number: Int, quality: Double = 0.5) -> [String: Any] {
     ["number": number, "misfire": false, "misfireReason": NSNull(), "quality": quality,
-     "description": "Friends", "group": "friends", "matchesInstruction": false]
+     "description": "Friends", "group": "friends", "matchesInstruction": false, "tilted": false]
 }
 
 private func batchCompletion(_ answer: [String: Any]) throws -> ReplayTransport.Reply {

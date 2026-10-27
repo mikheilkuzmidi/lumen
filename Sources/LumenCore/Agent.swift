@@ -296,7 +296,7 @@ public actor EditAgent {
                     let target = try adjustment.region.map { try self.region($0) }
                     let settings = AdjustmentKey.allCases.compactMap { key -> String? in
                         guard let value = adjustment.values[key] else { return nil }
-                        let name = key == .noiseReduction ? "noise reduction" : key.rawValue
+                        let name = key.title
                         let magnitude = String(format: "%g", locale: Locale(identifier: "en_US_POSIX"), abs(value))
                         return "\(name) \(value < 0 ? "−" : "+")\(magnitude)"
                     }.joined(separator: ", ")

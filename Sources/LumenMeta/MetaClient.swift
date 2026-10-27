@@ -102,9 +102,12 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     there are several, give a point on the one you mean and a box around it.
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
     either way for a visible but natural change. Temperature warms or cools the light; vibrance and
-    saturation strengthen colours already there, so they make a blue sky bluer. For warm light such as
-    golden hour, use temperature 30 to 50 with tint +5 to +15, which keeps blues from turning green, and
-    little or no vibrance or saturation. Never warm a blue sky on its own: it turns teal.
+    saturation strengthen colours already there, so they make a blue sky bluer. highlightWarmth and
+    shadowWarmth warm (positive) or cool the highlights and the shadows on their own, as a colour grade.
+    Golden-hour light is low and warm: highlightWarmth 50 to 80, shadowWarmth 15 to 30, temperature 10 to 20,
+    tint +5 to +10, highlights -10 to -25, a little exposure, and little or no vibrance. Its sky is soft, not
+    deep blue: select a strong blue sky and lower its saturation 20 to 40, and the warm grade reaches it. Never
+    warm a blue sky on its own: it turns teal.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and
     asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
     from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping
@@ -132,6 +135,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Close-ups of each region redrawn in this run, before and after, may follow the whole photos. Check in them
     that the redraw kept the shape, edges and detail of what is in and beside the region: a smeared wheel, a
     melted edge or a changed neighbouring object is a visible flaw, to be redrawn again.
+    Judge the look the words ask for, not only its direction: golden hour is warm, low light with golden
+    highlights, so a photo that is only warmer than before has not met it.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating

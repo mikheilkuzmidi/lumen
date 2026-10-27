@@ -67,6 +67,31 @@ enum PhotoAdjustments {
                 ])
                 .applyingFilter("CISRGBToneCurveToLinear")
         }
+        // A colour grade: the highlights and the shadows warmed or cooled on their own, each through a weight from
+        // its lightness as seen (highlights from 0.45 up to full by 0.85, shadows full to 0.15 and gone by 0.55).
+        for (key, weight) in [(AdjustmentKey.highlightWarmth, (from: 0.45, to: 0.85)), (.shadowWarmth, (from: 0.55, to: 0.15))] {
+            let amount = value(key) / 100
+            guard amount != 0 else { continue }
+            let lightness = image.applyingFilter("CILinearToSRGBToneCurve").applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+                "inputGVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+                "inputBVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+            ])
+            let gain = 1 / (weight.to - weight.from)
+            let ramp = CIVector(x: gain, y: 0, z: 0, w: 0)
+            let mask = lightness.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": ramp, "inputGVector": CIVector(x: 0, y: gain, z: 0, w: 0), "inputBVector": CIVector(x: 0, y: 0, z: gain, w: 0),
+                "inputBiasVector": CIVector(x: -weight.from * gain, y: -weight.from * gain, z: -weight.from * gain, w: 0),
+            ]).applyingFilter("CIColorClamp")
+            // An amber light in linear light: full warmth lifts red by 30% and green by 10% and takes 30% from blue, gold
+            // rather than orange; cooling does the opposite.
+            let warmed = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: 1 + 0.3 * amount, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: 1 + 0.1 * amount, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 1 - 0.3 * amount, w: 0),
+            ])
+            image = PhotoCompositor.blend(warmed, over: image, mask: mask, opacity: 1)
+        }
         if value(.vibrance) != 0 {
             image = image.applyingFilter("CIVibrance", parameters: ["inputAmount": value(.vibrance) / 100])
         }

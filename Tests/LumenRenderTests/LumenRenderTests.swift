@@ -268,6 +268,29 @@ struct PhotoPixelTests {
         #expect(fitted[48, 150] == 0, "and nothing past the shirt on the other side")
     }
 
+    /// Golden-hour light is warm highlights over shadows a little less warm: each tonal range is warmed on its own.
+    @Test
+    func highlightAndShadowWarmthWarmTheirOwnTones() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // Dark grey on the left, light grey on the right.
+        func photo() throws -> PhotoDocument {
+            try PhotoDocument(contentsOf: folder.photo { x, _ in x < 64 ? RGB(40, 40, 40) : RGB(220, 220, 220) })
+        }
+        func warmth(_ pixel: RGB) -> Double { pixel.red - pixel.blue }
+        let highlights = try photo()
+        try await highlights.apply(Layer(label: "Grade", content: .adjustment(values: [.highlightWarmth: 60], mask: nil)), assets: AssetStore())
+        let h = try await folder.pixels(highlights)
+        #expect(warmth(h[100, 48]) > 0.08, "the light grey is gold: \(warmth(h[100, 48]))")
+        #expect(abs(warmth(h[20, 48])) < 0.01, "the dark grey is left: \(warmth(h[20, 48]))")
+        let shadows = try photo()
+        try await shadows.apply(Layer(label: "Grade", content: .adjustment(values: [.shadowWarmth: -60], mask: nil)), assets: AssetStore())
+        let s = try await folder.pixels(shadows)
+        #expect(warmth(s[20, 48]) < -0.02, "the dark grey is cooled: \(warmth(s[20, 48]))")
+        #expect(abs(warmth(s[100, 48])) < 0.01, "the light grey is left: \(warmth(s[100, 48]))")
+        #expect(AdjustmentKey.highlightWarmth.title == "highlight warmth" && AdjustmentKey.noiseReduction.title == "noise reduction")
+    }
+
     @Test(arguments: [AdjustmentKey.highlights, .shadows, .whites, .blacks])
     func positiveTonalSettingsLiftTheirRange(key: AdjustmentKey) async throws {
         let folder = try PhotoFolder()

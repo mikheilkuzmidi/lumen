@@ -113,7 +113,7 @@ struct SchemaTests {
     }
 
     @Test func allNullAdjustmentValuesDecodeAsEmpty() throws {
-        let data = Data(#"{"region":null,"values":{"exposure":null,"contrast":null,"highlights":null,"shadows":null,"whites":null,"blacks":null,"temperature":null,"tint":null,"vibrance":null,"saturation":null,"clarity":null,"dehaze":null,"sharpness":null,"noiseReduction":null}}"#.utf8)
+        let data = Data(#"{"region":null,"values":{"exposure":null,"contrast":null,"highlights":null,"shadows":null,"whites":null,"blacks":null,"temperature":null,"tint":null,"vibrance":null,"saturation":null,"highlightWarmth":null,"shadowWarmth":null,"clarity":null,"dehaze":null,"sharpness":null,"noiseReduction":null}}"#.utf8)
         #expect(try JSONDecoder().decode(Adjustment.self, from: data) == Adjustment(values: [:]))
     }
 
@@ -175,7 +175,7 @@ struct SchemaTests {
       "steps": [
         {"type":"select","id":"sky","concept":"sky","box":null,"points":[],"invert":false},
         {"type":"select","id":"coat","concept":null,"box":{"x":0.25,"y":0.25,"width":0.5,"height":0.5},"points":[{"x":0.5,"y":0.5}],"invert":true},
-        {"type":"adjust","region":null,"values":{"exposure":-0.5,"contrast":null,"highlights":null,"shadows":null,"whites":null,"blacks":null,"temperature":null,"tint":null,"vibrance":null,"saturation":10,"clarity":null,"dehaze":null,"sharpness":null,"noiseReduction":null}},
+        {"type":"adjust","region":null,"values":{"exposure":-0.5,"contrast":null,"highlights":null,"shadows":null,"whites":null,"blacks":null,"temperature":null,"tint":null,"vibrance":null,"saturation":10,"highlightWarmth":null,"shadowWarmth":null,"clarity":null,"dehaze":null,"sharpness":null,"noiseReduction":null}},
         {"type":"regenerate","region":"coat","prompt":"a navy wool coat"},
         {"type":"remove","region":"sky"},
         {"type":"crop","rect":{"x":0,"y":0,"width":1,"height":1}},

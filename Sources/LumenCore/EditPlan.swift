@@ -4,6 +4,9 @@ import Foundation
 public enum AdjustmentKey: String, Codable, CodingKeyRepresentable, CaseIterable, Sendable {
     case exposure, contrast, highlights, shadows, whites, blacks
     case temperature, tint, vibrance, saturation
+    /// Warm (positive) or cool the highlights and the shadows on their own, as a colour grade does: golden light is
+    /// warm highlights over shadows a little less warm.
+    case highlightWarmth, shadowWarmth
     case clarity, dehaze, sharpness, noiseReduction
 
     /// Exposure in stops; sharpness and noise reduction from none to full; the rest as a signed percentage.
@@ -12,6 +15,13 @@ public enum AdjustmentKey: String, Codable, CodingKeyRepresentable, CaseIterable
         case .exposure: -5...5
         case .sharpness, .noiseReduction: 0...100
         default: -100...100
+        }
+    }
+
+    /// Its name in words: "noise reduction", "highlight warmth".
+    public var title: String {
+        rawValue.reduce(into: "") { name, character in
+            if character.isUppercase { name += " " + character.lowercased() } else { name.append(character) }
         }
     }
 }

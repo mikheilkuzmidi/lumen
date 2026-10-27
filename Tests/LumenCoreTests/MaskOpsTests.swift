@@ -83,4 +83,17 @@ struct MaskOpsTests {
         // A mask touching the border is not dimmed there.
         #expect(MaskData(size: PixelSize(width: 8, height: 8), filledWith: 255).blurred(by: 3)[0, 0] == 255)
     }
+
+    @Test func aGradientFallsFromFullToNoneAndFadesWhatItMultiplies() {
+        let size = PixelSize(width: 100, height: 50)
+        let light = MaskData.gradient(size: size, from: NormalizedPoint(x: 1, y: 0.5), to: NormalizedPoint(x: 0.2, y: 0.5))
+        #expect(light[99, 25] > 250 && light[0, 25] == 0 && light[19, 25] == 0)
+        #expect((120...135).contains(light[60, 25]), "half way, half the light: \(light[60, 25])")
+        #expect(light[60, 0] == light[60, 49], "it runs across, not down")
+        #expect(light[80, 25] > light[60, 25] && light[60, 25] > light[40, 25])
+        let sky = MaskData(size: size, coverage: (0..<5000).map { $0 / 100 < 20 ? 255 : 0 })
+        let near = sky.multiplied(by: light)
+        #expect(near[99, 5] > 250 && near[99, 40] == 0 && near[10, 5] == 0)
+        #expect(MaskData.gradient(size: size, from: NormalizedPoint(x: 0.5, y: 0.5), to: NormalizedPoint(x: 0.5, y: 0.5)).boundingBox == nil)
+    }
 }

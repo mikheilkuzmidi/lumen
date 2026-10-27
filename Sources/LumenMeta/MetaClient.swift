@@ -108,7 +108,14 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Golden-hour light is low and warm: highlightWarmth 50 to 80, shadowWarmth 15 to 30, temperature 10 to 20,
     tint +5 to +10, highlights -10 to -25, a little exposure, and little or no vibrance. Its sky is soft, not
     deep blue: select a strong blue sky and lower its saturation 20 to 40, and the warm grade reaches it. Never
-    warm a blue sky on its own: it turns teal.
+    warm a blue sky on its own: it turns teal. Low sun also comes from one side: select a gradient with no
+    concept, from the side the light comes from in this photo (where the sky is brightest, or the side of the
+    subject that is lit) about two thirds of the way across, such as from the left edge (x 0) or the right edge
+    (x 1) at the height of the brightest sky, and give it exposure +0.25 to +0.45 and highlightWarmth 30 to 50,
+    so the light falls off across the frame.
+    A gradient region is light falling across the photo: full at from, none at to and beyond. Alone it is the
+    region; with a concept, what is found fades along it, such as the sky nearest the sun. Use null for gradient
+    otherwise.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and
     asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
     from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping
@@ -136,8 +143,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Close-ups of each region redrawn in this run, before and after, may follow the whole photos. Check in them
     that the redraw kept the shape, edges and detail of what is in and beside the region: a smeared wheel, a
     melted edge or a changed neighbouring object is a visible flaw, to be redrawn again.
-    Judge the look the words ask for, not only its direction: golden hour is warm, low light with golden
-    highlights, so a photo that is only warmer than before has not met it.
+    Judge the look the words ask for, not only its direction: golden hour is warm, low light from one side
+    with golden highlights, so a photo that is only evenly warmer than before has not met it.
     Measurements give each region changed in this run, and the rest of the photo, before and after: CIELAB
     lightness (0 black, 100 white), chroma (0 grey, 30 and above vivid), hue in degrees and a colour name,
     with the change between them (under 3 is hard to see). Read them with the photos:

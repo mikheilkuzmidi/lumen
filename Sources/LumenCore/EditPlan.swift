@@ -38,16 +38,21 @@ public struct Selection: Codable, Equatable, Sendable {
     public var points: [NormalizedPoint]
     /// Everything except what was found.
     public var invert: Bool
+    /// Light falling across the photo, full at one point and gone at another: alone, the region is that ramp; with a
+    /// concept, box or points, what is found fades along it.
+    public var gradient: Gradient?
 
-    public init(id: String, concept: String? = nil, box: NormalizedRect? = nil, points: [NormalizedPoint] = [], invert: Bool = false) {
+    public init(id: String, concept: String? = nil, box: NormalizedRect? = nil, points: [NormalizedPoint] = [], invert: Bool = false,
+                gradient: Gradient? = nil) {
         self.id = id
         self.concept = concept
         self.box = box
         self.points = points
         self.invert = invert
+        self.gradient = gradient
     }
 
-    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert }
+    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert, gradient }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -56,6 +61,18 @@ public struct Selection: Codable, Equatable, Sendable {
         box = try container.decodeIfPresent(NormalizedRect.self, forKey: .box)
         points = try container.decodeIfPresent([NormalizedPoint].self, forKey: .points) ?? []
         invert = try container.decodeIfPresent(Bool.self, forKey: .invert) ?? false
+        gradient = try container.decodeIfPresent(Gradient.self, forKey: .gradient)
+    }
+}
+
+/// A ramp across the photo: full at `from`, none at `to` and beyond, eased in between.
+public struct Gradient: Codable, Equatable, Sendable {
+    public var from: NormalizedPoint
+    public var to: NormalizedPoint
+
+    public init(from: NormalizedPoint, to: NormalizedPoint) {
+        self.from = from
+        self.to = to
     }
 }
 

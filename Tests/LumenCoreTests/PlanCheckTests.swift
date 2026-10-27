@@ -52,6 +52,25 @@ struct PlanCheckTests {
         #expect(checked.notes.filter { $0.contains("dropped adjustment with no values") }.count == 2)
     }
 
+    @Test func gradientsAreHeldToThePhotoAndMustFallAcrossIt() {
+        let light = Gradient(from: NormalizedPoint(x: 1.2, y: 0.3), to: NormalizedPoint(x: 0.3, y: 0.7))
+        let short = Gradient(from: NormalizedPoint(x: 0.5, y: 0.5), to: NormalizedPoint(x: 0.51, y: 0.5))
+        let checked = EditPlan(summary: "Golden hour", steps: [
+            .select(Selection(id: "sun", gradient: light)),
+            .select(Selection(id: "edge", gradient: short)),
+            .select(Selection(id: "sky", concept: "sky", gradient: short)),
+            .adjust(Adjustment(region: "sun", values: [.exposure: 0.3])),
+        ]).checked()
+        #expect(checked.plan.steps == [
+            .select(Selection(id: "sun", gradient: Gradient(from: NormalizedPoint(x: 1, y: 0.3), to: NormalizedPoint(x: 0.3, y: 0.7)))),
+            .select(Selection(id: "sky", concept: "sky")),
+            .adjust(Adjustment(region: "sun", values: [.exposure: 0.3])),
+        ])
+        #expect(checked.notes.contains { $0.contains("clamped the gradient") })
+        #expect(checked.notes.filter { $0.contains("too short") }.count == 2)
+        #expect(checked.notes.contains { $0.contains("no usable concept, box, points or gradient") })
+    }
+
     @Test func rectanglesAreClippedToThePhoto() {
         let outside = NormalizedRect(x: -0.25, y: 0.75, width: 0.75, height: 0.5)
         let inside = NormalizedRect(x: 0, y: 0.75, width: 0.5, height: 0.25)

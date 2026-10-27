@@ -390,6 +390,15 @@ public actor EditAgent {
     }
 
     private func select(_ selection: Selection, area: NormalizedRect?, events: Events) async throws -> Region? {
+        // Light falling across the photo needs no search: the region is the ramp itself.
+        if let gradient = selection.gradient, selection.concept == nil, selection.box == nil, selection.points.isEmpty {
+            let photo = await host.size()
+            let scale = min(1, 1024 / Double(max(1, photo.longEdge)))
+            let size = PixelSize(width: max(1, Int((Double(photo.width) * scale).rounded())),
+                                 height: max(1, Int((Double(photo.height) * scale).rounded())))
+            let ramp = MaskData.gradient(size: size, from: gradient.from, to: gradient.to)
+            return try await region(selection, mask: selection.invert ? ramp.inverted() : ramp, label: "light", events: events)
+        }
         let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
         try checkCancellation()
         let request = SegmentRequest(image: image, concept: selection.concept,
@@ -436,8 +445,19 @@ public actor EditAgent {
             return nil
         }
         if selection.invert { mask = mask.inverted() }
+        // What was found fades along the gradient: the sky nearest a low sun, say.
+        if let gradient = selection.gradient {
+            mask = mask.multiplied(by: MaskData.gradient(size: mask.size, from: gradient.from, to: gradient.to))
+        }
+        return try await region(selection, mask: mask, label: first.label, score: segments.count == 1 ? first.score : nil,
+                                events: events)
+    }
+
+    /// Keeps a selection's mask as a region later steps can use.
+    private func region(_ selection: Selection, mask: MaskData, label: String, score: Double? = nil,
+                        events: Events) async throws -> Region? {
         guard let box = mask.boundingBox else {
-            note(.select, "Nothing found for \(selection.id) after inversion.", events: events)
+            note(.select, "Nothing found for \(selection.id)\(selection.invert ? " after inversion" : "").", events: events)
             return nil
         }
         try checkCancellation()
@@ -446,8 +466,7 @@ public actor EditAgent {
             await assets.remove(asset)
             throw error
         }
-        let segment = Segment(label: selection.concept ?? first.label, box: box, mask: mask,
-                              score: segments.count == 1 ? first.score : nil)
+        let segment = Segment(label: selection.concept ?? label, box: box, mask: mask, score: score)
         events.yield(.selected(region: selection.id, segment: segment))
         return Region(info: RegionInfo(id: selection.id, concept: selection.concept, box: box, area: mask.area),
                       mask: mask, asset: asset)

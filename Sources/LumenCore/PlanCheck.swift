@@ -108,8 +108,28 @@ struct PlanCheck {
             if clamped != point { notes.append("\(label): clamped point \(index + 1) to the photo.") }
             return clamped
         }
-        guard selection.concept != nil || selection.box != nil || !selection.points.isEmpty else {
-            notes.append("\(label): dropped selection with no usable concept, box or points.")
+        if let gradient = proposed.gradient {
+            let ends = [gradient.from, gradient.to]
+            if ends.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) {
+                let clamped = Gradient(from: NormalizedPoint(x: unit(gradient.from.x), y: unit(gradient.from.y)),
+                                       to: NormalizedPoint(x: unit(gradient.to.x), y: unit(gradient.to.y)))
+                if clamped != gradient { notes.append("\(label): clamped the gradient to the photo.") }
+                // A ramp shorter than a twentieth of the photo is an edge, not light falling across it.
+                let length = ((clamped.to.x - clamped.from.x) * (clamped.to.x - clamped.from.x)
+                              + (clamped.to.y - clamped.from.y) * (clamped.to.y - clamped.from.y)).squareRoot()
+                if length >= 0.05 {
+                    selection.gradient = clamped
+                } else {
+                    notes.append("\(label): dropped a gradient too short to fall across the photo.")
+                    selection.gradient = nil
+                }
+            } else {
+                notes.append("\(label): dropped a gradient with non-finite ends.")
+                selection.gradient = nil
+            }
+        }
+        guard selection.concept != nil || selection.box != nil || !selection.points.isEmpty || selection.gradient != nil else {
+            notes.append("\(label): dropped selection with no usable concept, box, points or gradient.")
             return nil
         }
 

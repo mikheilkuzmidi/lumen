@@ -28,6 +28,10 @@ enum PlanSchema {
                     "box": rect(nullable: true),
                     "points": ["type": "array", "description": "Points on the subject; empty if unused.", "items": point()],
                     "invert": ["type": "boolean", "description": "True selects everything except the subject."],
+                    "gradient": object([
+                        "from": point(),
+                        "to": point(),
+                    ], nullable: true, description: "Light falling across the photo: full at from, none at to and beyond. Alone it is the region; with a concept, what is found fades along it. Null if unused."),
                 ]),
                 step("adjust", properties: [
                     "region": string("An earlier selected region id, or null for the whole photo.", nullable: true),

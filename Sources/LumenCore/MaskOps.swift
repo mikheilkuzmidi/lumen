@@ -142,6 +142,31 @@ extension MaskData {
         return MaskData(size: size, coverage: pixels)
     }
 
+    /// A ramp over a photo of `size`: full at `from`, none at `to` and beyond, eased in between (smoothstep), measured
+    /// in pixels so its direction holds on a wide photo.
+    public static func gradient(size: PixelSize, from: NormalizedPoint, to: NormalizedPoint) -> MaskData {
+        let width = Double(size.width), height = Double(size.height)
+        let dx = (to.x - from.x) * width, dy = (to.y - from.y) * height
+        let length = dx * dx + dy * dy
+        var coverage = [UInt8](repeating: 0, count: size.width * size.height)
+        guard length > 0 else { return MaskData(size: size, coverage: coverage) }
+        for y in 0..<size.height {
+            for x in 0..<size.width {
+                let px = (Double(x) + 0.5) - from.x * width, py = (Double(y) + 0.5) - from.y * height
+                let along = min(1, max(0, (px * dx + py * dy) / length))
+                let eased = 1 - along * along * (3 - 2 * along)
+                coverage[y * size.width + x] = UInt8((eased * 255).rounded())
+            }
+        }
+        return MaskData(size: size, coverage: coverage)
+    }
+
+    /// Coverage where both masks cover, resizing the other mask to this mask's size if needed.
+    public func multiplied(by other: MaskData) -> MaskData {
+        let other = other.size == size ? other : other.resized(to: size)
+        return MaskData(size: size, coverage: zip(coverage, other.coverage).map { UInt8((Int($0) * Int($1) + 127) / 255) })
+    }
+
     /// Softens coverage about as a Gaussian blur of `radius` pixels does: three box blurs each way, with the edge
     /// pixels repeated past the border.
     public func blurred(by radius: Double) -> MaskData {

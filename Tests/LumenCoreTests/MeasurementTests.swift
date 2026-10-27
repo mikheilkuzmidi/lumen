@@ -80,6 +80,52 @@ struct MeasurementTests {
     }
 }
 
+@Suite("Gradient light", .timeLimit(.minutes(1)))
+struct GradientTests {
+    @Test func lightFromOneSideNeedsNoSearch() async throws {
+        let light = Gradient(from: NormalizedPoint(x: 1, y: 0.4), to: NormalizedPoint(x: 0.2, y: 0.7))
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "Low sun from the right", steps: [
+            .select(Selection(id: "sun", gradient: light)),
+            .adjust(Adjustment(region: "sun", values: [.exposure: 0.3, .highlightWarmth: 40])),
+        ]))
+        let segmenter = CountingSegmenter()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        for try await event in agent.run("Make it feel like golden hour") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+        }
+        #expect(await segmenter.count == 0, "no SAM call")
+        #expect(masks == [MaskData.gradient(size: PixelSize(width: 10, height: 10), from: light.from, to: light.to)])
+        let request = try #require(await planner.critiques.first)
+        #expect(request.regions.map(\.id) == ["sun"] && request.done.contains("Sun: selected"))
+    }
+
+    @Test func whatIsFoundFadesAlongTheGradient() async throws {
+        let light = Gradient(from: NormalizedPoint(x: 1, y: 0.5), to: NormalizedPoint(x: 0, y: 0.5))
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "Warm the sky near the sun", steps: [
+            .select(Selection(id: "sky", concept: "cup", gradient: light)),
+            .adjust(Adjustment(region: "sky", values: [.highlightWarmth: 40])),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        for try await event in agent.run("Warm the sky near the sun") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+        }
+        let cup = MeasuredSegmenter.cup
+        #expect(masks == [cup.multiplied(by: MaskData.gradient(size: cup.size, from: light.from, to: light.to))])
+        #expect(masks[0][4, 5] > masks[0][2, 5], "brighter toward the light")
+    }
+}
+
+private actor CountingSegmenter: Segmenter {
+    let modelID = "sam-3.1"
+    private(set) var count = 0
+    func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        count += 1
+        return []
+    }
+}
+
 private actor MeasuredPlanner: Planner {
     let modelID = "muse-spark-1.3"
     private let answer: EditPlan

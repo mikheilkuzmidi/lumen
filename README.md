@@ -70,6 +70,20 @@ Results are written to a separate folder with a sidecar per photo, a summary of 
 
 Lumen uses your own Meta API key. Set `META_API_KEY`, or enter it in Lumen Studio, which keeps it in the Keychain. No model weights are included here; each model is used under its own license.
 
+### What an edit costs
+
+Every model call is priced from Meta's published prices and recorded in the trace, and `lumen edit` prints the total. A one-photo edit costs about 3 cents:
+- a plan and a check with Muse Spark;
+- a SAM 3.1 selection, plus SAM's check of the redraw;
+- one Muse Image redraw.
+
+Measured on October 26, these kept that cost down:
+- **Planner and critic photos at 1024 px.** Spark reads one as about 860 input tokens, against about 1,940 at 1536 px, and planned and judged as well; SAM still selects at 1536 px.
+- **Fixed parts of the prompt first.** The rules and the photo come before the parts that change, so Meta's prompt cache can serve them when it applies.
+- **No repeated SAM searches.** A repeated search on the same picture is answered from memory.
+
+[docs/meta-api.md](docs/meta-api.md) has the measurements.
+
 ## Build
 
 Requires macOS 26 and Xcode 26.

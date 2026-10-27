@@ -377,6 +377,29 @@ struct AgentTests {
         #expect(events.reasons == ["Revision limit reached. Try more contrast"])
     }
 
+    @Test func aRunCanAllowFewerRevisionsThanConfiguredButNotMore() async throws {
+        let revision = Critique(satisfied: false, notes: "Try more contrast", steps: [.adjust(Adjustment(values: [.contrast: 10]))])
+        func agent(_ planner: AgentPlanner, host: AgentHost) -> EditAgent {
+            EditAgent(planner: planner, segmenter: AgentSegmenter(segments: []), generator: AgentGenerator(), host: host,
+                      configuration: AgentConfiguration(maxRevisions: 1))
+        }
+        // None this time: the first check ends the run, as when credits run low.
+        let low = AgentPlanner(plan: EditPlan(summary: "Adjust", steps: [.adjust(Adjustment(values: [.exposure: 1]))]),
+                               critiques: [.success(revision), .success(revision)])
+        let lowHost = AgentHost()
+        let events = try await collect(agent(low, host: lowHost).run("Improve the photo", maxRevisions: 0))
+        let lowLayers = await lowHost.layers.count, lowChecks = await low.critiques.count
+        #expect(lowLayers == 1 && lowChecks == 1)
+        #expect(events.reasons == ["Revision limit reached. Try more contrast"])
+        // Asking for more than configured gets the configured limit.
+        let more = AgentPlanner(plan: EditPlan(summary: "Adjust", steps: [.adjust(Adjustment(values: [.exposure: 1]))]),
+                                critiques: [.success(revision), .success(revision), .success(revision)])
+        let moreHost = AgentHost()
+        _ = try await collect(agent(more, host: moreHost).run("Improve the photo", maxRevisions: 5))
+        let moreLayers = await moreHost.layers.count, moreChecks = await more.critiques.count
+        #expect(moreLayers == 2 && moreChecks == 2)
+    }
+
     @Test func refusedStepContinuesWithTheNextLayer() async throws {
         let planner = AgentPlanner(plan: EditPlan(summary: "Redraw and adjust", steps: [
             .select(Selection(id: "coat", concept: "coat")),

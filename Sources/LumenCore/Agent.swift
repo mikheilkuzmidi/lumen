@@ -116,11 +116,12 @@ public actor EditAgent {
         self.configuration = configuration
     }
 
-    /// Runs the instruction; `area` is where the user asked the agent to look.
-    public nonisolated func run(_ instruction: String, area: NormalizedRect? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+    /// Runs the instruction; `area` is where the user asked the agent to look. `maxRevisions` lowers the configured
+    /// limit for this instruction only, as an app does when its credits run low.
+    public nonisolated func run(_ instruction: String, area: NormalizedRect? = nil, maxRevisions: Int? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { events in
             let task = Task {
-                await self.start(instruction, area: area, events: events)
+                await self.start(instruction, area: area, maxRevisions: maxRevisions, events: events)
             }
             events.onTermination = { @Sendable _ in task.cancel() }
         }
@@ -161,12 +162,13 @@ public actor EditAgent {
 
     private typealias Events = AsyncThrowingStream<AgentEvent, Error>.Continuation
 
-    private func start(_ instruction: String, area: NormalizedRect?, events: Events) async {
+    private func start(_ instruction: String, area: NormalizedRect?, maxRevisions: Int?, events: Events) async {
         let id = UUID()
         let previous = latestRun
+        let limit = min(configuration.maxRevisions, maxRevisions ?? configuration.maxRevisions)
         let task = Task {
             await previous?.value
-            await self.run(instruction, area: area, events: events)
+            await self.run(instruction, area: area, maxRevisions: limit, events: events)
         }
         latestRun = task
         tasks[id] = task
@@ -179,7 +181,7 @@ public actor EditAgent {
         if tasks.isEmpty { latestRun = nil }
     }
 
-    private func run(_ instruction: String, area: NormalizedRect?, events: Events) async {
+    private func run(_ instruction: String, area: NormalizedRect?, maxRevisions: Int, events: Events) async {
         do {
             try checkCancellation()
             var run = Run()
@@ -226,7 +228,7 @@ public actor EditAgent {
                     finish(critique.notes, events: events)
                     return
                 }
-                guard revisions < max(0, configuration.maxRevisions) else {
+                guard revisions < max(0, maxRevisions) else {
                     finish("Revision limit reached. \(critique.notes)", events: events)
                     return
                 }

@@ -1,8 +1,10 @@
 # Lumen
 
-Lumen edits photos from a sentence. You describe the change: "make the sky moodier and turn his coat navy". Lumen plans the steps, finds each region and makes the change. It then looks at its own result and revises it until the instruction is met.
+Lumen edits photos from a sentence, one photo or a whole shoot. You describe the change: "make the sky moodier and turn his coat navy". Lumen plans the steps, finds each region and makes the change. It then looks at its own result and revises it until the instruction is met.
 
-- **Planning and checking:** Muse Spark.
+Or point it at a folder of a thousand photos and say "edit them all, and make everyone's T-shirts blue". Lumen reviews the whole library, flags the misfires, applies auto and straightening, gives the weakest photos a closer look, and plans the instruction across the shoot, asking you only what is yours to decide.
+
+- **Planning and checking:** Muse Spark; Muse Wonder plans across a library.
 - **Finding things:** SAM 3.1 finds them by name, by a box you draw, or by points.
 - **Redrawing:** Muse Image redraws what's inside a region.
 
@@ -32,11 +34,31 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
 
 Every model call, plan, critique and failure is kept in a trace. [docs/evaluation.md](docs/evaluation.md) has the results on 15 CC0 photos.
 
+## A whole library
+
+```sh
+lumen batch shoot/ "Make everyone's T-shirts blue" --out edited/ --mode ask
+```
+
+1. **Look.** Every photo is measured on the Mac: sharpness, exposure, clipping, and the horizon's tilt with Vision. Muse Spark then reviews numbered contact sheets of 20. For each photo it gives a misfire verdict, quality, description and group, says whether the instruction applies, and says whether the camera was visibly tilted.
+2. **Base pass.** Misfires (shaken frames, pocket shots) are flagged and left out. Everything else gets a gentle auto tone and colour, and straightening where a tilt is measured and the reviewer agrees.
+3. **Closer look.** Photos still under the quality threshold get their own edit.
+4. **The instruction.** Muse Wonder groups the photos it applies to and writes each photo's instruction. It asks what only you can decide ("the same blue shirt for everyone, or each keeps his style?"), with a recommendation. Then each photo is edited by its own agent, a few at a time.
+
+There are three modes:
+
+- **Autonomous:** takes every recommendation and records that it did.
+- **Ask:** waits for your answers.
+- **Plan first:** shows the plan and its estimated model calls, and changes nothing until you approve.
+
+Results are written to a separate folder with a sidecar per photo, a summary of every answer and who gave it, and before and after contact sheets. The originals are never written. Lumen Studio has the same flow in its Library window (File › Open Folder).
+
 ## Models
 
 | Task | Model | Where it runs |
 | --- | --- | --- |
-| Plan an instruction, judge the result | Muse Spark (`muse-spark-1.3`) | Meta Model API |
+| Plan an instruction, judge the result, review a library | Muse Spark (`muse-spark-1.3`) | Meta Model API |
+| Plan an instruction across a library | Muse Wonder (`muse-wonder-1.0`) | Meta Model API |
 | Find regions | SAM 3.1 (`sam-3.1`) | Meta Model API |
 | Redraw a region | Muse Image (`muse-image-1.0`) | Meta Model API |
 | Plan and judge with open weights | Muse Spark Open | A hosting provider (Baseten or Modal) |
@@ -56,7 +78,7 @@ swift test
 ## Use it
 
 - **Lumen Studio:** `scripts/build-studio.sh`, then open `.build/studio/Lumen Studio.app`. See [docs/studio.md](docs/studio.md), including how to open a build that isn't notarized.
-- **The command:** `swift build -c release`, then `.build/release/lumen edit photo.jpg "Make the sky moodier"`. See [docs/cli.md](docs/cli.md).
+- **The command:** `swift build -c release`, then `.build/release/lumen edit photo.jpg "Make the sky moodier"`, or `lumen batch` for a folder. See [docs/cli.md](docs/cli.md).
 - **Open weights:** see [docs/open-weights.md](docs/open-weights.md).
 
 ![Selecting the jacket: SAM 3.1's box drawn on the photo while the plan waits](docs/images/studio-selecting.jpg)

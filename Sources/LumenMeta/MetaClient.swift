@@ -59,9 +59,14 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
             let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
                                       done: request.done, layers: request.layers, history: request.history)
             // The rules and the Before photo stay the same through a run's revisions: they go first, for the cache.
-            return try await answer(Critique.self, prompt: Self.critiquePrompt,
-                                    content: [.text("Before"), .image(request.before), .text("After"), .image(request.after),
-                                              .text(try context.text())],
+            // Close-ups follow the whole photos, each region's Before first, so what stays the same through a run comes first.
+            var content: [ChatContentPart] = [.text("Before"), .image(request.before), .text("After"), .image(request.after)]
+            for closeUp in request.closeUps {
+                content += [.text("Close-up of \(closeUp.region), before"), .image(closeUp.before),
+                            .text("Close-up of \(closeUp.region), after"), .image(closeUp.after)]
+            }
+            content.append(.text(try context.text()))
+            return try await answer(Critique.self, prompt: Self.critiquePrompt, content: content,
                                     name: "critique", schema: Critique.jsonSchema())
         } catch { throw MetaHTTP.error(error) }
     }
@@ -124,6 +129,9 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     instructions, oldest first: read "that", "less", "more" and "undo" against the latest of them. Undoing
     takes off only that latest instruction's change, so Before already shows it and After should look as
     the photo did before it; never take off earlier changes for an undo.
+    Close-ups of each region redrawn in this run, before and after, may follow the whole photos. Check in them
+    that the redraw kept the shape, edges and detail of what is in and beside the region: a smeared wheel, a
+    melted edge or a changed neighbouring object is a visible flaw, to be redrawn again.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating

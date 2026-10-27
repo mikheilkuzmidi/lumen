@@ -67,9 +67,11 @@ public struct CritiqueRequest: Sendable {
     public var layers: [LayerInfo]
     /// Earlier instructions for this photo, oldest first, so "that" and "undo" can be read against them.
     public var history: [String]
+    /// Each region redrawn in this run, close up, before and after: a smeared wheel is a few pixels of the whole photo.
+    public var closeUps: [CloseUp]
 
     public init(instruction: String, before: EncodedImage, after: EncodedImage, regions: [RegionInfo] = [],
-                done: [String] = [], layers: [LayerInfo] = [], history: [String] = []) {
+                done: [String] = [], layers: [LayerInfo] = [], history: [String] = [], closeUps: [CloseUp] = []) {
         self.instruction = instruction
         self.before = before
         self.after = after
@@ -77,6 +79,20 @@ public struct CritiqueRequest: Sendable {
         self.done = done
         self.layers = layers
         self.history = history
+        self.closeUps = closeUps
+    }
+}
+
+/// A redrawn region seen close up, before this run's redraw and as it is now.
+public struct CloseUp: Equatable, Sendable {
+    public var region: String
+    public var before: EncodedImage
+    public var after: EncodedImage
+
+    public init(region: String, before: EncodedImage, after: EncodedImage) {
+        self.region = region
+        self.before = before
+        self.after = after
     }
 }
 

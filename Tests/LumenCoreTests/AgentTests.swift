@@ -226,8 +226,11 @@ struct AgentTests {
         let shown = segment().mask.cropped(to: rect).resized(to: size).union(redrawn)
         #expect(await agent.assets.get(patchMaskID) == .mask(shown.resized(to: AgentGenerator.image.size)))
         #expect(await host.fittedRegions == [rect])
-        #expect(await host.crops.map(\.maxLongEdge) == [2048])
-        #expect(await host.crops.map(\.rect) == [rect])
+        // The generator's crop, then the coat close up before it was redrawn and again for the check.
+        #expect(await host.crops.map(\.maxLongEdge) == [2048, 768, 768])
+        #expect(await host.crops.map(\.rect) == [rect, rect, rect])
+        let closeUps = try #require(await planner.critiques.first?.closeUps)
+        #expect(closeUps.map(\.region) == ["coat"] && closeUps.first?.before == AgentPhoto.crop && closeUps.first?.after == AgentPhoto.crop)
         // The plan and the check at the preview size; the selection at SAM's own size, where detail fits the mask.
         #expect(await host.previews == [900, 1536, 900], "the plan, the selection and the check")
         let request = try #require(await planner.plans.first)

@@ -175,6 +175,7 @@ struct RedrawTests {
         #expect(await host.layers == [applied[1]])
         #expect(await host.removed == [applied[0].id])
         #expect(await host.cropLayers == [[], []], "each crop renders without the earlier redraw")
+        #expect(await host.closeUpLayers == [[], [applied[1].id]], "one close-up before this run's first redraw, one for the check")
         let timeline = events.compactMap { event -> String? in
             switch event {
             case .applied: "applied"
@@ -329,6 +330,7 @@ private actor RedrawHost: EditHost {
     private(set) var layers: [Layer] = []
     private(set) var removed: [Layer.ID] = []
     private(set) var cropLayers: [[Layer.ID]] = []
+    private(set) var closeUpLayers: [[Layer.ID]] = []
     private let failAdjustment: Bool
     private let failRemoval: Bool
 
@@ -339,7 +341,8 @@ private actor RedrawHost: EditHost {
     func size() async -> PixelSize { RedrawPhoto.original.size }
     func render(maxLongEdge: Int) async throws -> EncodedImage { RedrawPhoto.preview(layers: layers) }
     func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage {
-        cropLayers.append(layers.map(\.id))
+        // The generator's crops; the critic's close-ups are smaller.
+        if maxLongEdge == 2048 { cropLayers.append(layers.map(\.id)) } else { closeUpLayers.append(layers.map(\.id)) }
         return EncodedImage(data: Data("crop".utf8), format: .png, size: RedrawPhoto.cropSize)
     }
     func apply(_ layer: Layer, assets: AssetStore) async throws {

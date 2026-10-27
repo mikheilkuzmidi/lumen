@@ -71,12 +71,16 @@ public struct AgentConfiguration: Sendable {
     public var previewLongEdge = 1024
     /// The long edge of the photo SAM selects in, where detail decides how well a mask fits.
     public var selectionLongEdge = 1536
+    /// The long edge of the close-up of each redrawn region the critic is shown, before and after.
+    public var closeUpLongEdge = 768
 
-    public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1024, selectionLongEdge: Int = 1536) {
+    public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1024, selectionLongEdge: Int = 1536,
+                closeUpLongEdge: Int = 768) {
         self.maxSteps = maxSteps
         self.maxRevisions = maxRevisions
         self.previewLongEdge = previewLongEdge
         self.selectionLongEdge = selectionLongEdge
+        self.closeUpLongEdge = closeUpLongEdge
     }
 }
 
@@ -106,6 +110,8 @@ public actor EditAgent {
     private var regions: [String: Region] = [:]
     private var layers: [AppliedLayer] = []
     private var history: [String] = []
+    /// Each region redrawn in this run: where, and how it looked close up before its first redraw.
+    private var closeUpsBefore: [(region: String, rect: NormalizedRect, image: EncodedImage)] = []
 
     public init(planner: any Planner, segmenter: any Segmenter, generator: any Generator, host: any EditHost,
                 configuration: AgentConfiguration = AgentConfiguration()) {
@@ -186,6 +192,7 @@ public actor EditAgent {
             try checkCancellation()
             var run = Run()
             var redraws: [String: Layer.ID] = [:]
+            closeUpsBefore = []
             guard configuration.maxSteps > 0 else {
                 finish("Step limit reached.", events: events)
                 return
@@ -217,9 +224,15 @@ public actor EditAgent {
                 }
                 let after = try await host.render(maxLongEdge: configuration.previewLongEdge)
                 try checkCancellation()
+                var closeUps: [CloseUp] = []
+                for shot in closeUpsBefore {
+                    let now = try await host.render(region: shot.rect, maxLongEdge: configuration.closeUpLongEdge)
+                    closeUps.append(CloseUp(region: shot.region, before: shot.image, after: now))
+                }
+                try checkCancellation()
                 let request = CritiqueRequest(instruction: instruction, before: before, after: after,
                                               regions: regionInfo, done: run.done, layers: layerInfo,
-                                              history: Array(history.dropLast()))
+                                              history: Array(history.dropLast()), closeUps: closeUps)
                 let critique = try await call(.critique, model: planner.modelID, detail: "Check the edit", events: events) {
                     try await self.planner.critique(request)
                 }
@@ -467,6 +480,11 @@ public actor EditAgent {
         guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
         let image = try await host.render(region: rect, maxLongEdge: 2048)
         try checkCancellation()
+        // The critic sees this region close up, as it was before this run first redrew it.
+        if !closeUpsBefore.contains(where: { $0.region == region.info.id }) {
+            let closeUp = try await host.render(region: rect, maxLongEdge: configuration.closeUpLongEdge)
+            closeUpsBefore.append((region.info.id, rect, closeUp))
+        }
         // SAM's edge sits right on the object, so a sliver of its old colour would ring the redrawn one; the redraw
         // shows a little past it, where the generator redrew the boundary too.
         let edge = max(2, Int((Double(min(image.size.width, image.size.height)) * 0.012).rounded()))

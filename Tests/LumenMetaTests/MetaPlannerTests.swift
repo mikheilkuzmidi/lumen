@@ -72,6 +72,25 @@ import Testing
         "name": "critique", "schema": try JSONSerialization.jsonObject(with: Critique.jsonSchema()), "strict": true]]])
 }
 
+/// A smeared wheel is a few pixels of the whole photo: each redrawn region also goes to the critic close up.
+@Test func critiqueShowsEachRedrawnRegionCloseUpAfterTheWholePhotos() async throws {
+    let transport = ReplayTransport([try .init(file: "critique.json")])
+    let planner = MetaPlanner(configuration: testConfiguration, transport: transport)
+    let after = EncodedImage(data: Data([4, 5]), format: .png, size: testPhoto.size)
+    let closeBefore = EncodedImage(data: Data([6]), format: .png, size: PixelSize(width: 4, height: 4))
+    let closeAfter = EncodedImage(data: Data([7]), format: .png, size: PixelSize(width: 4, height: 4))
+    _ = try await planner.critique(CritiqueRequest(instruction: "Make the bicycles yellow", before: testPhoto, after: after,
+                                                   closeUps: [CloseUp(region: "bicycles", before: closeBefore, after: closeAfter)]))
+    let body = try json(#require(await transport.requests.first?.httpBody))
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    let content = try #require(messages[1]["content"] as? [[String: Any]])
+    let labels = content.compactMap { $0["text"] as? String }.dropLast()
+    #expect(Array(labels) == ["Before", "After", "Close-up of bicycles, before", "Close-up of bicycles, after"])
+    let images = content.compactMap { ($0["image_url"] as? [String: String])?["url"] }
+    #expect(images == [testPhoto.dataURL, after.dataURL, closeBefore.dataURL, closeAfter.dataURL])
+    #expect(MetaPlanner.critiquePrompt.contains("a smeared wheel, a\nmelted edge or a changed neighbouring object is a visible flaw"))
+}
+
 @Test func chatBuilderSupportsHostingProviders() throws {
     let builder = ChatCompletionRequestBuilder(baseURL: URL(string: "https://host.example/custom/v1/")!, apiKey: "host-key",
                                                model: "hosted-spark", extraHeaders: ["X-Deployment": "spark"], timeout: 42)

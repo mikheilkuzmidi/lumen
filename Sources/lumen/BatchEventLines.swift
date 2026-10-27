@@ -34,7 +34,7 @@ struct BatchEventLines {
             let quality = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), review.quality)
             let name = oneLine(review.photo.rawValue)
             let compact = name.count > 42 ? String(name.prefix(41)) + "…" : name
-            lines.append("\(numbers[review.photo] ?? 0) \(compact) quality \(quality), group \(oneLine(review.group)), \(review.matchesInstruction ? "matches" : "no match")")
+            lines.append("\(numbers[review.photo] ?? 0) \(compact) quality \(quality), group \(oneLine(review.group)), \(review.matchesInstruction ? "matches" : "no match")\(review.tilted == true ? ", tilted" : "")")
         case .flagged(let photo, let reason): lines.append("\(oneLine(photo.rawValue)): Flagged: \(oneLine(reason))")
         case .autoApplied(let photo, let label): lines.append("\(oneLine(photo.rawValue)): \(oneLine(label))")
         case .straightened(let photo, let degrees):

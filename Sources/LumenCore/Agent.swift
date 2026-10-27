@@ -615,15 +615,18 @@ public actor EditAgent {
         try checkCancellation()
         let started = Date()
         let usage = ModelUsageRecorder()
+        let notes = ModelCallNoteRecorder()
         do {
-            let value = try await ModelUsageReporting.$report.withValue(usage.record) { try await operation() }
+            let value = try await ModelUsageReporting.$report.withValue(usage.record) {
+                try await ModelCallNotes.$report.withValue(notes.record) { try await operation() }
+            }
             try checkCancellation()
-            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: short(detail), started: started,
+            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: notes.detail(short(detail)), started: started,
                                            duration: max(0, Date().timeIntervalSince(started))).recording(usage.value)))
             return value
         } catch {
             let error = cancellationError(error)
-            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: short("\(detail): \(error.localizedDescription)"),
+            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: notes.detail(short("\(detail): \(error.localizedDescription)")),
                                            started: started, duration: max(0, Date().timeIntervalSince(started))).recording(usage.value)))
             throw error
         }

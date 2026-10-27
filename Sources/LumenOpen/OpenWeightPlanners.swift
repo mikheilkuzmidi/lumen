@@ -11,7 +11,7 @@ public struct HostedSparkOpenPlanner: Planner, PhotoCostEstimating {
     public let transport: any MetaTransport
 
     public init(endpoint: URL, apiKey: String, modelID: String = "meta-models/muse-spark-open-1026",
-                transport: any MetaTransport = URLSessionMetaTransport()) {
+                transport: any MetaTransport = RetryingMetaTransport()) {
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.modelID = modelID
@@ -69,7 +69,7 @@ public struct LocalGlimmerPlanner: Planner, PhotoCostEstimating {
     public let transport: any MetaTransport
 
     public init(modelID: String = "muse-glimmer", baseURL: URL = URL(string: "http://127.0.0.1:8786/v1")!,
-                transport: any MetaTransport = URLSessionMetaTransport()) {
+                transport: any MetaTransport = RetryingMetaTransport()) {
         self.modelID = modelID
         self.baseURL = baseURL
         self.transport = transport

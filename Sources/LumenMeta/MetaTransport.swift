@@ -65,6 +65,84 @@ public struct URLSessionMetaTransport: MetaTransport {
     }
 }
 
+/// Sends a request again when the service was briefly unable to answer: rate limited, overloaded, or the connection
+/// dropped. A wrong key, no credit, a bad request or a refusal is never sent again.
+public struct RetryingMetaTransport: MetaTransport {
+    public let transport: any MetaTransport
+    /// Times a request may be sent again after its first try.
+    public var retries: Int
+    /// The longest wait before trying again. A rate limit that asks for longer fails at once, with its own wait.
+    public var longestWait: TimeInterval
+    private let sleep: @Sendable (TimeInterval) async throws -> Void
+
+    public init(_ transport: any MetaTransport = URLSessionMetaTransport(), retries: Int = 2, longestWait: TimeInterval = 20) {
+        self.init(transport, retries: retries, longestWait: longestWait) { try await Task.sleep(for: .seconds($0)) }
+    }
+
+    init(_ transport: any MetaTransport, retries: Int = 2, longestWait: TimeInterval = 20,
+         sleep: @escaping @Sendable (TimeInterval) async throws -> Void) {
+        self.transport = transport
+        self.retries = retries
+        self.longestWait = longestWait
+        self.sleep = sleep
+    }
+
+    public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        try await retrying({ try await transport.data(for: request) }, response: \.1)
+    }
+
+    public func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
+        try await retrying({ try await transport.lines(for: request) }, response: \.1)
+    }
+
+    private func retrying<Value>(_ send: () async throws -> Value, response: (Value) -> HTTPURLResponse) async throws -> Value {
+        var tries = 0
+        var timedOut = false
+        while true {
+            let reason: String
+            var asked: TimeInterval?
+            do {
+                let value = try await send()
+                let answer = response(value)
+                guard tries < retries, let busy = Self.reason(answer.statusCode) else { return value }
+                asked = MetaHTTP.retryAfter(answer.value(forHTTPHeaderField: "retry-after"))
+                if let asked, asked > longestWait { return value }
+                reason = busy
+            } catch {
+                let error = MetaHTTP.error(error)
+                // A request that timed out already took minutes; it gets one more try, not two.
+                let isTimeout = error as? LumenError == .timedOut
+                guard tries < retries, !(isTimeout && timedOut), let failure = Self.reason(error) else { throw error }
+                timedOut = timedOut || isTimeout
+                reason = failure
+            }
+            tries += 1
+            let wait = min(longestWait, asked ?? Double(1 << (tries - 1)) * Double.random(in: 1...1.5))
+            ModelCallNotes.report?(String(format: "%@; tried again after %.0f s", locale: Locale(identifier: "en_US_POSIX"),
+                                          reason, wait))
+            do { try await sleep(wait) } catch { throw LumenError.cancelled }
+            if Task.isCancelled { throw LumenError.cancelled }
+        }
+    }
+
+    static func reason(_ status: Int) -> String? {
+        switch status {
+        case 429: "rate limited"
+        case 500, 502, 503, 504: "the service answered \(status)"
+        default: nil
+        }
+    }
+
+    static func reason(_ error: any Error) -> String? {
+        if error as? LumenError == .timedOut { return "timed out" }
+        guard let error = error as? URLError else { return nil }
+        switch error.code {
+        case .networkConnectionLost, .cannotConnectToHost: return "the connection dropped"
+        default: return nil
+        }
+    }
+}
+
 enum MetaHTTP {
     static func request(baseURL: URL, path: String, key: String, timeout: TimeInterval,
                         headers: [String: String] = [:], body: [String: Any]) throws -> URLRequest {

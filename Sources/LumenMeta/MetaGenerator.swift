@@ -10,7 +10,7 @@ public struct MetaGenerator: Generator {
     public let transport: any MetaTransport
     public var modelID: String { configuration.imageModel }
 
-    public init(configuration: MetaConfiguration, transport: any MetaTransport = URLSessionMetaTransport()) {
+    public init(configuration: MetaConfiguration, transport: any MetaTransport = RetryingMetaTransport()) {
         self.configuration = configuration
         self.transport = transport
     }

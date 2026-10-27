@@ -583,6 +583,13 @@ struct AgentTests {
         #expect(await host.layers.isEmpty)
     }
 
+    @Test func aModelCallTriedAgainSaysSoInTheTrace() async throws {
+        let events = try await collect(EditAgent(planner: RetriedPlanner(), segmenter: AgentSegmenter(segments: []),
+                                                 generator: AgentGenerator(), host: AgentHost()).run("Brighten"))
+        let plan = try #require(events.traces.first { $0.kind == .plan && $0.model != nil })
+        #expect(plan.detail == "Brighten (rate limited; tried again after 2 s)")
+    }
+
     private func segment() -> Segment {
         var coverage = [UInt8](repeating: 0, count: 100)
         for y in 3..<8 {
@@ -642,6 +649,18 @@ private actor AgentPlanner: Planner {
         critiques.append(request)
         return try answers.isEmpty ? Critique(satisfied: true, notes: "Done.") : answers.removeFirst().get()
     }
+}
+
+/// Answers after its first try was rate limited, as a retrying transport reports it.
+private struct RetriedPlanner: Planner {
+    let modelID = "muse-spark-1.3"
+
+    func plan(_ request: PlanRequest) async throws -> EditPlan {
+        ModelCallNotes.report?("rate limited; tried again after 2 s")
+        return EditPlan(summary: "Brighten", steps: [.adjust(Adjustment(values: [.exposure: 0.5])), .finish(Finish(reason: "Done."))])
+    }
+
+    func critique(_ request: CritiqueRequest) async throws -> Critique { Critique(satisfied: true, notes: "Done.") }
 }
 
 private struct RevertingPlanner: Planner {

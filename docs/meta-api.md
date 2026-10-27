@@ -58,6 +58,13 @@ Source: [edit image](https://dev.meta.ai/docs/api-reference/images/edit-image).
 - HTTP 429: rate limited; honour `retry-after`.
 - A refusal comes back as a refusal content part or a refusal event in a stream.
 
+Lumen sends a request again, at most twice, when the service was briefly unable to answer:
+- a 429, after the wait its `retry-after` asks for, up to 20 s; a longer wait fails at once and says how long;
+- a 500, 502, 503 or 504, or a dropped connection, after about 1 s and then 2 s;
+- a timeout once only, since it has already waited.
+
+A wrong key, no credit, a bad request or a refusal is never sent again. Each retry is noted in that call's trace.
+
 ## Measured on October 26, 2026
 
 One run each on CC0 fixtures, with the user's own key. These are single measurements, not benchmarks.

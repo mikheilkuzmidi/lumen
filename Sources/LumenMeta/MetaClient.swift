@@ -37,7 +37,7 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     public let transport: any MetaTransport
     public var modelID: String { configuration.planningModel }
 
-    public init(configuration: MetaConfiguration, transport: any MetaTransport = URLSessionMetaTransport()) {
+    public init(configuration: MetaConfiguration, transport: any MetaTransport = RetryingMetaTransport()) {
         self.configuration = configuration
         self.transport = transport
     }

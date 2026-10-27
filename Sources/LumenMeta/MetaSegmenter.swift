@@ -7,7 +7,7 @@ public struct MetaSegmenter: Segmenter {
     public let transport: any MetaTransport
     public var modelID: String { configuration.segmentationModel }
 
-    public init(configuration: MetaConfiguration, transport: any MetaTransport = URLSessionMetaTransport()) {
+    public init(configuration: MetaConfiguration, transport: any MetaTransport = RetryingMetaTransport()) {
         self.configuration = configuration
         self.transport = transport
     }

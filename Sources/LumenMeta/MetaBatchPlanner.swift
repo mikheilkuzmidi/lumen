@@ -10,7 +10,7 @@ public struct MetaBatchPlanner: BatchPlanner {
     public let planModelID: String
 
     public init(configuration: MetaConfiguration, planModelID: String = "muse-wonder-1.0",
-                transport: any MetaTransport = URLSessionMetaTransport()) {
+                transport: any MetaTransport = RetryingMetaTransport()) {
         self.configuration = configuration
         self.planModelID = planModelID
         self.transport = transport

@@ -519,14 +519,17 @@ actor BatchRun {
         try await calls.begin()
         let started = Date()
         let usage = ModelUsageRecorder()
+        let notes = ModelCallNoteRecorder()
         do {
-            let value = try await ModelUsageReporting.$report.withValue(usage.record) { try await operation() }
+            let value = try await ModelUsageReporting.$report.withValue(usage.record) {
+                try await ModelCallNotes.$report.withValue(notes.record) { try await operation() }
+            }
             try checkCancellation()
-            recordTrace(TraceEvent(kind: kind, model: model, detail: detail, started: started,
+            recordTrace(TraceEvent(kind: kind, model: model, detail: notes.detail(detail), started: started,
                                            duration: max(0, Date().timeIntervalSince(started))).recording(usage.value))
             return value
         } catch {
-            recordTrace(TraceEvent(kind: kind, model: model, detail: error.localizedDescription, started: started,
+            recordTrace(TraceEvent(kind: kind, model: model, detail: notes.detail(error.localizedDescription), started: started,
                                            duration: max(0, Date().timeIntervalSince(started))).recording(usage.value))
             throw error
         }

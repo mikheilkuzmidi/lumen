@@ -21,6 +21,11 @@ public enum ModelUsageReporting {
     @TaskLocal public static var report: (@Sendable (ModelUsage) -> Void)?
 }
 
+/// Carries what happened inside a model call, such as a retry, to the agent tracing it.
+public enum ModelCallNotes {
+    @TaskLocal public static var report: (@Sendable (String) -> Void)?
+}
+
 /// Supplies a default photo estimate without putting model prices in the core.
 public protocol PhotoCostEstimating: Sendable {
     var estimatedCostPerPhoto: Double { get }
@@ -31,6 +36,19 @@ final class ModelUsageRecorder: Sendable {
 
     func record(_ value: ModelUsage) { usage.withLock { $0 = value } }
     var value: ModelUsage? { usage.withLock { $0 } }
+}
+
+final class ModelCallNoteRecorder: Sendable {
+    private let notes = Mutex<[String]>([])
+
+    func record(_ note: String) { notes.withLock { $0.append(note) } }
+    var value: [String] { notes.withLock { $0 } }
+
+    /// `detail`, followed by what happened inside the call.
+    func detail(_ detail: String) -> String {
+        let notes = value
+        return notes.isEmpty ? detail : detail + " (" + notes.joined(separator: "; ") + ")"
+    }
 }
 
 extension TraceEvent {

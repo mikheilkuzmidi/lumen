@@ -297,13 +297,13 @@ extension StudioModels {
         return StudioModels(planner: planner, segmenter: MetaSegmenter(configuration: configuration),
                             generator: MetaGenerator(configuration: configuration),
                             reviewer: MetaBatchPlanner(configuration: reviewConfiguration,
-                                transport: backend == .glimmer ? StudioLibraryGlimmerTransport() : URLSessionMetaTransport()))
+                                transport: backend == .glimmer ? StudioLibraryGlimmerTransport() : RetryingMetaTransport()))
     }
 }
 
 /// Sends library schemas in llama-server's direct schema format.
 struct StudioLibraryGlimmerTransport: MetaTransport {
-    var transport: any MetaTransport = URLSessionMetaTransport()
+    var transport: any MetaTransport = RetryingMetaTransport()
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request

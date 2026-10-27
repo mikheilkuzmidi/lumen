@@ -29,8 +29,10 @@ struct StudioLibraryView: View {
                             .monospacedDigit()
                     }
                     .font(.system(size: 10)).foregroundStyle(.secondary).padding(18)
+                    // Not animated: a capture of a finished library showed the bar still catching up.
                     ProgressView(value: Double(model.done), total: Double(max(1, model.total)))
                         .tint(StudioStyle.accent).progressViewStyle(.linear)
+                        .animation(nil, value: model.done)
                 }
                 Rectangle().fill(StudioStyle.line).frame(width: 1)
                 sidebar.frame(width: 300)

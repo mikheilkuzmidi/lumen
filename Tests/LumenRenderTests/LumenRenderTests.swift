@@ -39,6 +39,56 @@ struct PhotoPixelTests {
         #expect(abs(ratio - 2) < 0.06)
     }
 
+    /// Contrast pivots on middle grey as it is seen, not on 0.5 in linear light.
+    @Test
+    func contrastKeepsMiddleGreyAndSpreadsTheTonesAroundIt() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x < 43 ? RGB(50, 50, 50) : x < 86 ? RGB(118, 118, 118) : RGB(200, 200, 200) })
+        let before = try await folder.pixels(document)
+        try await document.apply(Layer(label: "Contrast", content: .adjustment(values: [.contrast: 50], mask: nil)), assets: AssetStore())
+        let after = try await folder.pixels(document)
+        #expect(abs(after[64, 48].red - before[64, 48].red) < 0.02)
+        #expect(after[20, 48].red < before[20, 48].red - 0.02 && after[20, 48].red > 0.1)
+        #expect(after[108, 48].red > before[108, 48].red + 0.02)
+    }
+
+    /// The night photo that went darker: dehaze in linear light sent every shadow to black.
+    @Test
+    func dehazeDeepensShadowsWithoutCrushingThem() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(40, 30, 15) })
+        let before = try await folder.pixels(document)
+        try await document.apply(Layer(label: "Dehaze", content: .adjustment(values: [.dehaze: 10], mask: nil)), assets: AssetStore())
+        let after = try await folder.pixels(document)
+        for (channel, was, now) in [("red", before[64, 48].red, after[64, 48].red), ("blue", before[64, 48].blue, after[64, 48].blue)] {
+            #expect(now < was && now > was - 0.025, "\(channel): \(was) → \(now)")
+        }
+        try await document.apply(Layer(label: "Night", content: .adjustment(values: [
+            .exposure: 0.35, .shadows: 15, .highlights: 20, .whites: 15, .contrast: 15, .vibrance: 25,
+        ], mask: nil)), assets: AssetStore())
+        let lifted = try await folder.pixels(document)
+        #expect(lifted[64, 48].red + lifted[64, 48].green > before[64, 48].red + before[64, 48].green, "+0.35 stop brightens a night photo")
+    }
+
+    @Test
+    func temperatureWarmsAboutAsMuchAsItCools() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        var shifts: [Double] = []
+        for temperature in [35.0, -35.0] {
+            let document = try PhotoDocument(contentsOf: folder.photo { _, _ in RGB(128, 128, 128) })
+            try await document.apply(Layer(label: "White balance", content: .adjustment(values: [.temperature: temperature], mask: nil)),
+                                     assets: AssetStore())
+            let pixel = try await folder.pixels(document)[64, 48]
+            shifts.append(pixel.red - pixel.blue)
+        }
+        #expect(shifts[0] > 0.07, "+35 is visibly warmer")
+        #expect(shifts[1] < -0.07, "-35 is visibly cooler")
+        #expect(abs(shifts[0] / shifts[1]) > 0.7 && abs(shifts[0] / shifts[1]) < 1.4)
+    }
+
     @Test
     func maskUsesTopRowsAndLeavesOutsidePixelsUnchanged() async throws {
         let folder = try PhotoFolder()

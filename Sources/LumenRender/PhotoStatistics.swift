@@ -85,7 +85,7 @@ struct PhotoStatistics: Sendable {
     /// Exposure moves only when median lightness is outside 0.35...0.6, halfway toward that range, by at most
     /// 0.7 stop. After exposure, the 0.5% and 99.5% points set blacks and whites, capped at 10%; flat photos
     /// keep their tone range. Grey-world channel differences set temperature and tint at 30% strength, capped
-    /// at 8%, so a sunset or a warm room keeps its colour. Saturation below 0.25 adds 10% vibrance, except in
+    /// at 5 for temperature and 8 for tint, so a sunset or a warm room keeps its colour. Saturation below 0.25 adds 10% vibrance, except in
     /// a black-and-white photo. Exposure under 0.03 stop and colour or tone under 0.5% are left alone.
     var autoValues: [AdjustmentKey: Double] {
         var values: [AdjustmentKey: Double] = [:]
@@ -104,7 +104,7 @@ struct PhotoStatistics: Sendable {
         }
         let grey = (meanRed + meanGreen + meanBlue) / 3
         if grey > 0.02 {
-            let temperature = min(8, max(-8, (meanBlue - meanRed) / grey * 15))
+            let temperature = min(5, max(-5, (meanBlue - meanRed) / grey * 9))
             let tint = min(8, max(-8, ((meanRed + meanBlue) / 2 - meanGreen) / grey * 15))
             if abs(temperature) >= 0.5 { values[.temperature] = temperature }
             if abs(tint) >= 0.5 { values[.tint] = tint }

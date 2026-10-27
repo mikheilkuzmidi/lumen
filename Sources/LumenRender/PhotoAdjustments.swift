@@ -12,8 +12,9 @@ enum PhotoAdjustments {
         let temperature = value(.temperature)
         let tint = value(.tint)
         if temperature != 0 || tint != 0 {
+            // Even steps in mireds, as the eye judges colour temperature: +100 warms about as much as -100 cools.
             image = image.applyingFilter("CITemperatureAndTint", parameters: [
-                "inputNeutral": CIVector(x: 6500 + temperature * 30, y: tint),
+                "inputNeutral": CIVector(x: 1_000_000 / (1_000_000 / 6500 - temperature * 1.2), y: tint),
                 "inputTargetNeutral": CIVector(x: 6500, y: 0),
             ])
         }
@@ -55,12 +56,16 @@ enum PhotoAdjustments {
         }
         let dehaze = value(.dehaze) / 100
         if dehaze != 0 {
-            image = image.applyingFilter("CIColorControls", parameters: ["inputContrast": 1 + dehaze * 0.25])
+            // On sRGB-encoded values, as CIToneCurve's curves work on perceptual ones: in the linear light Core Image
+            // works in, a contrast pivot of 0.5 is a light grey and every shadow goes to black.
+            image = image.applyingFilter("CILinearToSRGBToneCurve")
+                .applyingFilter("CIColorControls", parameters: ["inputContrast": 1 + dehaze * 0.25])
                 .applyingFilter("CIColorPolynomial", parameters: [
                     "inputRedCoefficients": CIVector(x: -dehaze * 0.035, y: 1, z: 0, w: 0),
                     "inputGreenCoefficients": CIVector(x: -dehaze * 0.035, y: 1, z: 0, w: 0),
                     "inputBlueCoefficients": CIVector(x: -dehaze * 0.035, y: 1, z: 0, w: 0),
                 ])
+                .applyingFilter("CISRGBToneCurveToLinear")
         }
         if value(.vibrance) != 0 {
             image = image.applyingFilter("CIVibrance", parameters: ["inputAmount": value(.vibrance) / 100])

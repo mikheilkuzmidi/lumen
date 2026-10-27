@@ -83,7 +83,7 @@ struct PhotoMeasurementsTests {
         let cast = try folder.photo(name: "cast.png") { _, _ in (150, 100, 90) }
         let values = try statistics(cast).autoValues
         let grey: Double = 340.0 / 3
-        let temperature: Double = -60.0 / grey * 15, tint: Double = 20.0 / grey * 15
+        let temperature: Double = max(-5, -60.0 / grey * 9), tint: Double = 20.0 / grey * 15
         #expect(abs((values[.temperature] ?? 0) - temperature) < 0.001)
         #expect(abs((values[.tint] ?? 0) - tint) < 0.001)
         #expect(values[.vibrance] == nil)

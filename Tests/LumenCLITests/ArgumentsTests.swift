@@ -14,7 +14,7 @@ struct ArgumentsTests {
         #expect(command.options.area == nil)
         #expect(command.options.maxSteps == 12)
         #expect(command.options.maxRevisions == 2)
-        #expect(command.options.preview == 1536)
+        #expect(command.options.preview == 1024)
         #expect(command.outputURL.path == "/tmp/portrait-lumen.jpg")
         #expect(command.traceURL == nil)
     }

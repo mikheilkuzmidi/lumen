@@ -19,7 +19,7 @@ The default result is `coat-lumen.jpg` beside the original. Output extensions se
 | `--trace <file.json>` | No trace file | JSON record written after the result. |
 | `--max-steps N` | `12` | Attempted steps across all plans, including select and finish. Zero skips models. |
 | `--max-revisions N` | `2` | Additional plans the critic may request. Zero still allows the first critique. |
-| `--preview N` | `1536` | Long edge seen by the planner, critic and selection model. Region redraws use crops up to 2048 pixels. Export remains full size. |
+| `--preview N` | `1024` | Long edge seen by the planner and critic: Muse Spark reads a 1024 px photo as about 860 input tokens, against about 1,940 at 1536 px. SAM selects at 1536 px; region redraws use crops up to 2048 px. Export remains full size. |
 
 Progress prints the plan summary, completed selections and changes with model timings, the critic's verdict and notes, and the reason the edit finished. Colour is used only when stdout is a terminal. Selection counts describe the merged region retained by the agent. Redirected output has one plain-text line per reported event.
 

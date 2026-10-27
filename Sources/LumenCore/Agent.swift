@@ -66,13 +66,17 @@ public struct AgentConfiguration: Sendable {
     public var maxSteps = 12
     /// Times the planner may look at its result and revise it.
     public var maxRevisions = 2
-    /// The long edge of the photo the planner and critic see.
-    public var previewLongEdge = 1536
+    /// The long edge of the photo the planner and critic see. Muse Spark reads a 1536 px photo as about 1,940 input
+    /// tokens and a 1024 px one as about 860 (measured October 26), and plans as well from it.
+    public var previewLongEdge = 1024
+    /// The long edge of the photo SAM selects in, where detail decides how well a mask fits.
+    public var selectionLongEdge = 1536
 
-    public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1536) {
+    public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1024, selectionLongEdge: Int = 1536) {
         self.maxSteps = maxSteps
         self.maxRevisions = maxRevisions
         self.previewLongEdge = previewLongEdge
+        self.selectionLongEdge = selectionLongEdge
     }
 }
 
@@ -336,7 +340,7 @@ public actor EditAgent {
     }
 
     private func select(_ selection: Selection, area: NormalizedRect?, events: Events) async throws -> Region? {
-        let image = try await host.render(maxLongEdge: configuration.previewLongEdge)
+        let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
         try checkCancellation()
         let request = SegmentRequest(image: image, concept: selection.concept,
                                      box: selection.box ?? area, points: selection.points)

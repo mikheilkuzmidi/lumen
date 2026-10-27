@@ -46,8 +46,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         do {
             let context = PlanContext(instruction: request.instruction, area: request.area, regions: request.regions,
                                       done: request.done, layers: request.layers, history: request.history)
+            // What stays the same goes first (the rules, then the photo) so Meta's prompt cache can serve it again
+            // at its cached-input price; the instruction and what was done, which change, come last.
             return try await answer(EditPlan.self, prompt: Self.planPrompt,
-                                    content: [.text(try context.text()), .image(request.image)],
+                                    content: [.image(request.image), .text(try context.text())],
                                     name: "edit_plan", schema: EditPlan.jsonSchema())
         } catch { throw MetaHTTP.error(error) }
     }
@@ -56,9 +58,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         do {
             let context = PlanContext(instruction: request.instruction, area: nil, regions: request.regions,
                                       done: request.done, layers: request.layers, history: request.history)
+            // The rules and the Before photo stay the same through a run's revisions: they go first, for the cache.
             return try await answer(Critique.self, prompt: Self.critiquePrompt,
-                                    content: [.text(try context.text()), .text("Before"), .image(request.before),
-                                              .text("After"), .image(request.after)],
+                                    content: [.text("Before"), .image(request.before), .text("After"), .image(request.after),
+                                              .text(try context.text())],
                                     name: "critique", schema: Critique.jsonSchema())
         } catch { throw MetaHTTP.error(error) }
     }

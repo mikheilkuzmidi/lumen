@@ -225,7 +225,8 @@ struct AgentTests {
         #expect(await agent.assets.get(patchMaskID) == .mask(generateRequest.mask.resized(to: AgentGenerator.image.size)))
         #expect(await host.crops.map(\.maxLongEdge) == [2048])
         #expect(await host.crops.map(\.rect) == [rect])
-        #expect(await host.previews == [900, 900, 900], "the plan, the selection and the check")
+        // The plan and the check at the preview size; the selection at SAM's own size, where detail fits the mask.
+        #expect(await host.previews == [900, 1536, 900], "the plan, the selection and the check")
         let request = try #require(await planner.plans.first)
         #expect(request.instruction == "Make the coat navy")
         #expect(request.regions.isEmpty && request.done.isEmpty)

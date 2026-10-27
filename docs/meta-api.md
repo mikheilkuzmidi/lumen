@@ -132,3 +132,19 @@ charge is omitted, giving **$0.015**. Low-quality photos receiving both an impro
 instruction count as two edit passes. Auto and straightening run locally and add no model charge.
 Approval shows only the estimated remaining cost; review and planning charges already incurred
 remain in the running total. Estimates do not reserve credit or guarantee a final bill.
+
+## Spending less
+
+Measured on October 26, 2026:
+
+| Measure | Result |
+| --- | --- |
+| A photo's input tokens in Muse Spark | About 1,940 at 1536 px, 860 at 1024 px and 480 at 768 px (the same photo, the same question). |
+| The planner and critic at 1024 px | The jacket and the near cup were both met on the first plan; Spark's input fell from 3,414 to 2,928 tokens for the plan and from 5,112 to 4,140 for the check on these 1280 px fixtures. Larger photos save the full 1,080 tokens a photo. |
+| Prompt caching | An identical plan request was once served 3,313 of 3,414 tokens from the cache ($0.0034 instead of $0.0081). Five other repeats, and three calls sharing a 2,541-token opening, got none. The cache is opportunistic, so nothing counts on it. |
+
+What Lumen does with this:
+
+- **Planner and critic at 1024 px.** SAM still selects at 1536 px, where detail decides how well a mask fits (`AgentConfiguration.previewLongEdge` and `selectionLongEdge`).
+- **What stays the same goes first.** The rules, then the photo (for a check, the Before photo); what changes (the instruction, the steps done, the layers) goes last. When the cache does apply, it can serve the longest part.
+- **The same search is not paid for twice.** `CachingSegmenter` answers a repeated SAM request (the same picture and the same prompt) from memory, reporting no usage.

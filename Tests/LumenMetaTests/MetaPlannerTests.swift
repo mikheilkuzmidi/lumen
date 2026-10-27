@@ -25,7 +25,8 @@ import Testing
     let body = try json(#require(call.httpBody))
     let messages = try #require(body["messages"] as? [[String: Any]])
     let content = try #require(messages[1]["content"] as? [[String: Any]])
-    let contextText = try #require(content[0]["text"] as? String)
+    // The photo first, the changing text last, so the start of the prompt can be served from Meta's cache.
+    let contextText = try #require(content.last?["text"] as? String)
     try expectJSON(Data(contextText.utf8), equals: ["instruction": "Darken the sky",
         "area": ["x": 0.1, "y": 0.2, "width": 0.6, "height": 0.5],
         "regions": [["id": "coat", "concept": "coat", "box": ["x": 0, "y": 0, "width": 1, "height": 1], "area": 0.2]],
@@ -34,8 +35,8 @@ import Testing
         "history": ["Darken the coat", "A little more"]])
     try expectJSON(#require(call.httpBody), equals: ["model": "muse-spark-1.3", "messages": [
         ["role": "system", "content": MetaPlanner.planPrompt],
-        ["role": "user", "content": [["type": "text", "text": contextText],
-                                    ["type": "image_url", "image_url": ["url": testPhoto.dataURL]]]],
+        ["role": "user", "content": [["type": "image_url", "image_url": ["url": testPhoto.dataURL]],
+                                    ["type": "text", "text": contextText]]],
     ], "response_format": ["type": "json_schema", "json_schema": [
         "name": "edit_plan", "schema": try JSONSerialization.jsonObject(with: EditPlan.jsonSchema()), "strict": true]]])
     for rule in ["conservative", "select", "adjust", "regenerate", "remove", "area", "select box", "lowercase", "Finish",
@@ -57,15 +58,16 @@ import Testing
     let body = try json(#require(call.httpBody))
     let messages = try #require(body["messages"] as? [[String: Any]])
     let content = try #require(messages[1]["content"] as? [[String: Any]])
-    let text = try #require(content[0]["text"] as? String)
+    let text = try #require(content.last?["text"] as? String)
     try expectJSON(Data(text.utf8), equals: ["instruction": "Darken the sky", "regions": [], "done": [], "history": ["Make it warmer"],
         "layers": [["id": layer.id, "label": layer.label, "kind": "adjust", "region": "sky"]]])
     try expectJSON(#require(call.httpBody), equals: ["model": "muse-spark-1.3", "messages": [
         ["role": "system", "content": MetaPlanner.critiquePrompt],
-        ["role": "user", "content": [["type": "text", "text": text], ["type": "text", "text": "Before"],
+        ["role": "user", "content": [["type": "text", "text": "Before"],
                                     ["type": "image_url", "image_url": ["url": testPhoto.dataURL]],
                                     ["type": "text", "text": "After"],
-                                    ["type": "image_url", "image_url": ["url": after.dataURL]]]],
+                                    ["type": "image_url", "image_url": ["url": after.dataURL]],
+                                    ["type": "text", "text": text]]],
     ], "response_format": ["type": "json_schema", "json_schema": [
         "name": "critique", "schema": try JSONSerialization.jsonObject(with: Critique.jsonSchema()), "strict": true]]])
 }
@@ -94,7 +96,7 @@ import Testing
     let body = try json(#require(call.httpBody))
     let messages = try #require(body["messages"] as? [[String: Any]])
     let parts = try #require(messages[1]["content"] as? [[String: Any]])
-    let text = try #require(parts.first?["text"] as? String)
+    let text = try #require(parts.last?["text"] as? String)
     try expectJSON(Data(text.utf8), equals: ["instruction": "Undo that", "regions": [], "done": [], "layers": [], "history": []])
 }
 

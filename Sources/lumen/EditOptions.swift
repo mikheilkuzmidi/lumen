@@ -88,8 +88,8 @@ struct EditOptions: ParsableArguments, Sendable {
     @Option(help: "Maximum revisions after the first plan.")
     var maxRevisions = 2
 
-    @Option(help: "The preview long edge in pixels; exports remain full size.")
-    var preview = 1536
+    @Option(help: "The long edge in pixels of the photo the planner and critic see; SAM selects at 1536 and exports stay full size.")
+    var preview = 1024
 
     var agentConfiguration: AgentConfiguration {
         AgentConfiguration(maxSteps: maxSteps, maxRevisions: maxRevisions, previewLongEdge: preview)

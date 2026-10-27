@@ -39,8 +39,8 @@ import Testing
     let fields = try #require(item["properties"] as? [String: [String: Any]])
     #expect(Set(fields.keys) == ["number", "misfire", "misfireReason", "quality", "description", "group", "matchesInstruction", "tilted"])
     #expect(fields["misfireReason"]?["type"] as? [String] == ["string", "null"])
-    for rule in ["badly blurred", "black or almost black", "ground or a pocket", "closed eyes or motion blur",
-                 "when a better one exists", "dark mood or a soft background is not a misfire", "0 is unusable, 1 needs nothing",
+    for rule in ["frame no one would keep", "black or almost black", "ground or a pocket", "closed eyes or motion blur",
+                 "when a better one exists", "low sharpness alone is never a misfire", "0 is unusable, 1 needs nothing",
                  "same scene or subjects", "false when there is no instruction"] {
         #expect(MetaBatchPlanner.reviewPrompt.contains(rule))
     }

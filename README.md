@@ -68,7 +68,7 @@ Results are written to a separate folder with a sidecar per photo, a summary of 
 | Plan and judge with open weights | Muse Spark Open | A hosting provider (Baseten or Modal) |
 | Plan and judge on this Mac | Muse Glimmer | Locally through llama.cpp; measured on an M4 Max with 36 GB: about 33 s to load, 70–90 s per plan or check |
 
-Lumen uses your own Meta API key. Set `META_API_KEY`, or enter it in Lumen Studio, which keeps it in the Keychain. No model weights are included here; each model is used under its own license.
+Lumen uses your own Meta API key. Set `META_API_KEY`, or enter it in Lumen Studio, which keeps it in the Keychain. No model weights are included here; each model is used under its own license. Lumen is an independent project: it is not made, affiliated with or endorsed by Meta, whose model names are trademarks of Meta Platforms, Inc.
 
 ### What an edit costs
 

@@ -96,11 +96,17 @@ public struct ColourMeasurement: Equatable, Sendable {
     public var a: Double
     /// Blue (negative) to yellow (positive).
     public var b: Double
+    /// The lightness of the brightest and the darkest tenth: a night city's lights, which its middle colour (the
+    /// black sky) hides.
+    public var brightest: Double?
+    public var darkest: Double?
 
-    public init(lightness: Double, a: Double, b: Double) {
+    public init(lightness: Double, a: Double, b: Double, brightest: Double? = nil, darkest: Double? = nil) {
         self.lightness = lightness
         self.a = a
         self.b = b
+        self.brightest = brightest
+        self.darkest = darkest
     }
 
     /// 0 for grey; about 30 and above is vivid.

@@ -350,9 +350,10 @@ struct PhotoPixelTests {
         #expect(black.lightness < 3 && black.name == "black")
         let teal = try #require(await document.measure(render, mask: left.inverted()))
         #expect(abs(teal.lightness - 42.7) < 2 && teal.name.hasSuffix("teal"), "\(teal)")
-        // Most of the photo is teal: a black part doesn't pull it toward grey.
+        // Most of the photo is teal: a black part doesn't pull it toward grey, but shows in its darkest tenth.
         let whole = try #require(await document.measure(render, mask: nil))
         #expect(abs(whole.lightness - teal.lightness) < 1 && whole.name == teal.name)
+        #expect(try #require(whole.darkest) < 3 && abs(try #require(whole.brightest) - teal.lightness) < 2)
         #expect(try await document.measure(render, mask: MaskData(size: left.size, filledWith: 0)) == nil)
         // Cropped to its right half, the render shows none of the left half's mask.
         try await document.apply(Layer(label: "Photo: cropped", content: .crop(NormalizedRect(x: 0.5, y: 0, width: 0.5, height: 1))),

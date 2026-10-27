@@ -94,8 +94,8 @@ import Testing
 @Test func theCriticReadsEachRegionsColourBeforeAndAfter() async throws {
     let transport = ReplayTransport([try .init(file: "critique.json")])
     let planner = MetaPlanner(configuration: testConfiguration, transport: transport)
-    let cup = RegionChange(region: "cup", before: ColourMeasurement(lightness: 52.4, a: -14, b: -6),
-                           after: ColourMeasurement(lightness: 30.2, a: -12.4, b: -5.1))
+    let cup = RegionChange(region: "cup", before: ColourMeasurement(lightness: 52.4, a: -14, b: -6, brightest: 81.6, darkest: 20.2),
+                           after: ColourMeasurement(lightness: 30.2, a: -12.4, b: -5.1, brightest: 64.4, darkest: 9.5))
     _ = try await planner.critique(CritiqueRequest(instruction: "Make the cup matte black", before: testPhoto, after: testPhoto,
                                                    measurements: [cup]))
     let body = try json(#require(await transport.requests.first?.httpBody))
@@ -109,7 +109,9 @@ import Testing
     let after = try #require(measured["after"] as? [String: Any])
     #expect(before["lightness"] as? Int == 52 && before["chroma"] as? Int == 15 && before["hue"] as? Int == 203)
     #expect(after["lightness"] as? Int == 30 && after["colour"] as? String == "muted dark teal")
-    #expect(MetaPlanner.critiquePrompt.contains("a region it names that changed by\n  less than 3 has not met it"))
+    #expect(before["brightest"] as? Int == 82 && before["darkest"] as? Int == 20)
+    #expect(after["brightest"] as? Int == 64 && after["darkest"] as? Int == 10)
+    #expect(MetaPlanner.critiquePrompt.contains("a region it names that changed by\n  less than 3, with its brightest and darkest tenth each moving less than 3 too, has not met it"))
     #expect(MetaPlanner.critiquePrompt.contains("so charcoal, dark grey or dark teal is not black"))
     #expect(MetaPlanner.planPrompt.contains("Low sun also comes from one side: select a gradient with no\nconcept, from the side the light comes from in this photo"))
     #expect(MetaPlanner.critiquePrompt.contains("golden hour is warm, low light from one side"))

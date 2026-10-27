@@ -146,10 +146,13 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Judge the look the words ask for, not only its direction: golden hour is warm, low light from one side
     with golden highlights, so a photo that is only evenly warmer than before has not met it.
     Measurements give each region changed in this run, and the rest of the photo, before and after: CIELAB
-    lightness (0 black, 100 white), chroma (0 grey, 30 and above vivid), hue in degrees and a colour name,
-    with the change between them (under 3 is hard to see). Read them with the photos:
+    lightness (0 black, 100 white), chroma (0 grey, 30 and above vivid), hue in degrees and a colour name of
+    the colour most of it has, with the change between them (under 3 is hard to see), and the lightness of its
+    brightest and darkest tenth. Read them with the photos:
     - A change the instruction asks for, even "a little", must be visible: a region it names that changed by
-      less than 3 has not met it; ask for a clearly stronger step.
+      less than 3, with its brightest and darkest tenth each moving less than 3 too, has not met it; ask for a
+      clearly stronger step. Lights at night or a dark subject's shadows show in the brightest or darkest
+      tenth, not the middle colour.
     - A colour the instruction names must be the region's colour now, by its name: black is lightness under
       about 15 with chroma under 10, so charcoal, dark grey or dark teal is not black; white is lightness over
       about 88 with chroma under 10. If the colour is short of it, redraw again, naming the new colour more
@@ -184,12 +187,16 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
             var chroma: Int
             var hue: Int
             var colour: String
+            var brightest: Int?
+            var darkest: Int?
 
             init(_ measurement: ColourMeasurement) {
                 lightness = Int(measurement.lightness.rounded())
                 chroma = Int(measurement.chroma.rounded())
                 hue = Int(measurement.hue.rounded()) % 360
                 colour = measurement.name
+                brightest = measurement.brightest.map { Int($0.rounded()) }
+                darkest = measurement.darkest.map { Int($0.rounded()) }
             }
         }
 

@@ -35,7 +35,14 @@ enum ColourMeasuring {
             b.append(lab.b)
         }
         guard !lightness.isEmpty else { return nil }
-        return ColourMeasurement(lightness: median(lightness), a: median(a), b: median(b))
+        let sorted = lightness.sorted()
+        func tenth(_ fraction: Double) -> Double {
+            let start = Int((Double(sorted.count) * fraction).rounded(.down))
+            let part = sorted[min(start, sorted.count - 1)..<min(sorted.count, max(start + 1, start + sorted.count / 10))]
+            return part.reduce(0, +) / Double(part.count)
+        }
+        return ColourMeasurement(lightness: median(lightness), a: median(a), b: median(b),
+                                 brightest: tenth(0.9), darkest: tenth(0))
     }
 
     private static func median(_ values: [Double]) -> Double {

@@ -89,6 +89,24 @@ public actor PhotoDocument: EditHost {
         })
     }
 
+    public func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        let size = mask.size
+        guard size.width >= 16, size.height >= 16 else { return mask }
+        let bounds = try Self.bounds(of: region, in: cropBounds())
+        let sample = PhotoCompositor.resized(rendered(scale: 1).cropped(to: bounds), to: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        var pixels = [UInt8](repeating: 0, count: size.width * size.height * 4)
+        pixels.withUnsafeMutableBytes { buffer in
+            // Core Image writes a bitmap's top row first, as mask rows run.
+            context.render(sample, toBitmap: buffer.baseAddress!, rowBytes: size.width * 4,
+                           bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height), format: .RGBA8,
+                           colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        }
+        let colours = (0..<(size.width * size.height)).map {
+            ColourMeasuring.lab(red: pixels[$0 * 4], green: pixels[$0 * 4 + 1], blue: pixels[$0 * 4 + 2])
+        }
+        return MaskGrowth.alike(mask, colours: colours, reach: max(1, Int((Double(min(size.width, size.height)) * 0.03).rounded())))
+    }
+
     public func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
         // A render shows the photo as it is framed now; a mask over the whole photo is cut to that frame first.
         let framed = mask.map { mask in cropRect().map { mask.cropped(to: $0) } ?? mask }

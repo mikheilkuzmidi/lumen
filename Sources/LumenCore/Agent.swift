@@ -591,8 +591,9 @@ public actor EditAgent {
         if let detail = attempt.note { notes.append(detail) }
         // A recolour shows exactly where the thing is: SAM's mask held to the photo's own edges, which keeps out a
         // border the generator drew past it (a dark line along a shirt onto a black backpack) while still taking in
-        // the edge's last pixels.
-        mask = try await host.fitted(original, region: rect)
+        // the edge's last pixels. Then it takes in the rim or shade of the same colour SAM stopped short of, which the
+        // redraw recoloured too: a teal fender's edge and its shaded underside, left teal beside the new red.
+        mask = try await host.extended(try await host.fitted(original, region: rect), region: rect)
         if let overlap = attempt.overlap {
             if overlap >= 0.5, let object = attempt.object {
                 mask = mask.union(object)

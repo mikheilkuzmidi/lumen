@@ -128,7 +128,14 @@ struct LostDetailTests {
         for try await _ in agent.run("Make the cup red") {}
         let closeUp = try #require(await planner.critiques.first?.closeUps.first)
         #expect(closeUp.region == "cup" && closeUp.lostDetail == MeasuringHost.lost)
+        // The recolour's mask is grown over the same colour by the host.
+        #expect(await MeasuringHost.extendedCalls.value > 0)
     }
+}
+
+private actor Counter {
+    private(set) var value = 0
+    func add() { value += 1 }
 }
 
 private actor CountingSegmenter: Segmenter {
@@ -206,6 +213,12 @@ private actor MeasuringHost: EditHost {
     func remove(_ layer: Layer.ID) async throws { layers.removeAll { $0.id == layer } }
 
     static let lost = [LostDetail(rect: NormalizedRect(x: 0.2, y: 0.4, width: 0.1, height: 0.1), kept: 0.12)]
+    static let extendedCalls = Counter()
+
+    func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        await Self.extendedCalls.add()
+        return mask
+    }
 
     func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] { Self.lost }
 

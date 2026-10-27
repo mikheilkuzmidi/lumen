@@ -499,9 +499,13 @@ public actor EditAgent {
             }
         }
         if let detail = attempt.note { notes.append(detail) }
+        // A recolour shows exactly where the thing is: SAM's mask held to the photo's own edges, which keeps out a
+        // border the generator drew past it (a dark line along a shirt onto a black backpack) while still taking in
+        // the edge's last pixels. A removal keeps its grown mask, to take all of the thing out.
+        if kind == .regenerate { mask = try await host.fitted(original, region: rect) }
         if let overlap = attempt.overlap {
             if overlap >= 0.5, let object = attempt.object {
-                mask = mask.union(object.grown(by: edge))
+                mask = mask.union(kind == .regenerate ? object : object.grown(by: edge))
             } else {
                 let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
                 notes.append("The redraw moved or resized the \(region.info.id) (overlap \(value)).")

@@ -220,6 +220,54 @@ struct PhotoPixelTests {
         #expect(after[10, 48].distance(to: before[10, 48]) <= 1.0 / 255)
     }
 
+    /// On a black-and-white photo, shirts redrawn blue bled blue onto the strap and arms beside them: the redraw's
+    /// colour came in through the same soft edge as its brightness.
+    @Test
+    func aRedrawsColourStaysInsideItsMaskWhileItsEdgeBlends() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 800, height: 600) { _, _ in RGB(128, 128, 128) })
+        let assets = AssetStore()
+        // The patch covers x 200..<600; the generator drew the blue shirt 8 px past the mask's edge at x 400.
+        let patchURL = try folder.photo(width: 400, height: 300) { x, _ in x < 208 ? RGB(40, 70, 200) : RGB(128, 128, 128) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 400, height: 300))))
+        let coverage = (0..<(400 * 300)).map { $0 % 400 < 200 ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 400, height: 300), coverage: coverage)))
+        try await document.apply(Layer(label: "Shirt", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let after = try await folder.pixels(document)
+        #expect(after[380, 300].blue > after[380, 300].red + 0.3, "the shirt is blue")
+        for x in [403, 406] {
+            let pixel = after[x, 300]
+            #expect(pixel.blue - pixel.red < 0.03, "no blue past the mask's edge at x \(x): \(pixel.red), \(pixel.blue)")
+        }
+    }
+
+    /// A recolour's mask held to the photo: SAM's mask a few pixels off a light shirt's edge moves onto it, so the
+    /// redraw neither spills onto the black backpack beside it nor misses the shirt's last pixels.
+    @Test
+    func aMaskIsFittedToThePhotosOwnEdges() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A light square at x 300..<500, y 200..<400 on black.
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 800, height: 600) { x, y in
+            x >= 300 && x < 500 && y >= 200 && y < 400 ? RGB(200, 200, 200) : RGB(10, 10, 10)
+        })
+        // The region x 250..<550, y 150..<450 at one mask pixel per photo pixel, where the square is x 50..<250. SAM's
+        // mask sits 3 pixels to the right of it.
+        let region = NormalizedRect(x: 250.0 / 800, y: 150.0 / 600, width: 300.0 / 800, height: 300.0 / 600)
+        let shifted = MaskData(size: PixelSize(width: 300, height: 300), coverage: (0..<(300 * 300)).map { i in
+            let x = i % 300, y = i / 300
+            return x >= 53 && x < 253 && y >= 50 && y < 250 ? 255 : 0
+        })
+        let fitted = try await document.fitted(shifted, region: region)
+        #expect(fitted[150, 150] > 240, "the square's middle")
+        #expect(fitted[51, 150] > 230, "the shirt's edge SAM missed is taken in: \(fitted[51, 150])")
+        #expect(fitted[251, 150] < 20 && fitted[256, 150] == 0, "the black SAM took is let go: \(fitted[251, 150])")
+        #expect(fitted[48, 150] == 0, "and nothing past the shirt on the other side")
+    }
+
     @Test(arguments: [AdjustmentKey.highlights, .shadows, .whites, .blacks])
     func positiveTonalSettingsLiftTheirRange(key: AdjustmentKey) async throws {
         let folder = try PhotoFolder()

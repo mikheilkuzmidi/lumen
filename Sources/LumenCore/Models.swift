@@ -175,4 +175,11 @@ public protocol EditHost: Sendable {
     func apply(_ layer: Layer, assets: AssetStore) async throws
     /// Takes a layer off again.
     func remove(_ layer: Layer.ID) async throws
+    /// `mask`, over `region` at its own size, held to the photo's own edges there, as the photo is now.
+    func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData
+}
+
+public extension EditHost {
+    /// A host that can't look at its pixels uses the mask as it is.
+    func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
 }

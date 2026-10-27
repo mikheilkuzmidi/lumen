@@ -222,7 +222,10 @@ struct AgentTests {
         let size = generateRequest.image.size
         let edge = max(2, Int((Double(min(size.width, size.height)) * 0.012).rounded()))
         #expect(generateRequest.mask == segment().mask.cropped(to: rect).resized(to: size).grown(by: edge), "a little past SAM's edge")
-        #expect(await agent.assets.get(patchMaskID) == .mask(generateRequest.mask.resized(to: AgentGenerator.image.size)))
+        // The redraw shows through SAM's own mask, held to the photo by the host (as it is, here) with the redrawn coat.
+        let shown = segment().mask.cropped(to: rect).resized(to: size).union(redrawn)
+        #expect(await agent.assets.get(patchMaskID) == .mask(shown.resized(to: AgentGenerator.image.size)))
+        #expect(await host.fittedRegions == [rect])
         #expect(await host.crops.map(\.maxLongEdge) == [2048])
         #expect(await host.crops.map(\.rect) == [rect])
         // The plan and the check at the preview size; the selection at SAM's own size, where detail fits the mask.
@@ -718,6 +721,13 @@ private actor AgentHost: EditHost {
     func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage {
         crops.append(RenderedCrop(rect: region, maxLongEdge: maxLongEdge))
         return AgentPhoto.crop
+    }
+
+    private(set) var fittedRegions: [NormalizedRect] = []
+
+    func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        fittedRegions.append(region)
+        return mask
     }
 
     func apply(_ layer: Layer, assets: AssetStore) async throws {

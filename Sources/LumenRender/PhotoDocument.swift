@@ -76,6 +76,19 @@ public actor PhotoDocument: EditHost {
         return try preview(in: bounds, maxLongEdge: maxLongEdge)
     }
 
+    public func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        guard min(mask.size.width, mask.size.height) >= 64 else { return mask }
+        let bounds = try Self.bounds(of: region, in: cropBounds())
+        guard let guide = MaskRefinement.guide(rendered(scale: 1).cropped(to: bounds), size: mask.size, context: context) else { return mask }
+        // A window a few times SAM's usual miss, so the photo's own colours decide each side of the edge; then what
+        // they decided clearly (a quarter either side of the middle) is taken all in or all out.
+        let radius = MaskRefinement.radius(for: mask.size) * 3
+        let fitted = MaskRefinement.refined(MaskRefinement.refined(mask, guide: guide, radius: radius), guide: guide, radius: radius)
+        return MaskData(size: fitted.size, coverage: fitted.coverage.map { value in
+            UInt8((min(1, max(0, (Double(value) / 255 - 0.3) / 0.4)) * 255).rounded())
+        })
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?

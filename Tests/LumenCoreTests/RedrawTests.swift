@@ -16,9 +16,11 @@ struct RedrawTests {
         let events = try await redrawEvents(agent.run("Make the cup matte black"))
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         let request = try #require(await generator.requests.first)
-        #expect(patch.mask == request.mask.union(object.grown(by: 2)))
-        #expect(patch.mask[1, 20] == 255 && request.mask[1, 20] == 0)
-        #expect(patch.mask[50, 20] == 255 && request.mask[50, 20] == 0)
+        // A recolour shows through SAM's own mask and the redrawn object, not the generator's grown mask.
+        #expect(patch.mask == RedrawPhoto.inCrop.union(object))
+        #expect(patch.mask[4, 20] == 255 && RedrawPhoto.inCrop[4, 20] == 0)
+        #expect(patch.mask[47, 20] == 255 && RedrawPhoto.inCrop[47, 20] == 0)
+        #expect(patch.mask[2, 20] == 0 && request.mask[5, 20] == 255, "the generator's grown edge doesn't show")
         #expect(await generator.requests.count == 1)
         let check = try #require(await segmenter.requests.last)
         #expect(check.image == patch.image && check.concept == "cup")
@@ -41,7 +43,7 @@ struct RedrawTests {
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         #expect(await generator.requests.count == 2)
         #expect(patch.image == RedrawPhoto.generated(secondIsBetter ? 2 : 1))
-        #expect(patch.mask == (await generator.requests.first)?.mask)
+        #expect(patch.mask == RedrawPhoto.inCrop)
         #expect(events.redrawTraces.contains { $0.detail == "The redraw moved or resized the cup (overlap 0.16)." })
         #expect(await planner.critiques.count == 1)
         #expect(await planner.critiques.first?.done.contains { $0.contains("overlap 0.16") } == true)
@@ -58,7 +60,7 @@ struct RedrawTests {
         let events = try await redrawEvents(agent.run("Make the cup matte black"))
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         #expect(patch.image == RedrawPhoto.generated(2))
-        #expect(patch.mask == (await generator.requests.first)?.mask.union(object.grown(by: 2)))
+        #expect(patch.mask == RedrawPhoto.inCrop.union(object))
         #expect(!events.redrawTraces.contains { $0.detail.contains("moved or resized") })
     }
 
@@ -105,7 +107,7 @@ struct RedrawTests {
         let events = try await redrawEvents(agent.run("Make the cup matte black"))
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         #expect(patch.image == RedrawPhoto.generated(1))
-        #expect(patch.mask == (await generator.requests.first)?.mask)
+        #expect(patch.mask == RedrawPhoto.inCrop)
         #expect(events.redrawTraces.contains { $0.detail.hasPrefix("Could not retry the redraw of cup") })
     }
 
@@ -126,7 +128,7 @@ struct RedrawTests {
         let events = try await redrawEvents(agent.run("Make the cup matte black"))
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         #expect(patch.image == RedrawPhoto.generated(1))
-        #expect(patch.mask == (await generator.requests.first)?.mask)
+        #expect(patch.mask == RedrawPhoto.inCrop)
         #expect(await host.layers.count == 1)
         #expect(await generator.requests.count == 1)
         #expect(events.redrawTraces.contains { $0.detail.contains("Could not check the redraw of cup") })
@@ -136,8 +138,13 @@ struct RedrawTests {
         let planner = RedrawPlanner(plan: RedrawPhoto.plan(edit: .remove(Removal(region: "cup"))))
         let segmenter = RedrawSegmenter()
         let host = RedrawHost()
-        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: RedrawGenerator(), host: host)
+        let generator = RedrawGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
         let events = try await redrawEvents(agent.run("Remove the cup"))
+        // A removal keeps its grown mask, to take all of the thing out.
+        let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
+        #expect(patch.mask == (await generator.requests.first)?.mask)
+        #expect(patch.mask != RedrawPhoto.inCrop)
         #expect(await segmenter.requests.count == 1)
         #expect(await host.layers.count == 1)
         #expect(!events.redrawTraces.contains { $0.detail.hasPrefix("Check the redraw") })
@@ -349,6 +356,8 @@ private actor RedrawHost: EditHost {
 private enum RedrawPhoto {
     static let cropSize = PixelSize(width: 52, height: 52)
     static let original = mask(x: 30..<70, y: 30..<70, size: PixelSize(width: 100, height: 100))
+    /// The original as it falls in the redraw's crop.
+    static let inCrop = mask(x: 6..<46, y: 6..<46)
     static let regenerate = EditStep.regenerate(Regeneration(region: "cup", prompt: "A matte black cup, keeping its shape"))
 
     static func mask(x: Range<Int>, y: Range<Int>, size: PixelSize = cropSize) -> MaskData {

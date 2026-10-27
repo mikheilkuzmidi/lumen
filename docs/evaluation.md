@@ -57,6 +57,16 @@ The first full run, earlier the same day, had the critic satisfied with 11 of 15
 
 ![The cup after the fixes: redrawn in place](images/eval/coffee-in-montreal.jpg)
 
+## October 27: what the maintainer's own photos found
+
+Live runs on six of the maintainer's own photos (not in this repository) found four more problems. Each was fixed, and the same request was run again:
+
+| Problem | Cause | Change |
+| --- | --- | --- |
+| "Bring out the city lights" made a night street darker. | Dehaze ran Core Image's contrast in linear light, where its 0.5 pivot is a light grey: every shadow went to black. | Dehaze works on sRGB-encoded values, and temperature moves in even mireds, so +35 warms about as much as −35 cools. The same request now brightens the street. |
+| "A warm golden-hour glow" on a midday bridge came out bluer, then only warmer, and the critic accepted both. | There was no way to warm the highlights more than the shadows; vibrance made the blue sky bluer. | `highlightWarmth` and `shadowWarmth`; the planner is told what golden-hour light is, and the critic that only warmer isn't it. Now: gold highlights and a soft, warm sky. |
+| Parked bicycles redrawn yellow had a smeared wheel and a smeared neighbour, and the critic called it clean. | The critic saw two 1024 px photos, where the smear was a few pixels. | Each region redrawn in a run goes to the critic close up, before and after. |
+| Shirts redrawn blue on a black-and-white photo were saved grey, then had a dark band along their edges. | The export kept the photo's grey colour space; the redraw showed through SAM's mask grown past the shirt, where the generator drew a border. | A greyscale photo given colour is exported in sRGB; a recolour shows through SAM's mask fitted to the photo's own edges. |
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:
 

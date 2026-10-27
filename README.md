@@ -34,6 +34,8 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
 
 Every model call, plan, critique and failure is kept in a trace. [docs/evaluation.md](docs/evaluation.md) has the results on 15 CC0 photos.
 
+An editor can also use the finding step on its own. `AreaSearch` looks for a name only inside a box the person drew, keeping what lies mostly inside it. When nothing by that name is there, it selects what the box frames. Photoeditor's Masks panel uses it: drag a box, type "cup", and only the cup inside the box is selected.
+
 ## A whole library
 
 ```sh

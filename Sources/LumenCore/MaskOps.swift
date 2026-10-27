@@ -34,6 +34,23 @@ extension MaskData {
                               height: Double(bottom - top) / Double(size.height))
     }
 
+    /// How much of the coverage lies inside a rectangle on the photo, 0...1; an empty mask has none inside.
+    public func share(inside rect: NormalizedRect) -> Double {
+        guard size.width > 0, size.height > 0 else { return 0 }
+        let left = Int((rect.x * Double(size.width)).rounded()), right = Int(((rect.x + rect.width) * Double(size.width)).rounded())
+        let top = Int((rect.y * Double(size.height)).rounded()), bottom = Int(((rect.y + rect.height) * Double(size.height)).rounded())
+        var total = 0, inside = 0
+        for y in 0..<size.height {
+            let rowInside = y >= top && y < bottom
+            for x in 0..<size.width {
+                let value = Int(self[x, y])
+                total += value
+                if rowInside && x >= left && x < right { inside += value }
+            }
+        }
+        return total > 0 ? Double(inside) / Double(total) : 0
+    }
+
     /// Combines coverage, resizing the other mask to this mask's size if needed.
     public func union(_ other: MaskData) -> MaskData {
         let other = other.size == size ? other : other.resized(to: size)

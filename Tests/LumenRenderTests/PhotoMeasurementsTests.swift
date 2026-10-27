@@ -82,8 +82,10 @@ struct PhotoMeasurementsTests {
         #expect(try statistics(balanced).autoValues == [:])
         let cast = try folder.photo(name: "cast.png") { _, _ in (150, 100, 90) }
         let values = try statistics(cast).autoValues
-        #expect(abs((values[.temperature] ?? 0) - (-60.0 / (340.0 / 3) * 15)) < 0.001)
-        #expect(abs((values[.tint] ?? 0) - (20.0 / (340.0 / 3) * 15)) < 0.001)
+        let grey: Double = 340.0 / 3
+        let temperature: Double = -60.0 / grey * 15, tint: Double = 20.0 / grey * 15
+        #expect(abs((values[.temperature] ?? 0) - temperature) < 0.001)
+        #expect(abs((values[.tint] ?? 0) - tint) < 0.001)
         #expect(values[.vibrance] == nil)
         let narrow = try folder.photo(name: "narrow.png", width: 512, height: 384) { x, _ in
             let value = UInt8(25 + Double(x) / 511 * 180)

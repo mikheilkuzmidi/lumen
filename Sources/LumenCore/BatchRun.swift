@@ -326,7 +326,9 @@ actor BatchRun {
             events.yield(.planned(plan))
             return plan
         }
-        let matching = kept.compactMap { reviews[$0] }.filter(\.matchesInstruction)
+        // Every kept photo goes to the planner, with the reviewer's word on whether the instruction applies as a
+        // hint: a reviewer looking at twenty thumbnails at once misses some, and the planner sees the whole library.
+        let matching = kept.compactMap { reviews[$0] }
         guard !matching.isEmpty else {
             let plan = basePlan(kept)
             events.yield(.planned(plan))

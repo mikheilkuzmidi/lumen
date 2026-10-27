@@ -60,7 +60,8 @@ public struct MetaBatchPlanner: BatchPlanner {
     public func plan(_ request: BatchPlanRequest) async throws -> BatchPlan {
         do {
             let reviews = request.reviews.enumerated().map { index, review -> [String: Any] in
-                ["number": index + 1, "description": review.description, "group": review.group]
+                ["number": index + 1, "description": review.description, "group": review.group,
+                 "likelyMatch": review.matchesInstruction]
             }
             let context = try Self.text(["instruction": request.instruction, "reviews": reviews, "answers": request.answers])
             let answer = try await answer(PlanAnswer.self, model: planModelID, prompt: Self.planPrompt, content: [.text(context)],
@@ -144,7 +145,8 @@ public struct MetaBatchPlanner: BatchPlanner {
     static let planPrompt = """
     Plan the instruction across the library using the numbered reviews and answers so far. No images are sent.
     Group photos that should receive the same edit. Use only supplied photo numbers, once each at most,
-    and include only photos the instruction applies to. Give each group a short unique id and title.
+    and include only photos the instruction applies to. likelyMatch is the reviewer's first impression of that;
+    decide from each description, which names the subjects and their clothing and objects. Give each group a short unique id and title.
     Write each group's instruction for each photo's own editing agent in that agent's own terms,
     for example "Make his T-shirt royal blue, same cut and folds". Ask for what the instruction asks and nothing
     more: auto tone, colour and straightening are already done for every photo, so never ask the agent to

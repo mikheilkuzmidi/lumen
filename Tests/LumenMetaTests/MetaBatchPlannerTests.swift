@@ -120,7 +120,8 @@ import Testing
     #expect(content[0]["type"] as? String == "text")
     let text = try #require(content[0]["text"] as? String)
     try expectJSON(Data(text.utf8), equals: ["instruction": "Make their shirts blue", "reviews": batchReviews.enumerated().map {
-        ["number": $0.offset + 1, "description": $0.element.description, "group": $0.element.group]
+        ["number": $0.offset + 1, "description": $0.element.description, "group": $0.element.group,
+         "likelyMatch": $0.element.matchesInstruction]
     }, "answers": [:]])
     for rule in ["person's choice", "two to four short options", "recommendation", "same shirt", "own style",
                  "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",

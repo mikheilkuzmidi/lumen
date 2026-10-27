@@ -153,7 +153,8 @@ struct BatchAgentTests {
         #expect(requests.count == 2)
         #expect(requests[0].answers.isEmpty)
         #expect(requests[1].answers == ["shirts": "Sky blue"])
-        #expect(requests.allSatisfy { $0.reviews.map(\.photo) == [PhotoID("photo-0")] })
+        // The planner sees every kept photo and decides; here it plans only the one the reviewer matched.
+        #expect(requests.allSatisfy { $0.reviews.map(\.photo) == [PhotoID("photo-0"), PhotoID("photo-1")] })
         #expect(await planner.plans.map(\.instruction) == ["Make the shirts Sky blue"])
         #expect(await library.saved == [PhotoID("photo-0")])
         let summary = try batchTestSummary(events)

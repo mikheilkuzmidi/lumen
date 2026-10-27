@@ -244,6 +244,42 @@ struct PhotoPixelTests {
         }
     }
 
+    /// A removed sign left a faint outline: the patch blends in through a soft edge that reaches inward from its mask,
+    /// so a mask only a little larger than the sign let its dark rim show through. Reaching 6% of the crop past the
+    /// thing takes all of it out.
+    @Test(arguments: [false, true])
+    func aRemovalReachingPastTheBlendLeavesNoOutline(reachesPast: Bool) async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A white sign with a black rim at x and y 200..<300, on grey.
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 800, height: 600) { x, y in
+            guard (200..<300).contains(x), (200..<300).contains(y) else { return RGB(180, 180, 180) }
+            return min(x - 200, 299 - x, y - 200, 299 - y) < 4 ? RGB(0, 0, 0) : RGB(255, 255, 255)
+        })
+        let assets = AssetStore()
+        // The generator's fill: grey where the sign was, over x and y 100..<400.
+        let patchURL = try folder.photo(width: 300, height: 300) { _, _ in RGB(180, 180, 180) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 300, height: 300))))
+        var sign = [UInt8](repeating: 0, count: 300 * 300)
+        for y in 100..<200 { for x in 100..<200 { sign[y * 300 + x] = 255 } }
+        let reach = reachesPast ? 18 : 4
+        let mask = MaskData(size: PixelSize(width: 300, height: 300), coverage: sign).grown(by: reach)
+        let maskID = await assets.put(.mask(mask))
+        try await document.apply(Layer(label: "Sign: removed", content: .patch(image: imageID, mask: maskID,
+                                                                               rect: NormalizedRect(x: 0.125, y: 1.0 / 6, width: 0.375, height: 0.5))),
+                                 assets: assets)
+        let after = try await folder.pixels(document)
+        let rim = after[201, 250]
+        let grey = RGB(180, 180, 180)
+        if reachesPast {
+            #expect(rim.distance(to: grey) < 2.0 / 255, "no trace of the rim: \(rim.red)")
+            #expect(after[250, 250].distance(to: grey) < 2.0 / 255)
+        } else {
+            #expect(rim.red < grey.red - 0.02, "the rim shows through the blend: \(rim.red)")
+        }
+    }
+
     /// A recolour's mask held to the photo: SAM's mask a few pixels off a light shirt's edge moves onto it, so the
     /// redraw neither spills onto the black backpack beside it nor misses the shirt's last pixels.
     @Test

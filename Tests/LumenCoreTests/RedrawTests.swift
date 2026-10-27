@@ -21,6 +21,7 @@ struct RedrawTests {
         #expect(patch.mask[4, 20] == 255 && RedrawPhoto.inCrop[4, 20] == 0)
         #expect(patch.mask[47, 20] == 255 && RedrawPhoto.inCrop[47, 20] == 0)
         #expect(patch.mask[2, 20] == 0 && request.mask[5, 20] == 255, "the generator's grown edge doesn't show")
+        #expect(request.prompt == "A matte black cup, keeping its shape. Change only the cup in the centre of this picture, and nothing else.")
         #expect(await generator.requests.count == 1)
         let check = try #require(await segmenter.requests.last)
         #expect(check.image == patch.image && check.concept == "cup")
@@ -134,20 +135,73 @@ struct RedrawTests {
         #expect(events.redrawTraces.contains { $0.detail.contains("Could not check the redraw of cup") })
     }
 
-    @Test func removalSkipsTheShapeCheck() async throws {
+    @Test func aRemovalIsLookedForAgainWhereItWas() async throws {
         let planner = RedrawPlanner(plan: RedrawPhoto.plan(edit: .remove(Removal(region: "cup"))))
-        let segmenter = RedrawSegmenter()
+        let segmenter = RedrawSegmenter(checks: [.success([])])
         let host = RedrawHost()
         let generator = RedrawGenerator()
         let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
         let events = try await redrawEvents(agent.run("Remove the cup"))
         // A removal keeps its grown mask, to take all of the thing out.
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
-        #expect(patch.mask == (await generator.requests.first)?.mask)
-        #expect(patch.mask != RedrawPhoto.inCrop)
+        let request = try #require(await generator.requests.first)
+        #expect(patch.mask == request.mask)
+        #expect(request.prompt == "Remove the whole cup in the centre of this picture, every part of it. Fill its place "
+            + "with what is behind it, continuing the surroundings naturally. Change nothing else.")
+        #expect(await generator.requests.count == 1)
+        let check = try #require(await segmenter.requests.last)
+        #expect(await segmenter.requests.count == 2)
+        #expect(check.concept == "cup" && check.image == patch.image)
+        #expect(events.redrawTraces.contains { $0.model == "sam-3.1" && $0.detail == "Check the removal of cup" })
+        #expect(!events.redrawTraces.contains { $0.detail.contains("still found") || $0.detail.contains("Could not check") })
+        // Its context is three times the cup's size, clipped to the photo: the cup lies 0.3...0.7 of a 100 px photo.
+        guard case .patch(_, _, let rect) = try #require(events.redrawLayers.last).content else {
+            Issue.record("Expected a patch")
+            return
+        }
+        #expect(rect == NormalizedRect(x: 0, y: 0, width: 1, height: 1))
+        // Its mask reaches 6% of the crop's short side past the cup, beyond the soft edge the patch blends in with.
+        let cup = RedrawPhoto.original.cropped(to: rect).resized(to: RedrawPhoto.cropSize)
+        #expect(request.mask == cup.grown(by: 3))
+    }
+
+    @Test(arguments: [false, true]) func aRemovalThatLeftTheThingIsTriedOnceMore(secondRemoves: Bool) async throws {
+        let left = RedrawPhoto.segment(RedrawPhoto.mask(x: 16..<36, y: 16..<36))
+        let segmenter = RedrawSegmenter(checks: [.success([left]), .success(secondRemoves ? [] : [left])])
+        let generator = RedrawGenerator()
+        let planner = RedrawPlanner(plan: RedrawPhoto.plan(edit: .remove(Removal(region: "cup"))))
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: RedrawHost())
+        let events = try await redrawEvents(agent.run("Remove the cup"))
+        let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
+        #expect(await generator.requests.count == 2)
+        #expect(patch.image == RedrawPhoto.generated(secondRemoves ? 2 : 1), "an attempt that left as much is not kept")
+        let still = "The cup is still found where it was after its removal"
+        #expect(events.redrawTraces.contains { $0.kind == .remove && $0.detail.hasPrefix(still) } == !secondRemoves)
+        #expect(await planner.critiques.first?.done.contains { $0.hasPrefix(still) } == !secondRemoves)
+    }
+
+    @Test func aRemovalWithoutAConceptIsNotLookedFor() async throws {
+        var plan = RedrawPhoto.plan(edit: .remove(Removal(region: "cup")))
+        plan.steps[0] = .select(Selection(id: "cup", box: NormalizedRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4)))
+        let segmenter = RedrawSegmenter()
+        let generator = RedrawGenerator()
+        let agent = EditAgent(planner: RedrawPlanner(plan: plan), segmenter: segmenter, generator: generator, host: RedrawHost())
+        _ = try await redrawEvents(agent.run("Remove this"))
         #expect(await segmenter.requests.count == 1)
-        #expect(await host.layers.count == 1)
-        #expect(!events.redrawTraces.contains { $0.detail.hasPrefix("Check the redraw") })
+        #expect(await generator.requests.count == 1)
+        #expect(await generator.requests.first?.prompt.hasPrefix("Remove the whole cup in the centre") == true)
+    }
+
+    @Test func thePromptSaysWhichThingToChangeAndWhere() {
+        let crop = NormalizedRect(x: 0.2, y: 0.2, width: 0.6, height: 0.6)
+        #expect(EditAgent.place(of: NormalizedRect(x: 0.45, y: 0.45, width: 0.1, height: 0.1), in: crop) == "in the centre")
+        #expect(EditAgent.place(of: NormalizedRect(x: 0.2, y: 0.45, width: 0.1, height: 0.1), in: crop) == "on the left")
+        #expect(EditAgent.place(of: NormalizedRect(x: 0.7, y: 0.2, width: 0.1, height: 0.1), in: crop) == "at the top right")
+        #expect(EditAgent.place(of: NormalizedRect(x: 0.45, y: 0.7, width: 0.1, height: 0.1), in: crop) == "at the bottom")
+        #expect(EditAgent.redrawPrompt("Recolour the grey T-shirt to navy", thing: "t-shirt", place: "on the left")
+            == "Recolour the grey T-shirt to navy. Change only the t-shirt on the left of this picture, and nothing else.")
+        #expect(EditAgent.redrawPrompt("A navy coat!  ", thing: "coat", place: "in the centre")
+            == "A navy coat! Change only the coat in the centre of this picture, and nothing else.")
     }
 
     @Test func regionWithoutAConceptSkipsTheShapeCheck() async throws {

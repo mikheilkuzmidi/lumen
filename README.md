@@ -26,8 +26,9 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
 2. **Find.** SAM 3.1 looks for each region by name. The planner's box only chooses among what SAM found. When a name finds nothing (SAM finds no "gate" in a street-market photo, only its pillars and roof), Lumen asks again with the planner's box as SAM's own prompt.
 3. **Change.**
    - Tone and colour changes are adjustment layers through the region's mask, fitted to the photo's edges with a guided filter.
-   - Changes to what something is or looks like are redrawn by Muse Image from a crop around the region. Small crops are upscaled first, because Muse Image keeps their layout better at its own scale.
+   - Changes to what something is or looks like are redrawn by Muse Image from a crop around the region. Small crops are upscaled first, because Muse Image keeps their layout better at its own scale. Muse Image takes no mask, so the prompt names the thing and where it is in the crop.
    - SAM then looks at the redraw: if the object moved or changed size, Lumen redraws once more and keeps the better attempt.
+   - A removal gets a crop three times the thing's size, to fill its place from what is around it. SAM then looks for the thing again; if it is still there, Lumen tries once more.
    - The patch is composited through the mask, with the generator's colour drift measured on a ring around the region and taken out.
 4. **Check.** Muse Spark compares the result with the photo before the instruction. If something is missing or looks wrong, it writes the next steps; a redraw that went wrong is replaced, not stacked. Each revision with a redraw or a failure is checked again, within a step and revision budget.
 5. **Remember.** Follow-ups ("a bit less", "undo that") reuse the regions and layers already made.

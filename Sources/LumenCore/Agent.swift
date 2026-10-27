@@ -315,10 +315,11 @@ public actor EditAgent {
                 case .remove(let removal):
                     needsLook = true
                     let label = "\(title(removal.region)): removed"
-                    _ = try await redraw(try region(removal.region),
-                                     prompt: "Remove the selected object and fill the area naturally from its surroundings",
-                                     label: label, kind: .remove, redraws: &redraws, events: events)
+                    let notes = try await redraw(try region(removal.region), prompt: nil, label: label, kind: .remove,
+                                                 redraws: &redraws, events: events)
                     run.done.append(label)
+                    run.done.append(contentsOf: notes)
+                    troubled = troubled || !notes.isEmpty
                 case .crop(let crop):
                     let layer = Layer(label: "Photo: cropped", content: .crop(crop.rect))
                     try await apply(layer, kind: step.type, events: events)
@@ -471,12 +472,16 @@ public actor EditAgent {
         return union > 0 ? shared / union : 0
     }
 
-    private func redraw(_ region: Region, prompt: String, label: String, kind: TraceEvent.Kind,
+    /// Redraws a region as `prompt` describes, or takes it out when `prompt` is nil.
+    private func redraw(_ region: Region, prompt: String?, label: String, kind: TraceEvent.Kind,
                         redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
-        let expanded = NormalizedRect(x: box.x - box.width * 0.15, y: box.y - box.height * 0.15,
-                                      width: box.width * 1.3, height: box.height * 1.3)
+        // A removal is filled from what is around the thing, so it gets a crop three times its size; a redraw keeps
+        // close to it, where its detail decides how well the new one fits.
+        let margin = kind == .remove ? 1.0 : 0.15
+        let expanded = NormalizedRect(x: box.x - box.width * margin, y: box.y - box.height * margin,
+                                      width: box.width * (1 + 2 * margin), height: box.height * (1 + 2 * margin))
         guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
         let image = try await host.render(region: rect, maxLongEdge: 2048)
         try checkCancellation()
@@ -488,14 +493,25 @@ public actor EditAgent {
         // SAM's edge sits right on the object, so a sliver of its old colour would ring the redrawn one; the redraw
         // shows a little past it, where the generator redrew the boundary too.
         let edge = max(2, Int((Double(min(image.size.width, image.size.height)) * 0.012).rounded()))
+        // A removal reaches further: past the soft edge a patch is blended in with (about 5% of the crop's short side,
+        // inward from its mask), or the thing's outer rim shows through that edge as a faint outline.
+        let reach = kind == .remove ? max(edge, Int((Double(min(image.size.width, image.size.height)) * 0.06).rounded())) : edge
         let original = region.mask.cropped(to: rect).resized(to: image.size)
-        var mask = original.grown(by: edge)
-        let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
+        var mask = original.grown(by: reach)
+        let text = Self.redrawPrompt(prompt, thing: region.info.concept ?? region.info.id, place: Self.place(of: box, in: rect))
+        let request = GenerateRequest(image: image, mask: mask, prompt: text)
         // The redraw changes how the thing looks, so it is looked for without the old colour: a "white t-shirt"
-        // redrawn blue is found as a "t-shirt".
-        let concept = kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : nil
+        // redrawn blue is found as a "t-shirt". A removal is looked for as it was.
+        let concept = kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : region.info.concept
         var attempt = try await redrawAttempt(request, original: original, concept: concept,
                                               region: region.info.id, kind: kind, events: events)
+        // A removal keeps its grown mask, to take all of the thing out.
+        if kind == .remove {
+            let notes = try await removal(&attempt, request: request, original: original, concept: concept,
+                                          region: region.info.id, events: events)
+            return try await place(attempt.image, mask: mask, rect: rect, label: label, region: region.info.id,
+                                   kind: kind, notes: notes, redraws: &redraws, events: events)
+        }
         var notes: [String] = []
         // What the check found mostly outside the region's box is something else, not this redraw moved or shrunk:
         // there is nothing to compare, so nothing to retry.
@@ -519,30 +535,89 @@ public actor EditAgent {
         if let detail = attempt.note { notes.append(detail) }
         // A recolour shows exactly where the thing is: SAM's mask held to the photo's own edges, which keeps out a
         // border the generator drew past it (a dark line along a shirt onto a black backpack) while still taking in
-        // the edge's last pixels. A removal keeps its grown mask, to take all of the thing out.
-        if kind == .regenerate { mask = try await host.fitted(original, region: rect) }
+        // the edge's last pixels.
+        mask = try await host.fitted(original, region: rect)
         if let overlap = attempt.overlap {
             if overlap >= 0.5, let object = attempt.object {
-                mask = mask.union(kind == .regenerate ? object : object.grown(by: edge))
+                mask = mask.union(object)
             } else {
                 let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
                 notes.append("The redraw moved or resized the \(region.info.id) (overlap \(value)).")
             }
         }
+        return try await place(attempt.image, mask: mask, rect: rect, label: label, region: region.info.id,
+                               kind: kind, notes: notes, redraws: &redraws, events: events)
+    }
+
+    /// SAM looks for a removed thing again where it was. Still found there, it gets one more try, and the attempt
+    /// that left less of it is kept.
+    private func removal(_ attempt: inout RedrawAttempt, request: GenerateRequest, original: MaskData, concept: String?,
+                         region: String, events: Events) async throws -> [String] {
+        var notes: [String] = []
+        if let left = attempt.overlap, left >= Self.stillThere {
+            do {
+                let retry = try await redrawAttempt(request, original: original, concept: concept,
+                                                    region: region, kind: .remove, events: events)
+                if let detail = retry.note { notes.append(detail) }
+                if let next = retry.overlap, next < left { attempt = retry }
+            } catch {
+                let error = cancellationError(error)
+                if error as? LumenError == .cancelled { throw error }
+                notes.append("Could not retry the removal of \(region): \(error.localizedDescription)")
+            }
+        }
+        if let detail = attempt.note { notes.append(detail) }
+        if let left = attempt.overlap, left >= Self.stillThere {
+            let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), left)
+            notes.append("The \(region) is still found where it was after its removal (overlap \(value)).")
+        }
+        return notes
+    }
+
+    /// How much a removed thing found again may overlap where it was before it counts as still there.
+    static let stillThere = 0.3
+
+    /// Puts a redrawn crop on the photo as a layer.
+    private func place(_ generated: EncodedImage, mask: MaskData, rect: NormalizedRect, label: String, region: String,
+                       kind: TraceEvent.Kind, notes: [String], redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         for detail in notes { note(kind, detail, events: events) }
-        let generated = attempt.image
         let imageAsset = await assets.put(.image(generated))
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
             let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect))
-            try await apply(layer, kind: kind.rawValue, region: region.info.id, events: events)
-            redraws[region.info.id] = layer.id
+            try await apply(layer, kind: kind.rawValue, region: region, events: events)
+            redraws[region] = layer.id
         } catch {
             await assets.remove(imageAsset)
             await assets.remove(maskAsset)
             throw error
         }
         return notes
+    }
+
+    /// What Muse Image is asked. It sees only the crop, so the prompt says which thing in it to change and where.
+    static func redrawPrompt(_ prompt: String?, thing: String, place: String) -> String {
+        guard let prompt else {
+            return "Remove the whole \(thing) \(place) of this picture, every part of it. Fill its place with what is "
+                + "behind it, continuing the surroundings naturally. Change nothing else."
+        }
+        let sentence = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ended = sentence.last.map { ".!?".contains($0) } ?? true ? sentence : sentence + "."
+        return "\(ended) Change only the \(thing) \(place) of this picture, and nothing else."
+    }
+
+    /// Where `box` sits in `rect`, in words: "in the centre", "on the left", "at the top right".
+    static func place(of box: NormalizedRect, in rect: NormalizedRect) -> String {
+        let x = rect.width > 0 ? (box.x + box.width / 2 - rect.x) / rect.width : 0.5
+        let y = rect.height > 0 ? (box.y + box.height / 2 - rect.y) / rect.height : 0.5
+        let column = x < 1.0 / 3 ? "left" : x > 2.0 / 3 ? "right" : nil
+        let row = y < 1.0 / 3 ? "top" : y > 2.0 / 3 ? "bottom" : nil
+        switch (row, column) {
+        case (nil, nil): return "in the centre"
+        case (nil, let column?): return "on the \(column)"
+        case (let row?, nil): return "at the \(row)"
+        case (let row?, let column?): return "at the \(row) \(column)"
+        }
     }
 
     private struct RedrawAttempt {
@@ -558,10 +633,11 @@ public actor EditAgent {
             try await self.generator.generate(request)
         }
         guard let concept else { return RedrawAttempt(image: image) }
+        let removed = kind == .remove
         do {
             let request = SegmentRequest(image: image, concept: concept)
             let segments = try await call(.select, model: segmenter.modelID,
-                                          detail: "Check the redraw of \(region)", events: events) {
+                                          detail: "Check the \(removed ? "removal" : "redraw") of \(region)", events: events) {
                 try await self.segmenter.segment(request)
             }
             let matches = segments.map { segment in
@@ -569,13 +645,15 @@ public actor EditAgent {
                 return (mask: mask, overlap: original.intersectionOverUnion(mask))
             }.filter { $0.mask.boundingBox != nil }
             guard let best = matches.max(by: { $0.overlap < $1.overlap }) else {
+                // Nothing found is what a removal is for.
+                if removed { return RedrawAttempt(image: image, overlap: 0) }
                 return RedrawAttempt(image: image, note: "Could not check the redraw of \(region): nothing found for “\(concept)”.")
             }
             return RedrawAttempt(image: image, object: best.mask, overlap: best.overlap)
         } catch {
             let error = cancellationError(error)
             if error as? LumenError == .cancelled { throw error }
-            return RedrawAttempt(image: image, note: "Could not check the redraw of \(region): \(error.localizedDescription)")
+            return RedrawAttempt(image: image, note: "Could not check the \(removed ? "removal" : "redraw") of \(region): \(error.localizedDescription)")
         }
     }
 

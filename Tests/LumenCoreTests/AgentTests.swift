@@ -218,7 +218,7 @@ struct AgentTests {
         #expect(abs(rect.height - 0.65) < 0.000001)
         #expect(await agent.assets.get(imageID) == .image(AgentGenerator.image))
         let generateRequest = try #require(await generator.requests.first)
-        #expect(generateRequest.prompt == "a navy wool coat")
+        #expect(generateRequest.prompt == "a navy wool coat. Change only the coat in the centre of this picture, and nothing else.")
         let size = generateRequest.image.size
         let edge = max(2, Int((Double(min(size.width, size.height)) * 0.012).rounded()))
         #expect(generateRequest.mask == segment().mask.cropped(to: rect).resized(to: size).grown(by: edge), "a little past SAM's edge")
@@ -467,13 +467,16 @@ struct AgentTests {
         ]))
         let generator = AgentGenerator()
         let host = AgentHost()
-        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [Segment(label: "object", box: .whole, mask: mask)]),
+        let object = Segment(label: "object", box: .whole, mask: mask)
+        // SAM finds nothing where the object was: it is gone.
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(answers: [[object], []]),
                               generator: generator, host: host)
         let events = try await collect(agent.run("Remove the object and crop"))
-        #expect(await generator.requests.first?.prompt == "Remove the selected object and fill the area naturally from its surroundings")
+        #expect(await generator.requests.first?.prompt == "Remove the whole object at the top left of this picture, every part "
+            + "of it. Fill its place with what is behind it, continuing the surroundings naturally. Change nothing else.")
+        // Three times the object's size, clipped to the photo.
         let rect = try #require(await host.crops.first?.rect)
-        #expect(rect.x == 0 && rect.y == 0)
-        #expect(abs(rect.width - 0.575) < 0.000001 && abs(rect.height - 0.575) < 0.000001)
+        #expect(rect == NormalizedRect(x: 0, y: 0, width: 1, height: 1))
         #expect(events.layers.map(\.label) == ["Object: removed", "Photo: cropped"])
         #expect(events.layers.last?.content == .crop(NormalizedRect(x: 0, y: 0, width: 0.5, height: 1)))
         #expect(events.traces.contains { $0.kind == .remove && $0.model == "muse-image-1.0" })

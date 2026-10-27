@@ -84,6 +84,31 @@ Measured on October 26, these kept that cost down:
 
 [docs/meta-api.md](docs/meta-api.md) has the measurements.
 
+## Try it
+
+With your own Meta API key, from a clone of this repository:
+
+```sh
+export META_API_KEY=…
+swift build -c release
+.build/release/lumen edit Fixtures/photos/jacket-with-a-hood.jpg "Make his jacket bright yellow" \
+  --out yellow.jpg --trace yellow.json
+```
+
+What to expect:
+- It takes about half a minute and five model calls, and costs about 3 cents. The command prints the cost, and `yellow.json` has every plan, call and check.
+- A follow-up remembers the edit: run Lumen Studio, or see [Follow-ups and undo](docs/evaluation.md#follow-ups-and-undo).
+
+For a whole library, plan-first mode shows the plan and waits for approval before changing anything:
+
+```sh
+.build/release/lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode plan
+```
+
+The last full run of this library took 33 model calls in 169 s.
+
+Without a key, `swift test` runs everything against recorded responses.
+
 ## Build
 
 Requires macOS 26 and Xcode 26.

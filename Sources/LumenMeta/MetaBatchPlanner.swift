@@ -128,8 +128,8 @@ public struct MetaBatchPlanner: BatchPlanner {
     Return exactly one entry per photo number. Do not omit, repeat or invent a number.
     A misfire is a frame no one would keep: the subject itself smeared by camera shake or missed focus so
     badly it is hard to recognise, a black or almost black frame, an accidental shot of the
-    ground or a pocket, or in a run of near-duplicates a frame with closed eyes or motion blur when a better
-    one exists.
+    ground or a pocket, or in a run of near-duplicates a frame with closed eyes or motion blur
+    when a better one exists.
     Measured sharpness is over the whole frame: a soft or blurred background, shallow depth of field, soft
     light, mist or an overcast sky lower it with nothing wrong, so low sharpness alone is never a misfire.
     A dark mood is not a misfire either.

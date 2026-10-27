@@ -70,17 +70,23 @@ enum PhotoCompositor {
 
     /// Moves a redrawn patch's overall light and colour back to the photo's, measured in a ring just outside its mask.
     static func colorMatched(_ patch: CIImage, to photo: CIImage, mask: CIImage, context: CIContext) -> CIImage {
-        let radius = max(1, min(patch.extent.width, patch.extent.height) * 0.06)
+        let short = min(patch.extent.width, patch.extent.height)
+        let radius = max(1, short * 0.06)
+        // The ring starts a little outside the mask: a mask often misses the thing's own edge by a few pixels, and
+        // the generator redrew that edge too, which would read as drift.
+        let gap = max(1, short * 0.015)
         let padded = mask.composited(over: CIImage(color: .black))
-        let outside = padded.applyingFilter("CIColorInvert")
+        let clear = padded.applyingFilter("CIMorphologyMaximum", parameters: ["inputRadius": gap])
+            .applyingFilter("CIColorInvert")
         let ring = padded.applyingFilter("CIMorphologyMaximum", parameters: ["inputRadius": radius])
-            .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: outside])
+            .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: clear])
         // The redrawn crop's own surroundings against the photo's in the same ring: that measures how the
         // generator shifted the light and colour overall, without pulling an intended new colour inside the mask
         // toward what is around it.
         let ringBounds = patch.extent.intersection(photo.extent)
-        guard let surroundings = statistics(photo, mask: ring, bounds: ringBounds, context: context),
-              let generated = statistics(patch, mask: ring, bounds: ringBounds, context: context) else { return patch }
+        guard let (surroundings, generated) = agreeing(photo, patch, ring: ring, bounds: ringBounds, context: context) else {
+            return patch
+        }
         var gain = [Double]()
         var offset = [Double]()
         for channel in 0..<3 {
@@ -106,39 +112,50 @@ enum PhotoCompositor {
         var spread: [Double]
     }
 
-    private static func statistics(_ image: CIImage, mask: CIImage, bounds: CGRect, context: CIContext) -> Statistics? {
+    /// The photo's and the patch's colour in the ring, over the pixels where the two differ only by the generator's
+    /// overall drift: within 0.08 (linear) of their median difference. Pixels whose content the generator changed,
+    /// such as a red sweater's edge it redrew green, are left out. Nil when too few agree to tell the drift.
+    private static func agreeing(_ photo: CIImage, _ patch: CIImage, ring: CIImage, bounds: CGRect,
+                                 context: CIContext) -> (Statistics, Statistics)? {
         let scale = min(1, 128 / max(bounds.width, bounds.height))
         let width = max(1, Int((bounds.width * scale).rounded()))
         let height = max(1, Int((bounds.height * scale).rounded()))
         let sampleBounds = CGRect(x: 0, y: 0, width: width, height: height)
-        let sample = resized(image.cropped(to: bounds), to: sampleBounds)
-        let coverage = resized(mask.cropped(to: bounds), to: sampleBounds)
-        var pixels = [Float](repeating: 0, count: width * height * 4)
-        var weights = pixels
         let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
-        pixels.withUnsafeMutableBytes { bytes in
-            context.render(sample, toBitmap: bytes.baseAddress!, rowBytes: width * 16,
-                           bounds: sampleBounds, format: .RGBAf, colorSpace: colorSpace)
-        }
-        weights.withUnsafeMutableBytes { bytes in
-            context.render(coverage, toBitmap: bytes.baseAddress!, rowBytes: width * 16,
-                           bounds: sampleBounds, format: .RGBAf, colorSpace: nil)
-        }
-        var total = 0.0
-        var sum = [Double](repeating: 0, count: 3)
-        var squares = sum
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            let weight = min(1, max(0, Double(weights[index]))) * Double(pixels[index + 3])
-            total += weight
-            for channel in 0..<3 {
-                let value = Double(pixels[index + channel])
-                sum[channel] += value * weight
-                squares[channel] += value * value * weight
+        func sample(_ image: CIImage, colorSpace: CGColorSpace?) -> [Float] {
+            var pixels = [Float](repeating: 0, count: width * height * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                context.render(resized(image.cropped(to: bounds), to: sampleBounds), toBitmap: bytes.baseAddress!,
+                               rowBytes: width * 16, bounds: sampleBounds, format: .RGBAf, colorSpace: colorSpace)
             }
+            return pixels
         }
-        guard total > 0.5 else { return nil }
-        let mean = sum.map { $0 / total }
-        let spread = (0..<3).map { sqrt(max(0, squares[$0] / total - mean[$0] * mean[$0])) }
-        return Statistics(mean: mean, spread: spread)
+        let theirs = sample(photo, colorSpace: colorSpace), ours = sample(patch, colorSpace: colorSpace)
+        let weights = sample(ring, colorSpace: nil)
+        let inRing = stride(from: 0, to: weights.count, by: 4).filter {
+            weights[$0] > 0.5 && theirs[$0 + 3] > 0.5 && ours[$0 + 3] > 0.5
+        }
+        guard inRing.count >= 8 else { return nil }
+        let drift = (0..<3).map { channel in
+            median(inRing.map { Double(theirs[$0 + channel] - ours[$0 + channel]) })
+        }
+        let agree = inRing.filter { index in
+            (0..<3).allSatisfy { abs(Double(theirs[index + $0] - ours[index + $0]) - drift[$0]) <= 0.08 }
+        }
+        guard agree.count >= max(8, inRing.count / 4) else { return nil }
+        func statistics(_ pixels: [Float]) -> Statistics {
+            let mean = (0..<3).map { channel in agree.reduce(0) { $0 + Double(pixels[$1 + channel]) } / Double(agree.count) }
+            let spread = (0..<3).map { channel in
+                (agree.reduce(0) { $0 + pow(Double(pixels[$1 + channel]) - mean[channel], 2) } / Double(agree.count)).squareRoot()
+            }
+            return Statistics(mean: mean, spread: spread)
+        }
+        return (statistics(theirs), statistics(ours))
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
     }
 }

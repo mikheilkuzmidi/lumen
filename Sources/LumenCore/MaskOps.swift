@@ -141,6 +141,33 @@ extension MaskData {
         }
         return MaskData(size: size, coverage: pixels)
     }
+
+    /// Softens coverage about as a Gaussian blur of `radius` pixels does: three box blurs each way, with the edge
+    /// pixels repeated past the border.
+    public func blurred(by radius: Double) -> MaskData {
+        guard radius >= 0.5, size.width > 0, size.height > 0 else { return self }
+        // Three boxes of 2h + 1 pixels have the variance of a Gaussian of `radius` when (2h + 1)² = 4 radius² + 1.
+        let half = max(1, Int((((4 * radius * radius + 1).squareRoot() - 1) / 2).rounded()))
+        let width = size.width, height = size.height
+        var values = coverage.map(Double.init)
+        func pass(count: Int, stride: Int, lines: Int, lineStride: Int) {
+            var line = [Double](repeating: 0, count: count)
+            for start in 0..<lines {
+                for index in 0..<count { line[index] = values[start * lineStride + index * stride] }
+                var sum = Double(half + 1) * line[0]
+                for index in 1...half { sum += line[min(count - 1, index)] }
+                for index in 0..<count {
+                    values[start * lineStride + index * stride] = sum / Double(2 * half + 1)
+                    sum += line[min(count - 1, index + half + 1)] - line[max(0, index - half)]
+                }
+            }
+        }
+        for _ in 0..<3 {
+            pass(count: width, stride: 1, lines: height, lineStride: width)
+            pass(count: height, stride: width, lines: width, lineStride: 1)
+        }
+        return MaskData(size: size, coverage: values.map { UInt8(min(255, max(0, $0.rounded()))) })
+    }
 }
 
 extension NormalizedRect {

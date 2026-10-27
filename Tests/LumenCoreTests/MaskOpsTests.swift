@@ -69,4 +69,18 @@ struct MaskOpsTests {
             }
         }
     }
+
+    @Test func blurringSoftensTheEdgeAndKeepsTheMiddle() {
+        var coverage = [UInt8](repeating: 0, count: 60 * 40)
+        for y in 10..<30 { for x in 20..<40 { coverage[y * 60 + x] = 255 } }
+        let square = MaskData(size: PixelSize(width: 60, height: 40), coverage: coverage)
+        let soft = square.blurred(by: 2)
+        #expect(soft[30, 20] == 255, "the middle stays covered")
+        #expect(soft[0, 0] == 0 && soft[59, 39] == 0, "far outside stays clear")
+        #expect((100...155).contains(soft[20, 20]), "the edge is about half covered: \(soft[20, 20])")
+        #expect(soft[17, 20] > 0 && soft[17, 20] < soft[19, 20] && soft[22, 20] < 255)
+        #expect(square.blurred(by: 0.2) == square)
+        // A mask touching the border is not dimmed there.
+        #expect(MaskData(size: PixelSize(width: 8, height: 8), filledWith: 255).blurred(by: 3)[0, 0] == 255)
+    }
 }

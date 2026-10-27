@@ -179,6 +179,38 @@ struct PhotoPixelTests {
         #expect(after[64, 80].distance(to: before[64, 80]) <= 1.0 / 255, "outside the patch nothing changes")
     }
 
+    /// A red sweater redrawn forest green came out brown with a red rim: SAM's mask missed the sweater's edge, so
+    /// the ring the drift is measured in held red sweater in the photo and green in the redraw, and the whole patch
+    /// was moved toward red. The drift is measured only where the two agree, a little outside the mask.
+    @Test
+    func aRecolourIsNotPulledBackTowardTheColourItReplaced() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A red sweater at x 60..<132, y 30..<114 on a grey wall.
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 192, height: 144) { x, y in
+            (60..<132).contains(x) && (30..<114).contains(y) ? RGB(220, 20, 30) : RGB(200, 200, 200)
+        })
+        let assets = AssetStore()
+        // The redraw covers x 36..<156, y 12..<132: the whole sweater green, the wall as it was.
+        let green = RGB(30, 110, 50)
+        let patchURL = try folder.photo(width: 120, height: 120) { x, y in
+            (24..<96).contains(x) && (18..<102).contains(y) ? green : RGB(200, 200, 200)
+        }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 120, height: 120))))
+        // SAM's mask misses the sweater's outer 3 px.
+        let coverage = (0..<(120 * 120)).map { (27..<93).contains($0 % 120) && (21..<99).contains($0 / 120) ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 120, height: 120), coverage: coverage)))
+        try await document.apply(Layer(label: "Sweater", content: .patch(image: imageID, mask: maskID,
+                                                                          rect: NormalizedRect(x: 36.0 / 192, y: 12.0 / 144,
+                                                                                               width: 120.0 / 192, height: 120.0 / 144))),
+                                 assets: assets)
+        let after = try await folder.pixels(document)
+        let middle = after[96, 72]
+        #expect(middle.distance(to: green) <= 3.0 / 255, "the sweater is the green it was redrawn: \(middle.red), \(middle.green), \(middle.blue)")
+        #expect(after[10, 10].distance(to: RGB(200, 200, 200)) <= 1.0 / 255)
+    }
+
     /// A small, flat redraw enlarged over fine stripes gets the stripes back at about 70% of their contrast.
     @Test
     func anEnlargedPatchGetsThePhotosFineDetailBack() async throws {
@@ -244,11 +276,11 @@ struct PhotoPixelTests {
         }
     }
 
-    /// A removed sign left a faint outline: the patch blends in through a soft edge that reaches inward from its mask,
-    /// so a mask only a little larger than the sign let its dark rim show through. Reaching 6% of the crop past the
-    /// thing takes all of it out.
+    /// A removed sign left a faint outline: the patch was blended in through a soft edge that reached inward from its
+    /// mask, over the sign's rim. A patch's mask now carries its own edge: a removal's reaches 6% of the crop past the
+    /// thing and is softened there, clear of it; one softened right at the thing lets its rim show.
     @Test(arguments: [false, true])
-    func aRemovalReachingPastTheBlendLeavesNoOutline(reachesPast: Bool) async throws {
+    func aRemovalSoftenedClearOfTheThingLeavesNoOutline(reachesPast: Bool) async throws {
         let folder = try PhotoFolder()
         defer { folder.remove() }
         // A white sign with a black rim at x and y 200..<300, on grey.
@@ -263,8 +295,8 @@ struct PhotoPixelTests {
                                                           size: PixelSize(width: 300, height: 300))))
         var sign = [UInt8](repeating: 0, count: 300 * 300)
         for y in 100..<200 { for x in 100..<200 { sign[y * 300 + x] = 255 } }
-        let reach = reachesPast ? 18 : 4
-        let mask = MaskData(size: PixelSize(width: 300, height: 300), coverage: sign).grown(by: reach)
+        let mask = MaskData(size: PixelSize(width: 300, height: 300), coverage: sign)
+            .grown(by: reachesPast ? 18 : 4).blurred(by: 4.5)
         let maskID = await assets.put(.mask(mask))
         try await document.apply(Layer(label: "Sign: removed", content: .patch(image: imageID, mask: maskID,
                                                                                rect: NormalizedRect(x: 0.125, y: 1.0 / 6, width: 0.375, height: 0.5))),
@@ -276,8 +308,30 @@ struct PhotoPixelTests {
             #expect(rim.distance(to: grey) < 2.0 / 255, "no trace of the rim: \(rim.red)")
             #expect(after[250, 250].distance(to: grey) < 2.0 / 255)
         } else {
-            #expect(rim.red < grey.red - 0.02, "the rim shows through the blend: \(rim.red)")
+            #expect(rim.red < grey.red - 0.02, "the rim shows through the soft edge: \(rim.red)")
         }
+    }
+
+    /// The compositor only smooths a mask's pixel steps: a hard mask shows the patch right up to its edge.
+    @Test
+    func aPatchShowsFullyUpToItsMasksEdge() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 800, height: 600) { _, _ in RGB(220, 20, 30) })
+        let assets = AssetStore()
+        // The redraw is green over its left half and keeps the photo's red beyond it, as a redraw keeps its surroundings.
+        let patchURL = try folder.photo(width: 400, height: 300) { x, _ in x < 200 ? RGB(30, 110, 50) : RGB(220, 20, 30) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 400, height: 300))))
+        // The left half of the patch, which covers x 200..<600: the edge is at x 400.
+        let coverage = (0..<(400 * 300)).map { $0 % 400 < 200 ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 400, height: 300), coverage: coverage)))
+        try await document.apply(Layer(label: "Sweater", content: .patch(image: imageID, mask: maskID,
+                                                                          rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))),
+                                 assets: assets)
+        let after = try await folder.pixels(document)
+        #expect(after[396, 300].distance(to: RGB(30, 110, 50)) <= 3.0 / 255, "no red 4 px inside the edge: \(after[396, 300].red)")
+        #expect(after[404, 300].distance(to: RGB(220, 20, 30)) <= 3.0 / 255)
     }
 
     /// The critic is told each region's colour before and after, so a change too slight to see or a colour short of

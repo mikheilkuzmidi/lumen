@@ -145,7 +145,8 @@ struct RedrawTests {
         // A removal keeps its grown mask, to take all of the thing out.
         let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
         let request = try #require(await generator.requests.first)
-        #expect(patch.mask == request.mask)
+        // The patch shows through that mask softened outside the cup, by 1.5% of the crop.
+        #expect(patch.mask == request.mask.blurred(by: Double(RedrawPhoto.cropSize.width) * 0.015))
         #expect(request.prompt == "Remove the whole cup in the centre of this picture, every part of it. Fill its place "
             + "with what is behind it, continuing the surroundings naturally. Change nothing else.")
         #expect(await generator.requests.count == 1)

@@ -266,7 +266,10 @@ public actor PhotoDocument: EditHost {
                 let matched = PhotoCompositor.restoringDetail(
                     PhotoCompositor.colorMatched(placed, to: image, mask: coverage, context: context),
                     from: image, enlargement: enlargement)
-                let feathered = PhotoCompositor.feather(coverage, radius: min(patchBounds.width, patchBounds.height) * 0.015)
+                // A patch's mask carries its own edge: a recolour's is held to the photo's edges, a removal's is
+                // softened outside the thing. A wider blend here would let the old colour show along the edge (a red
+                // sweater redrawn green kept a red rim), so it only smooths the mask's pixel steps.
+                let feathered = PhotoCompositor.feather(coverage, radius: min(patchBounds.width, patchBounds.height) * 0.003)
                 image = PhotoCompositor.blend(matched, over: image, mask: feathered, opacity: layer.opacity)
             case .crop:
                 continue

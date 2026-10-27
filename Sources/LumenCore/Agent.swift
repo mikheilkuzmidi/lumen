@@ -527,9 +527,10 @@ public actor EditAgent {
         // SAM's edge sits right on the object, so a sliver of its old colour would ring the redrawn one; the redraw
         // shows a little past it, where the generator redrew the boundary too.
         let edge = max(2, Int((Double(min(image.size.width, image.size.height)) * 0.012).rounded()))
-        // A removal reaches further: past the soft edge a patch is blended in with (about 5% of the crop's short side,
-        // inward from its mask), or the thing's outer rim shows through that edge as a faint outline.
-        let reach = kind == .remove ? max(edge, Int((Double(min(image.size.width, image.size.height)) * 0.06).rounded())) : edge
+        // A removal reaches further, 6% of the crop's short side, and is softened outside the thing (below), or its
+        // outer rim shows through the soft edge as a faint outline.
+        let short = Double(min(image.size.width, image.size.height))
+        let reach = kind == .remove ? max(edge, Int((short * 0.06).rounded())) : edge
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         var mask = original.grown(by: reach)
         let text = Self.redrawPrompt(prompt, thing: region.info.concept ?? region.info.id, place: Self.place(of: box, in: rect))
@@ -539,12 +540,13 @@ public actor EditAgent {
         let concept = kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : region.info.concept
         var attempt = try await redrawAttempt(request, original: original, concept: concept,
                                               region: region.info.id, kind: kind, events: events)
-        // A removal keeps its grown mask, to take all of the thing out.
+        // A removal keeps its grown mask, to take all of the thing out, with an edge as soft as 1.5% of the crop
+        // that blends what was drawn in its place into the photo; at 6% out, it ends well clear of the thing.
         if kind == .remove {
             let notes = try await removal(&attempt, request: request, original: original, concept: concept,
                                           region: region.info.id, events: events)
-            return try await place(attempt.image, mask: mask, rect: rect, label: label, region: region.info.id,
-                                   kind: kind, notes: notes, redraws: &redraws, events: events)
+            return try await place(attempt.image, mask: mask.blurred(by: short * 0.015), rect: rect, label: label,
+                                   region: region.info.id, kind: kind, notes: notes, redraws: &redraws, events: events)
         }
         var notes: [String] = []
         // What the check found mostly outside the region's box is something else, not this redraw moved or shrunk:

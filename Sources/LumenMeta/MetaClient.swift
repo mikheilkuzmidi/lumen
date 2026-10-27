@@ -96,7 +96,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     see, such as "jacket", "sky", "sofa" or "red gate", without possessives or long descriptions; when
     there are several, give a point on the one you mean and a box around it.
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
-    either way for a visible but natural change.
+    either way for a visible but natural change. Temperature warms or cools the light; vibrance and
+    saturation strengthen colours already there, so they make a blue sky bluer. For warm light such as
+    golden hour, use temperature 30 to 50 with tint +5 to +15, which keeps blues from turning green, and
+    little or no vibrance or saturation. Never warm a blue sky on its own: it turns teal.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and
     asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
     from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping

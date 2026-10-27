@@ -92,9 +92,12 @@ public struct MetaPlanner: Planner {
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
     either way for a visible but natural change.
     A regenerate prompt describes only the region as it should look (its material, colour and finish) and
-    asks to keep its shape, folds, shadows and the scene's light. To fix a redraw that went wrong,
-    regenerate the same region id again with a better prompt, because Lumen replaces the earlier redraw
-    from this run. Do not select the object again for that. Remove is only for taking something out of
+    asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
+    from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping
+    its knit texture and folds". Never ask to keep the colour or pattern being changed: the image model can
+    then leave it as it was. To fix a redraw that went wrong, regenerate the same region id again with a
+    better prompt, because Lumen replaces the earlier redraw from this run; if the colour did not change,
+    name the new colour more strongly and the old one it replaces. Do not select the object again for that. Remove is only for taking something out of
     the photo, never for changing how it looks.
     Return only the JSON described by the supplied schema.
     """

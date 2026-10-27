@@ -62,6 +62,23 @@ struct BatchAgentTests {
         #expect(await library.rotations == [PhotoID("photo-1"): -4, PhotoID("photo-3"): 2])
     }
 
+    @Test func aHorizonOrWaterLineDecidesOverTheReviewersLook() async throws {
+        // A lake the reviewer called level is still straightened (photo-0): a 3° tilt is hard to see in a contact
+        // sheet, a lake is not. With nothing that should be level the measurement read something else (photo-1), and
+        // a building edge leaves it to the reviewer (photo-2 tilted, photo-3 perspective).
+        let library = BatchTestLibrary([batchTestFacts(tilt: 3), batchTestFacts(tilt: 2), batchTestFacts(tilt: -1.5),
+                                        batchTestFacts(tilt: 4)])
+        let reviewer = BatchTestReviewer(reviews: [
+            batchTestReview(PhotoID("photo-0"), tilted: false, levelLine: .water),
+            batchTestReview(PhotoID("photo-1"), tilted: true, levelLine: LevelLine.none),
+            batchTestReview(PhotoID("photo-2"), tilted: true, levelLine: .building),
+            batchTestReview(PhotoID("photo-3"), tilted: false, levelLine: .building),
+        ])
+        let agent = batchTestAgent(library, reviewer: reviewer)
+        _ = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: true, qualityThreshold: 0)))
+        #expect(await library.rotations == [PhotoID("photo-0"): -3, PhotoID("photo-2"): 1.5])
+    }
+
     @Test(arguments: BatchMode.allCases)
     func undecidedStraighteningAsksOrTakesTheRecommendation(mode: BatchMode) async throws {
         let library = BatchTestLibrary([batchTestFacts(tilt: 0.8), batchTestFacts(tilt: 1), batchTestFacts(tilt: -2.5)])

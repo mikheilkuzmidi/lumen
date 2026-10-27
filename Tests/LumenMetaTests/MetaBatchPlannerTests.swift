@@ -37,7 +37,9 @@ import Testing
     let array = try #require(properties["photos"] as? [String: Any])
     let item = try #require(array["items"] as? [String: Any])
     let fields = try #require(item["properties"] as? [String: [String: Any]])
-    #expect(Set(fields.keys) == ["number", "misfire", "misfireReason", "quality", "description", "group", "matchesInstruction", "tilted"])
+    #expect(Set(fields.keys) == ["number", "misfire", "misfireReason", "quality", "description", "group", "matchesInstruction", "tilted",
+                                 "levelLine"])
+    #expect(fields["levelLine"]?["enum"] as? [String] == ["horizon", "water", "building", "none"])
     #expect(fields["misfireReason"]?["type"] as? [String] == ["string", "null"])
     for rule in ["frame no one would keep", "black or almost black", "ground or a pocket", "closed eyes or motion blur",
                  "when a better one exists", "low sharpness alone is never a misfire", "0 is unusable, 1 needs nothing",
@@ -53,6 +55,17 @@ import Testing
     #expect(reviews.allSatisfy { !$0.matchesInstruction })
     let context = try batchRequestContext(#require(await transport.requests.first))
     #expect(context["instruction"] is NSNull)
+}
+
+@Test func batchReviewReadsTheLineThatShouldBeLevel() async throws {
+    var water = batchReviewAnswer(number: 1), none = batchReviewAnswer(number: 2)
+    water["levelLine"] = "water"
+    none["levelLine"] = "none"
+    // A reply recorded before the field, without it.
+    let transport = ReplayTransport([try batchCompletion(["photos": [water, none, batchReviewAnswer(number: 3)]])])
+    let planner = MetaBatchPlanner(configuration: testConfiguration, transport: transport)
+    let reviews = try await planner.review(ReviewRequest(instruction: nil, photos: batchPhotos()))
+    #expect(reviews.map(\.levelLine) == [.water, LevelLine.none, nil])
 }
 
 @Test func batchReviewRejectsMissingDuplicateAndUnknownNumbersAndInvalidQuality() async throws {
@@ -125,7 +138,8 @@ import Testing
     }, "answers": [:]])
     for rule in ["person's choice", "two to four short options", "recommendation", "same shirt", "own style",
                  "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",
-                 "With every answer given, the plan has no questions"] {
+                 "With every answer given, the plan has no questions",
+                 "photo with likelyMatch true unless its description rules the instruction out"] {
         #expect(MetaBatchPlanner.planPrompt.contains(rule))
     }
 }

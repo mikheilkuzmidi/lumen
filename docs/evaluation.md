@@ -69,14 +69,14 @@ The first full run, earlier the same day, had the critic satisfied with 11 of 15
 lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode autonomous
 ```
 
-The last run on October 26 (commit 8933ec4) took 33 model calls and 169 s. Each part, judged by eye:
+The last run on October 27 took 47 model calls and 393 s, and cost $0.43. Each part, judged by eye:
 
 | Part | Result |
 | --- | --- |
 | Misfires | Both flagged (the shaken frame, the pocket shot) and left out. |
-| Straightening | The lake (−3.6°) and the street (+1.8°) levelled; the grain elevators (+2.1°) as well, plausibly; the café, the city and the forest left alone. |
-| Questions | Asked and, in autonomous mode, answered with the recommendation: whether to straighten; in other runs, the shirt style, the black-and-white photo, partly hidden people, the shade of blue. |
-| Shirts | All four T-shirts on the hilltop blue, after one revision. In the forest photo the light grey patterned shirt stayed grey through three redraws; that led to the last change below, after which the same instruction turned both shirts blue on the first try. |
+| Straightening | The lake (−3.6°), the street (+1.8°) and the grain elevators (+2.1°) levelled; the café, the city and the forest left alone. |
+| Questions | Whether to straighten, answered in autonomous mode with the recommendation; in other runs, the shirt style, the black-and-white photo, partly hidden people, the shade of blue. |
+| Shirts | Four photos planned and recoloured: all four T-shirts on the hilltop, both in the forest, the three women's tops by the grain elevators, and the boys' shirts in the black-and-white photo. That photo was exported grey, which led to the last change below. |
 
 Lumen Studio's Library (plan-first, 37 calls) and Photoeditor's prompt bar (plan-first, 34 calls) ran the same library with the same agent.
 
@@ -90,7 +90,9 @@ Each of these runs found something, and each was fixed and run again:
 | A recoloured shirt was checked for its old colour, called "moved" and redrawn again. | The redraw check searches without colour words, and a match outside the region counts as no check. |
 | The reviewer matched only one shirt photo to the instruction, so nothing was recoloured. | Every photo goes to Muse Wonder with the reviewer's impression as a hint; the planner decides. |
 | "Blue with the same subtle pattern" left a pale patterned shirt as it was. | Colour changes are asked for from what to what. |
-| After the portrait rule below, the reviewer called the tilted lake and street level: the October 27 autonomous run left both crooked, and so did one of two review-only runs. | Water and the horizon are always level, so a lake or horizon at the measured angle means tilted, whatever the hills or road do. In three review-only runs both were flagged each time, the grain elevators too, and once the forest, which is a false positive. |
+| After the portrait rule below, the reviewer called the tilted lake and street level: an October 27 run left both crooked. A rule that water is always level fixed three review-only runs, but not a run with an instruction. | The reviewer also names the line that should be level: horizon, water, building or none. A contact sheet shows that plainly where a 3° tilt is hard to see. A measured tilt with a horizon or water line is straightened; with none, it is not. |
+| Muse Wonder planned the T-shirts on one photo of four. It decided from the reviewer's few-word descriptions, which left the shirts out. | Photos the reviewer matched from the image stay in unless their description rules the instruction out. |
+| The boys' shirts in the black-and-white photo were redrawn blue but exported grey: the export kept the source's grey colour space. | A greyscale photo that an edit gives colour is exported in sRGB. |
 ## At scale
 
 The project's 126 local test photos cover portraits, faces, groups, pets, landscapes, cities, water, snow, night, indoor flash and studio. They are the maintainer's own test set, so they are not in the repository, and only the numbers are reported here.

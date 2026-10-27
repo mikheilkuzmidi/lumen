@@ -11,9 +11,10 @@ func batchTestFacts(sharpness: Double = 0.9, exposure: Double = 0.5, tilt: Doubl
 }
 
 func batchTestReview(_ photo: PhotoID, quality: Double = 0.9, misfire: Bool = false, matches: Bool = true,
-                     tilted: Bool? = nil) -> PhotoReview {
+                     tilted: Bool? = nil, levelLine: LevelLine? = nil) -> PhotoReview {
     PhotoReview(photo: photo, misfire: misfire, misfireReason: misfire ? "Badly blurred" : nil, quality: quality,
-                description: "A person in a shirt", group: "people", matchesInstruction: matches, tilted: tilted)
+                description: "A person in a shirt", group: "people", matchesInstruction: matches, tilted: tilted,
+                levelLine: levelLine)
 }
 
 func batchTestAgent(_ library: BatchTestLibrary, reviewer: (any BatchPlanner)? = nil,

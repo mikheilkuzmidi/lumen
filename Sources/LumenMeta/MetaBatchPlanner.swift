@@ -46,7 +46,7 @@ public struct MetaBatchPlanner: BatchPlanner {
                                                      quality: min(1, max(0, review.quality)), description: review.description,
                                                      group: review.group,
                                                      matchesInstruction: hasInstruction && review.matchesInstruction,
-                                                     tilted: review.tilted)
+                                                     tilted: review.tilted, levelLine: review.levelLine)
             }
             return try request.photos.indices.map { index in
                 guard let review = reviews[index + 1] else {
@@ -138,6 +138,9 @@ public struct MetaBatchPlanner: BatchPlanner {
     Describe what the photo shows in a few words, including subjects and relevant clothing or objects.
     Group is a short key shared by photos of the same scene or subjects.
     matchesInstruction says whether the instruction applies to this photo; false when there is no instruction.
+    levelLine names the line in the photo that should be level, whatever its angle now: horizon where sky meets land or
+    sea, water for the surface or shoreline of a lake, river or sea, building for a wall, roof, window or door edge,
+    or none when there are only people, trees, hills, objects or slanted surfaces.
     tilted says whether the camera was tilted. The facts give a measured tilt where one was found: when the photo
     has a horizon, water line, pole or building edge that runs at about that angle, it is tilted, even by 2 to 5
     degrees. Water and the horizon are always level, so a lake, sea or horizon at the measured angle means
@@ -153,8 +156,10 @@ public struct MetaBatchPlanner: BatchPlanner {
     static let planPrompt = """
     Plan the instruction across the library using the numbered reviews and answers so far. No images are sent.
     Group photos that should receive the same edit. Use only supplied photo numbers, once each at most,
-    and include only photos the instruction applies to. likelyMatch is the reviewer's first impression of that;
-    decide from each description, which names the subjects and their clothing and objects. Give each group a short unique id and title.
+    and include only photos the instruction applies to. likelyMatch is the reviewer's judgement of that from the
+    photo itself; a description is only a few words and can leave out what the instruction is about. Include every
+    photo with likelyMatch true unless its description rules the instruction out, and a photo with likelyMatch
+    false only when its description shows the instruction applies. Give each group a short unique id and title.
     Write each group's instruction for each photo's own editing agent in that agent's own terms,
     for example "Make his T-shirt royal blue, same cut and folds". Ask for what the instruction asks and nothing
     more: auto tone, colour and straightening are already done for every photo, so never ask the agent to
@@ -181,6 +186,7 @@ public struct MetaBatchPlanner: BatchPlanner {
             var group: String
             var matchesInstruction: Bool
             var tilted: Bool?
+            var levelLine: LevelLine?
         }
         var photos: [Photo]
     }

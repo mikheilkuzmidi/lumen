@@ -1,4 +1,5 @@
 import Foundation
+import LumenCore
 
 /// Strict response formats for reviewing and planning a library.
 enum MetaBatchSchema {
@@ -12,6 +13,7 @@ enum MetaBatchSchema {
             "group": ["type": "string"],
             "matchesInstruction": ["type": "boolean"],
             "tilted": ["type": "boolean"],
+            "levelLine": ["type": "string", "enum": LevelLine.allCases.map(\.rawValue)],
         ]))]))
     }
 

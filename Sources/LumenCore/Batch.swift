@@ -140,9 +140,11 @@ public struct PhotoReview: Codable, Equatable, Sendable {
     /// Whether the camera was visibly tilted (a horizon or verticals that should be level); nil when not judged.
     /// Measured tilt alone is not enough: perspective lines read as tilt.
     public var tilted: Bool?
+    /// The line in the photo that should be level; nil when not judged.
+    public var levelLine: LevelLine?
 
     public init(photo: PhotoID, misfire: Bool, misfireReason: String? = nil, quality: Double, description: String,
-                group: String, matchesInstruction: Bool, tilted: Bool? = nil) {
+                group: String, matchesInstruction: Bool, tilted: Bool? = nil, levelLine: LevelLine? = nil) {
         self.photo = photo
         self.misfire = misfire
         self.misfireReason = misfireReason
@@ -151,7 +153,21 @@ public struct PhotoReview: Codable, Equatable, Sendable {
         self.group = group
         self.matchesInstruction = matchesInstruction
         self.tilted = tilted
+        self.levelLine = levelLine
     }
+}
+
+/// What in a photo should be level. Whether a photo shows a horizon is easier to see in a small contact sheet
+/// than whether it is off by 3°, so the measured angle and this decide together.
+public enum LevelLine: String, Codable, CaseIterable, Sendable {
+    /// Where sky meets land or sea.
+    case horizon
+    /// The surface or shoreline of a lake, river or sea.
+    case water
+    /// A wall, roof, window or door edge.
+    case building
+    /// Only people, trees, hills, objects or slanted surfaces.
+    case none
 }
 
 /// A decision that is the person's to make, with the agent's recommendation.

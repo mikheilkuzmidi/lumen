@@ -105,7 +105,7 @@ For a whole library, plan-first mode shows the plan and waits for approval befor
 .build/release/lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode plan
 ```
 
-The last full run of this library took 33 model calls in 169 s.
+The last full run of this library took 47 model calls in 393 s and cost $0.43.
 
 Without a key, `swift test` runs everything against recorded responses.
 

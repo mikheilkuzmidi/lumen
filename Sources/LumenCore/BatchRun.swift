@@ -274,10 +274,15 @@ actor BatchRun {
 
     private func tilted(_ kept: [PhotoID]) -> [PhotoID] {
         kept.filter { photo in
-            // A measured tilt counts when the reviewer, looking at the photo, does not say it is level, and it is
-            // small enough to be an accident: past 5° a tilt is usually meant.
-            guard let tilt = facts[photo]?.tilt, tilt.isFinite, reviews[photo]?.tilted != false else { return false }
-            return abs(tilt) >= 0.5 && abs(tilt) <= 5
+            // A measured tilt small enough to be an accident (past 5° a tilt is usually meant) counts when the photo
+            // has a horizon or water line, which are level by nature. With nothing that should be level, the measurement
+            // read something else; otherwise the reviewer's look at the photo decides.
+            guard let tilt = facts[photo]?.tilt, tilt.isFinite, abs(tilt) >= 0.5, abs(tilt) <= 5 else { return false }
+            switch reviews[photo]?.levelLine {
+            case .horizon?, .water?: return true
+            case LevelLine.none?: return false
+            case .building?, nil: return reviews[photo]?.tilted != false
+            }
         }
     }
 

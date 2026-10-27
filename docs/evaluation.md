@@ -67,6 +67,63 @@ Live runs on six of the maintainer's own photos (not in this repository) found f
 | "A warm golden-hour glow" on a midday bridge came out bluer, then only warmer, and the critic accepted both. | There was no way to warm the highlights more than the shadows; vibrance made the blue sky bluer. | `highlightWarmth` and `shadowWarmth`; the planner is told what golden-hour light is, and the critic that only warmer isn't it. Now: gold highlights and a soft, warm sky. |
 | Parked bicycles redrawn yellow had a smeared wheel and a smeared neighbour, and the critic called it clean. | The critic saw two 1024 px photos, where the smear was a few pixels. | Each region redrawn in a run goes to the critic close up, before and after. |
 | Shirts redrawn blue on a black-and-white photo were saved grey, then had a dark band along their edges. | The export kept the photo's grey colour space; the redraw showed through SAM's mask grown past the shirt, where the generator drew a border. | A greyscale photo given colour is exported in sRGB; a recolour shows through SAM's mask fitted to the photo's own edges. |
+## October 27, evening: retries, named redraws and a measured critique (commit 7a75068)
+
+The same 15 cases, run again with these changes:
+- Meta calls retried after a rate limit or a brief outage.
+- Muse Image told which thing to change and where.
+- Removals given more room and checked by SAM.
+- The critic given each changed region's colour, measured before and after.
+
+Muse Spark, SAM 3.1 and Muse Image as above; previews at 1024 px, up to 12 steps and 2 revisions per case.
+
+**The critic was satisfied with all 15, after one revision in total. Judged by eye, 12 meet the instruction cleanly and 3 are weaker**; on October 26 it was 10 and 5. 66 model calls, 280 s, $0.43.
+
+| Case | Layers | Revisions | Calls | Time | Judged by eye |
+| --- | ---: | ---: | ---: | ---: | --- |
+| blue-vintage-car-on-a-dirt-road | 2 | 0 | 6 | 23.9 s | Met. Deep cherry red, chrome and patina kept; a warm, peachy sky. |
+| city-at-night | 1 | 0 | 2 | 8.0 s | Mostly. Brighter, crisper lights, but clarity left a dark rim round the lit spire. |
+| coffee-in-montreal | 2 | 0 | 5 | 29.5 s | Met. The cup is matte black in place (lightness 9), the room warmer. |
+| colorful-asian-street-market | 3 | 1 | 9 | 34.0 s | Met. The critic sent it back because the surroundings had changed by only 1.4; the second pass calmed them. |
+| dressed-in-red | 1 | 0 | 5 | 20.6 s | Met. Forest green knit, lettering kept, no red rim. |
+| hooded-woman-in-snow | 1 | 0 | 3 | 9.7 s | Met. Clean white snow (lightness 92 to 100), skin unchanged (0.2). |
+| man-in-black-jacket-on-street | 1 | 0 | 5 | 21.2 s | Met. Tan suede, the eagle artwork kept. |
+| jacket-with-a-hood | 1 | 0 | 5 | 26.6 s | Met. Bright yellow, droplets and folds kept. |
+| kayaks-on-a-mountain-lake | 2 | 0 | 4 | 16.8 s | Met. |
+| living-room | 1 | 0 | 5 | 21.0 s | Met. Emerald green velvet. |
+| man-in-denim-jacket-posing | 1 | 0 | 2 | 6.8 s | Partly. Warm and golden, but not low, directional light. |
+| man-on-bike-on-road | 1 | 0 | 5 | 18.8 s | Met. The sign is gone with no outline; the pole and lamp posts carry on. |
+| man-walks-in-front-of-graffiti-wall | 1 | 0 | 3 | 18.1 s | Met. |
+| stockholm-man-with-headphones | 2 | 0 | 4 | 13.9 s | Met. The face 5 lighter, visible but natural; the crowd softer and greyer. On October 26 both were too slight to see. |
+| sunset-beach-couple | 1 | 0 | 3 | 10.8 s | Mostly. Vivid, but the boosted horizon still forms an orange band right of the couple. |
+
+Model time per stage: plan 75 s, select 37 s, redraw 73 s, remove 9 s, critique 83 s.
+
+![The red sweater redrawn as a forest green knit](images/eval/dressed-in-red.jpg)
+
+### What these runs found, and what changed
+
+| Problem | Cause | Change |
+| --- | --- | --- |
+| A removed sign left a faint outline, and the critic called it "the region overlay". | Muse Image's patch was clean. The patch was blended in through an edge softened inward from its mask, which reached only 1% past the sign, so the sign's rim showed through ([#25](https://github.com/mikheilkuzmidi/lumen/issues/25)). | A removal's mask reaches 6% of the crop past the thing and is softened there. The prompt names the thing and where it is, the crop is three times its size, and SAM looks for it again afterwards. |
+| The removal prompt was "remove the selected object", and Muse Image takes no mask. | It never said which object. A probe with a second, marked image turned the sign into a black box, so that isn't used. | The prompt names the thing and its place in the crop: "Remove the whole no-cycling sign in the centre of this picture, every part of it." |
+| The first run of the day, before the fix below, redrew the red sweater dark brown with a red rim, three times. The critic rejected each one. | Muse Image drew a clean green. SAM's mask missed the sweater's edge, so the ring where the generator's colour drift is measured held red sweater in the photo and green in the redraw, and the whole patch was moved toward red ([#29](https://github.com/mikheilkuzmidi/lumen/issues/29)). | The drift is measured a little outside the mask, only where photo and redraw agree. The compositor no longer softens a patch's edge inward, since a recolour's mask is already held to the photo's edges. |
+| A Meta rate limit or outage failed a step. | No retries ([#24](https://github.com/mikheilkuzmidi/lumen/issues/24)). | Sent again at most twice, after the wait a 429 asks for (up to 20 s), or after about 1 s and 2 s. |
+
+![The dark brown sweater with a red rim, before the fix](images/eval/dressed-in-red-before-fix.jpg)
+
+![The sign: the photo, the faint outline the first fix left, and the removal now](images/eval/sign-removal-close-up.jpg)
+
+### Does the critic read the measurements?
+
+A cup darkened to charcoal (lightness 21, chroma 7) and labelled "redrawn as a matte black ceramic cup" was sent to the critic four times with measurements and four times without, against "Make the nearer cup matte black." Without them it accepted the cup once in four. With them it rejected it four times in four, asking for a stronger redraw ("still charcoal, not true matte black, which needs lightness under ~15").
+
+A face brightened by only +0.05 stop (change 0.5) was rejected both ways: the critic saw that from the label and the photos. The October 26 cup that looked "dark teal rather than black" reads lightness 20 and is now named charcoal; the redraw in this run reads 9.
+
+### Relighting with Muse Image: tried and dropped
+
+Golden hour stops at a warm grade, because tone and colour settings can't make low, directional sunlight. Asking Muse Image to relight the whole photo gave convincing golden-hour pictures, but redrawn ones: new clouds, a shifted palm and truck, a slightly different face. Their edge correlation with the original after the best small shift was 0.75 and 0.49. Keeping only their light (the original times the relit photo's smoothed light over its own) gave a blotchy yellow-green sky on the overcast beach and a muddy truck photo, with or without a guided filter. Nothing was added ([#27](https://github.com/mikheilkuzmidi/lumen/issues/27)).
+
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:
 

@@ -520,6 +520,63 @@ struct PhotoPixelTests {
         #expect(pixel.red > pixel.blue + 0.05, "the warmth is kept: \(pixel.red) vs \(pixel.blue)")
     }
 
+    /// "Make the sunset more vivid" left a flat orange patch: saturation +30 in linear light took the glow's blue from
+    /// 79 to 8, and with contrast below zero. On encoded values, by shares of the lightness, it moves gently and never
+    /// passes zero.
+    @Test
+    func saturationMovesColourAsTheEyeSeesItAndNeverPastZero() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x < 64 ? RGB(222, 133, 79) : RGB(240, 120, 12) })
+        let before = try await folder.pixels(document)
+        for (value, check) in [(30.0, "more"), (100, "most"), (-100, "grey"), (0, "same")] {
+            let layer = Layer(label: "Saturation", content: .adjustment(values: [.saturation: value], mask: nil))
+            try await document.apply(layer, assets: AssetStore())
+            let after = try await folder.pixels(document)
+            let glow = after[20, 40], deep = after[100, 40]
+            switch check {
+            case "more":
+                #expect(glow.red > before[20, 40].red && glow.blue < before[20, 40].blue)
+                #expect(glow.blue > 0.2, "the glow's blue eases from 0.31, not to nothing: \(glow.blue)")
+                #expect(deep.blue > 0, "an orange already near the edge keeps some blue: \(deep.blue)")
+            case "most":
+                #expect(glow.blue > 0.05 && deep.blue > 0)
+            case "grey":
+                #expect(abs(glow.red - glow.blue) < 2.0 / 255 && abs(glow.green - glow.blue) < 2.0 / 255)
+            default:
+                #expect(glow.distance(to: before[20, 40]) <= 2.0 / 255)
+            }
+            try await document.remove(layer.id)
+        }
+    }
+
+    /// "Bring out the city lights" left a dark rim round a lit spire: clarity was an unsharp mask in linear light, which
+    /// pushed the night sky beside the spire below black. Against an edge-preserving base, the sky beside a strong edge
+    /// keeps its value while fine texture still gains contrast.
+    @Test
+    func clarityLiftsTextureWithoutARimBesideABrightEdge() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A night sky with a lit tower at x 290..<310; on the right, faint stripes. Clarity's radius here is 6 px.
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 600, height: 300) { x, _ in
+            if (290..<310).contains(x) { return RGB(255, 200, 80) }
+            if x >= 420 { return x % 4 < 2 ? RGB(120, 120, 120) : RGB(140, 140, 140) }
+            return RGB(10, 12, 20)
+        })
+        let before = try await folder.pixels(document)
+        let layer = Layer(label: "Clarity", content: .adjustment(values: [.clarity: 60], mask: nil))
+        try await document.apply(layer, assets: AssetStore())
+        let after = try await folder.pixels(document)
+        // At 60, a guided filter leaves at most a few levels' dip right beside so strong an edge; the old unsharp mask
+        // took this sky to black (20 to below 0).
+        for x in [278, 282, 286, 313, 317, 321] {
+            #expect(after[x, 150].blue >= before[x, 150].blue - 5.0 / 255, "no dark rim at x \(x): \(after[x, 150].blue)")
+        }
+        let was = before[502, 150].red - before[501, 150].red
+        let now = after[502, 150].red - after[501, 150].red
+        #expect(abs(now) > abs(was) * 1.3, "the stripes gain contrast: \(was) → \(now)")
+    }
+
     @Test(arguments: AdjustmentKey.allCases)
     func everyAdjustmentRenders(key: AdjustmentKey) async throws {
         let folder = try PhotoFolder()

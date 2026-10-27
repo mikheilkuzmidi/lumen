@@ -96,17 +96,11 @@ enum PhotoAdjustments {
             image = image.applyingFilter("CIVibrance", parameters: ["inputAmount": value(.vibrance) / 100])
         }
         if value(.saturation) != 0 {
-            image = image.applyingFilter("CIColorControls", parameters: ["inputSaturation": 1 + value(.saturation) / 100])
+            image = saturated(image, by: 1 + value(.saturation) / 100)
         }
         let clarity = value(.clarity) / 100
-        let radius = min(photo.extent.width, photo.extent.height) * 0.02
-        if clarity > 0 {
-            image = image.clampedToExtent().applyingFilter("CIUnsharpMask", parameters: [
-                "inputRadius": radius, "inputIntensity": clarity * 0.7,
-            ]).cropped(to: photo.extent)
-        } else if clarity < 0 {
-            let softened = image.clampedToExtent().applyingGaussianBlur(sigma: radius).cropped(to: photo.extent)
-            image = PhotoCompositor.blend(softened, over: image, mask: nil, opacity: -clarity * 0.35)
+        if clarity != 0 {
+            image = clarified(image, by: clarity, radius: min(photo.extent.width, photo.extent.height) * 0.02)
         }
         if value(.sharpness) != 0 {
             image = image.clampedToExtent().applyingFilter("CISharpenLuminance", parameters: [
@@ -114,6 +108,90 @@ enum PhotoAdjustments {
             ]).cropped(to: photo.extent)
         }
         return image.cropped(to: photo.extent)
+    }
+
+    /// Saturation on sRGB-encoded values, as the eye sees it, with each channel's share of the pixel's lightness
+    /// raised to `factor` and the lightness kept. A channel can near zero but never pass it: in linear light, +30 took
+    /// a sunset's blue from 79 to 8, and with contrast to below zero, where it clipped into a flat orange patch.
+    static func saturated(_ image: CIImage, by factor: Double) -> CIImage {
+        let encoded = image.applyingFilter("CILinearToSRGBToneCurve")
+            .applyingFilter("CIColorClamp", parameters: ["inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
+                                                         "inputMaxComponents": CIVector(x: 4, y: 4, z: 4, w: 1)])
+        // Core Image's divide blend caps its result at 1, so each share is taken of 16 × the lightness and the 16 put
+        // back after: a pure blue's share of its lightness is about 14.
+        let power = max(0, factor)
+        let shares = lightness(of: encoded, times: 16).applyingFilter("CIDivideBlendMode", parameters: [kCIInputBackgroundImageKey: encoded])
+        let raised = scaled(shares.applyingFilter("CIGammaAdjust", parameters: ["inputPower": power]), by: pow(16, power))
+        let coloured = raised.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: lightness(of: encoded)])
+        // Raising the shares lightens a colourful pixel a little; its own lightness is put back.
+        let kept = scaled(lightness(of: coloured, times: 16).applyingFilter("CIDivideBlendMode", parameters: [kCIInputBackgroundImageKey: coloured]), by: 16)
+            .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: lightness(of: encoded)])
+        return kept.applyingFilter("CISRGBToneCurveToLinear").cropped(to: image.extent)
+    }
+
+    /// Clarity as local contrast against an edge-preserving base: a guided filter (He, Sun and Tang) on the lightness,
+    /// which keeps a strong edge, such as a lit spire against a night sky, in the base, so the sky beside it gets no dark
+    /// rim, while texture in between is lifted (or softened when negative). On sRGB-encoded values; the detail is the
+    /// lightness's, added to each channel, so colours keep their hue.
+    static func clarified(_ image: CIImage, by amount: Double, radius: CGFloat) -> CIImage {
+        let extent = image.extent
+        let encoded = image.applyingFilter("CILinearToSRGBToneCurve")
+        let light = lightness(of: encoded)
+        func mean(_ image: CIImage) -> CIImage {
+            image.clampedToExtent().applyingGaussianBlur(sigma: radius).cropped(to: extent)
+        }
+        func product(_ a: CIImage, _ b: CIImage) -> CIImage {
+            a.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: b])
+        }
+        let average = mean(light)
+        let variance = combined([(mean(product(light, light)), 1), (product(average, average), -1)], extent: extent)
+        // a = variance / (variance + ε): near 1 across an edge, near 0 over texture finer than ε (a spread of 0.05).
+        let epsilon = 0.0025
+        let weight = scaled(variance, by: 1, plus: epsilon)
+            .applyingFilter("CIDivideBlendMode", parameters: [kCIInputBackgroundImageKey: scaled(variance, by: 1, plus: 0)])
+        let offset = product(scaled(weight, by: -1, plus: 1), average)
+        let base = combined([(product(mean(weight), light), 1), (mean(offset), 1)], extent: extent)
+        let strength = amount > 0 ? amount * 2 : amount * 0.8
+        return combined([(encoded, 1), (light, strength), (base, -strength)], extent: extent)
+            .applyingFilter("CISRGBToneCurveToLinear").cropped(to: extent)
+    }
+
+    /// Σ factor × image, for any signs: each term is kept opaque, so Core Image keeps its colour, and the sum's alpha
+    /// (the number of terms) is divided back out.
+    private static func combined(_ terms: [(CIImage, Double)], extent: CGRect) -> CIImage {
+        let opaque = terms.map { image, factor in
+            image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: factor, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: factor, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: factor, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            ])
+        }
+        let sum = opaque.dropFirst().reduce(opaque[0]) {
+            $1.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: $0])
+        }
+        let count = CGFloat(terms.count)
+        return sum.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: count, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: count, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: count, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+        ]).cropped(to: extent)
+    }
+
+    /// Each pixel's lightness (Rec. 709 weights) times `factor`, in all three channels, a little above zero so it can
+    /// divide.
+    private static func lightness(of image: CIImage, times factor: Double = 1) -> CIImage {
+        let weights = CIVector(x: 0.2126 * factor, y: 0.7152 * factor, z: 0.0722 * factor, w: 0)
+        let floor = 0.0005 * factor
+        return image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": weights, "inputGVector": weights, "inputBVector": weights,
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1), "inputBiasVector": CIVector(x: floor, y: floor, z: floor, w: 0),
+        ])
+    }
+
+    private static func scaled(_ image: CIImage, by factor: Double, plus bias: Double = 0) -> CIImage {
+        image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: factor, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: factor, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: factor, w: 0), "inputBiasVector": CIVector(x: bias, y: bias, z: bias, w: 0),
+        ])
     }
 
     private static func toneCurve(_ image: CIImage, points: [(Double, Double)]) -> CIImage {

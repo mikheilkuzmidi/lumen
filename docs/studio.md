@@ -79,6 +79,8 @@ Selection and redraw snapshots are omitted when the plan never reaches those eve
 
 ## Library window
 
+![The Library window in plan-first mode: Muse Wonder's plan for "Make everyone's T-shirts blue" with the photos it affects highlighted, waiting for approval](images/studio-library-plan.jpg)
+
 Choose **File › Open Folder…** (⇧⌘O), or drop a folder on a Studio window. Each folder opens its own Library window. Lumen lists JPEG, PNG and HEIC photos directly in that folder. The grid loads thumbnails as they become visible and keeps a bounded image cache, including for libraries of 1,000 photos.
 
 Results default to `<folder>/Lumen`. Use **Change folder…** before Run to choose a different destination. The destination must be separate from the originals. **Results** reveals it in Finder. HEIC files export as JPEG; each exported photo has a `.lumen.json` sidecar with its layer labels, rotation and any misfire flag.

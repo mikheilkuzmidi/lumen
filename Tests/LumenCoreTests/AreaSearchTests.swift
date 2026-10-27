@@ -52,6 +52,20 @@ struct AreaSearchTests {
         #expect(requests.map(\.box) == [Self.area, Self.area])
     }
 
+    /// A box over part of a sideboard, with no chair in it: what SAM saw in the box came back as a few specks.
+    @Test func whatTheAreaFramesTooThinToBeASelectionIsTheAreaItself() async throws {
+        let specks = Self.mask(x: 1..<2, y: 1..<2).union(Self.mask(x: 3..<4, y: 2..<3))
+        let segmenter = AreaSegmenter(answers: [[], [Self.segment(specks)]])
+        let found = try #require(try await AreaSearch(segmenter: segmenter).find("chair", in: Self.image, area: Self.area))
+        #expect(found.method == .whole)
+        #expect(found.mask == Self.mask(x: 0..<5, y: 0..<5), "the whole area, nothing outside it")
+        // A tenth of the area or more is a selection of its own.
+        let solid = Self.mask(x: 1..<4, y: 1..<2)
+        let kept = try #require(try await AreaSearch(segmenter: AreaSegmenter(answers: [[], [Self.segment(solid)]]))
+            .find("chair", in: Self.image, area: Self.area))
+        #expect(kept.method == .area && kept.mask == solid)
+    }
+
     @Test func withoutAnAreaOnlyTheNameIsSearched() async throws {
         let segmenter = AreaSegmenter(answers: [[]])
         #expect(try await AreaSearch(segmenter: segmenter).find("gate", in: Self.image, area: nil) == nil)

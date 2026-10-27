@@ -65,6 +65,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
             for closeUp in request.closeUps {
                 content += [.text("Close-up of \(closeUp.region), before"), .image(closeUp.before),
                             .text("Close-up of \(closeUp.region), after"), .image(closeUp.after)]
+                if !closeUp.lostDetail.isEmpty {
+                    content.append(.text("Fine detail lost in the close-up of \(closeUp.region), as shares of the close-up from its "
+                                         + "top-left: " + closeUp.lostDetail.map(Self.place).joined(separator: "; ") + "."))
+                }
             }
             content.append(.text(try context.text()))
             return try await answer(Critique.self, prompt: Self.critiquePrompt, content: content,
@@ -143,6 +147,9 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Close-ups of each region redrawn in this run, before and after, may follow the whole photos. Check in them
     that the redraw kept the shape, edges and detail of what is in and beside the region: a smeared wheel, a
     melted edge or a changed neighbouring object is a visible flaw, to be redrawn again.
+    A close-up may name places that kept little of their fine detail. Look at each in the close-up: a smeared
+    or blurred part, such as a headlight or a wheel gone soft, is a visible flaw to redraw again, unless the
+    instruction asked for a smoother material there.
     Judge the look the words ask for, not only its direction: golden hour is warm, low light from one side
     with golden highlights, so a photo that is only evenly warmer than before has not met it.
     Measurements give each region changed in this run, and the rest of the photo, before and after: CIELAB
@@ -163,6 +170,14 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating
     changes already achieved.
     """
+
+    /// "x 0.27 to 0.33, y 0.50 to 0.53 kept 15%".
+    static func place(_ lost: LostDetail) -> String {
+        let format = { (value: Double) in String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value) }
+        let rect = lost.rect
+        return "x \(format(rect.x)) to \(format(rect.x + rect.width)), y \(format(rect.y)) to \(format(rect.y + rect.height)) "
+            + "kept \(Int((lost.kept * 100).rounded()))%"
+    }
 
     private struct PlanContext: Encodable {
         var instruction: String

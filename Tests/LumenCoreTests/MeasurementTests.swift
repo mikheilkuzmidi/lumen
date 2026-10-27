@@ -117,6 +117,20 @@ struct GradientTests {
     }
 }
 
+@Suite("Lost detail", .timeLimit(.minutes(1)))
+struct LostDetailTests {
+    @Test func theCriticIsToldWhereARedrawLostItsDetail() async throws {
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "A red cup", steps: [
+            .select(Selection(id: "cup", concept: "cup")),
+            .regenerate(Regeneration(region: "cup", prompt: "A red cup")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        for try await _ in agent.run("Make the cup red") {}
+        let closeUp = try #require(await planner.critiques.first?.closeUps.first)
+        #expect(closeUp.region == "cup" && closeUp.lostDetail == MeasuringHost.lost)
+    }
+}
+
 private actor CountingSegmenter: Segmenter {
     let modelID = "sam-3.1"
     private(set) var count = 0
@@ -190,6 +204,10 @@ private actor MeasuringHost: EditHost {
     func apply(_ layer: Layer, assets: AssetStore) async throws { layers.append(layer) }
 
     func remove(_ layer: Layer.ID) async throws { layers.removeAll { $0.id == layer } }
+
+    static let lost = [LostDetail(rect: NormalizedRect(x: 0.2, y: 0.4, width: 0.1, height: 0.1), kept: 0.12)]
+
+    func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] { Self.lost }
 
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
         guard measures else { return nil }

@@ -177,11 +177,27 @@ public struct CloseUp: Equatable, Sendable {
     public var region: String
     public var before: EncodedImage
     public var after: EncodedImage
+    /// Where the close-up lost most of its fine detail, worst first: a likely smear.
+    public var lostDetail: [LostDetail]
 
-    public init(region: String, before: EncodedImage, after: EncodedImage) {
+    public init(region: String, before: EncodedImage, after: EncodedImage, lostDetail: [LostDetail] = []) {
         self.region = region
         self.before = before
         self.after = after
+        self.lostDetail = lostDetail
+    }
+}
+
+/// A place in a close-up that kept little of the fine detail it had.
+public struct LostDetail: Equatable, Sendable {
+    /// Where, as a rectangle of the close-up.
+    public var rect: NormalizedRect
+    /// The least share of its fine detail any part of it kept, 0...1.
+    public var kept: Double
+
+    public init(rect: NormalizedRect, kept: Double) {
+        self.rect = rect
+        self.kept = kept
     }
 }
 
@@ -285,6 +301,8 @@ public protocol EditHost: Sendable {
     /// The colour most of `image` has, a render of the photo as it is framed now, where `mask` (over the whole photo)
     /// covers it; all of it when `mask` is nil. Nil when nothing is covered.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement?
+    /// Where `after`, a close-up of the same place as `before`, lost most of the fine detail `before` had.
+    func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail]
 }
 
 public extension EditHost {
@@ -292,4 +310,6 @@ public extension EditHost {
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
     /// A host that can't look at its pixels measures nothing, and the critic judges by eye alone.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { nil }
+    /// A host that can't look at its pixels finds no lost detail, and the critic looks at the close-ups alone.
+    func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] { [] }
 }

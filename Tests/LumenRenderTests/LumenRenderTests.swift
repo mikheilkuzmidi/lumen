@@ -578,6 +578,32 @@ struct PhotoPixelTests {
         #expect(abs(now) > abs(was) * 1.3, "the stripes gain contrast: \(was) → \(now)")
     }
 
+    /// A smeared headlight kept its colour but lost its fine detail; the critic missed it two times in three from the
+    /// close-up alone. A recolour keeps its detail, so only the smear is named.
+    @Test
+    func aSmearIsFoundWhereARecolourIsNot() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        func texture(_ x: Int, _ y: Int) -> UInt8 { UInt8(90 + (x * 7 + y * 13) % 5 * 18) }
+        let before = try folder.photo(width: 200, height: 200) { x, y in RGB(texture(x, y), texture(x, y), 200) }
+        // Recoloured: the same texture in red.
+        let recoloured = try folder.photo(width: 200, height: 200) { x, y in RGB(200, texture(x, y), texture(x, y) / 2) }
+        // Smeared: a 30 px patch at x and y 120..<150 flattened to its mean.
+        let smeared = try folder.photo(width: 200, height: 200) { x, y in
+            (120..<150).contains(x) && (120..<150).contains(y) ? RGB(126, 126, 200) : RGB(texture(x, y), texture(x, y), 200)
+        }
+        func image(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 200))
+        }
+        let document = try PhotoDocument(contentsOf: before)
+        #expect(try await document.lostDetail(before: image(before), after: image(recoloured)).isEmpty)
+        let lost = try await document.lostDetail(before: image(before), after: image(smeared))
+        let place = try #require(lost.first)
+        #expect(lost.count == 1 && place.kept < 0.1)
+        #expect(place.rect.x <= 0.6 && place.rect.x + place.rect.width >= 0.75, "\(place.rect)")
+        #expect(place.rect.y <= 0.6 && place.rect.y + place.rect.height >= 0.75, "\(place.rect)")
+    }
+
     @Test(arguments: AdjustmentKey.allCases)
     func everyAdjustmentRenders(key: AdjustmentKey) async throws {
         let folder = try PhotoFolder()

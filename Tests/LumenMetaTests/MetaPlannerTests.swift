@@ -80,12 +80,15 @@ import Testing
     let closeBefore = EncodedImage(data: Data([6]), format: .png, size: PixelSize(width: 4, height: 4))
     let closeAfter = EncodedImage(data: Data([7]), format: .png, size: PixelSize(width: 4, height: 4))
     _ = try await planner.critique(CritiqueRequest(instruction: "Make the bicycles yellow", before: testPhoto, after: after,
-                                                   closeUps: [CloseUp(region: "bicycles", before: closeBefore, after: closeAfter)]))
+                                                   closeUps: [CloseUp(region: "bicycles", before: closeBefore, after: closeAfter,
+                                                                      lostDetail: [LostDetail(rect: NormalizedRect(x: 0.27, y: 0.5, width: 0.06, height: 0.03), kept: 0.14)])]))
     let body = try json(#require(await transport.requests.first?.httpBody))
     let messages = try #require(body["messages"] as? [[String: Any]])
     let content = try #require(messages[1]["content"] as? [[String: Any]])
     let labels = content.compactMap { $0["text"] as? String }.dropLast()
-    #expect(Array(labels) == ["Before", "After", "Close-up of bicycles, before", "Close-up of bicycles, after"])
+    #expect(Array(labels) == ["Before", "After", "Close-up of bicycles, before", "Close-up of bicycles, after",
+                              "Fine detail lost in the close-up of bicycles, as shares of the close-up from its top-left: x 0.27 to 0.33, y 0.50 to 0.53 kept 14%."])
+    #expect(MetaPlanner.critiquePrompt.contains("A close-up may name places that kept little of their fine detail."))
     let images = content.compactMap { ($0["image_url"] as? [String: String])?["url"] }
     #expect(images == [testPhoto.dataURL, after.dataURL, closeBefore.dataURL, closeAfter.dataURL])
     #expect(MetaPlanner.critiquePrompt.contains("a smeared wheel, a\nmelted edge or a changed neighbouring object is a visible flaw"))

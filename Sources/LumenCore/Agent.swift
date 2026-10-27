@@ -233,7 +233,8 @@ public actor EditAgent {
                 var closeUps: [CloseUp] = []
                 for shot in closeUpsBefore {
                     let now = try await host.render(region: shot.rect, maxLongEdge: configuration.closeUpLongEdge)
-                    closeUps.append(CloseUp(region: shot.region, before: shot.image, after: now))
+                    let lost = try await host.lostDetail(before: shot.image, after: now)
+                    closeUps.append(CloseUp(region: shot.region, before: shot.image, after: now, lostDetail: Array(lost.prefix(3))))
                 }
                 let measurements = try await measured(before: before, after: after, edited: run.edited)
                 try checkCancellation()

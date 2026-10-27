@@ -95,6 +95,10 @@ public actor PhotoDocument: EditHost {
         return try ColourMeasuring.measure(image, mask: framed)
     }
 
+    public func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] {
+        try DetailMeasuring.lost(before: before, after: after)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?

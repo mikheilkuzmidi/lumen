@@ -9,8 +9,9 @@ enum PhotoComparison {
     static func write(before: URL, after: URL, to url: URL) async throws {
         let left = try thumbnail(before)
         let right = try thumbnail(after)
-        let height = max(1, Int(max(800 * Double(left.height) / Double(left.width),
-                                   800 * Double(right.height) / Double(right.width)).rounded()))
+        let leftHeight: Double = 800 * Double(left.height) / Double(left.width)
+        let rightHeight: Double = 800 * Double(right.height) / Double(right.width)
+        let height = max(1, Int(max(leftHeight, rightHeight).rounded()))
         guard let context = CGContext(data: nil, width: 1600, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
@@ -18,7 +19,7 @@ enum PhotoComparison {
         }
         context.setFillColor(CGColor(gray: 0, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: 1600, height: height))
-        context.interpolationQuality = .high
+        context.interpolationQuality = CGInterpolationQuality.high
         for (image, x) in [(left, 0.0), (right, 800.0)] {
             let scale = min(800 / Double(image.width), Double(height) / Double(image.height))
             let width = Double(image.width) * scale

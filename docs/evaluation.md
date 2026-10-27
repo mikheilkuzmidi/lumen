@@ -90,6 +90,26 @@ Each of these runs found something, and each was fixed and run again:
 | A recoloured shirt was checked for its old colour, called "moved" and redrawn again. | The redraw check searches without colour words, and a match outside the region counts as no check. |
 | The reviewer matched only one shirt photo to the instruction, so nothing was recoloured. | Every photo goes to Muse Wonder with the reviewer's impression as a hint; the planner decides. |
 | "Blue with the same subtle pattern" left a pale patterned shirt as it was. | Colour changes are asked for from what to what. |
+## At scale
+
+The project's 126 local test photos cover portraits, faces, groups, pets, landscapes, cities, water, snow, night, indoor flash and studio. They are the maintainer's own test set, so they are not in the repository, and only the numbers are reported here.
+
+| Run | What it did | Time | Calls | Cost |
+| --- | --- | --- | --- | --- |
+| Base pass, autonomous, before the reviewer fix | Reviewed all 126; flagged 6; levelled 12; 9 closer looks | 120.5 s | 28 | $0.47 |
+| Review and straightening only, after the fix (commit 0022e59) | Reviewed all 126; flagged none; levelled 6 landscapes, harbours and water scenes | 63.1 s | 7 | $0.21 |
+
+The first run flagged six good photos as "badly blurred": a baby's portrait, a child in soft light, a family on a sofa, storm clouds, a beagle and sleeping puppies. Their soft backgrounds and soft light had lowered the whole-frame sharpness that the reviewer is shown. It also levelled portraits by up to 5.7°.
+
+The reviewer is now told three things:
+
+- low sharpness alone is never a misfire;
+- verticals that lean in a shot taken upward are perspective, not tilt;
+- a portrait counts as tilted only when a horizon or building edge behind the person is clearly off.
+
+Automatic straightening also stops at 5°. In the second run none of the six was flagged and no portrait was rotated. It also left one genuinely tilted harbour view alone, so it errs on the side of not straightening.
+
+At the second run's rate, reviewing 1,000 photos takes about 8 minutes and about $1.70. Edits that redraw something come on top, at about 5 calls per photo.
 ## Follow-ups and undo
 
 A gated live test (`LUMEN_LIVE=1 swift test --filter followsUpOnTheSameEdit`) runs three instructions on one photo. On October 26 it took 49 s:

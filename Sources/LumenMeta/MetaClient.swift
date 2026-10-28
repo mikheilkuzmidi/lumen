@@ -123,8 +123,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     frame at about the height of its base, and with light from behind the subject, toward the bottom of the
     photo. The tip lands on the ground the subject stands on, never on a wall, rail or object in front of it,
     so keep the shadow shorter there. Several people can share one selection: each casts its own shadow.
-    Adjust that region exposure -0.9 to -1.3, highlights -20 and temperature -15, so it reads as shade on lit
-    ground. Skip a subject whose base is out of the photo; use null for shadowTip otherwise.
+    Adjust that region exposure -1.6 to -2.0, highlights -30 and temperature -15: shade on sunlit ground is two
+    stops or more darker than the light beside it, or it is lost in the grass's or sand's own texture. Skip a subject whose base is out of the photo; use null for shadowTip otherwise.
     A gradient region is light falling across the photo: full at from, none at to and beyond. Alone it is the
     region; with a concept, what is found fades along it, such as the sky nearest the sun. Use null for gradient
     otherwise.

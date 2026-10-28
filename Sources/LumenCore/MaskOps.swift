@@ -165,7 +165,7 @@ extension MaskData {
     /// The shadow this mask's subject casts on the ground: its base row stays where it stands, and each row above it is
     /// laid along the ground toward `tip`, where the subject's top lands, so a low sun's long shadow stretches out from
     /// its feet. Each separate figure in it (a group of hikers on rocks) is laid from its own base, the same way and as
-    /// long for its height. Soft, fading to 40% at the tip, and kept off the subject itself.
+    /// long for its height. Soft, fading to 55% at the tip, and kept off the subject itself.
     public func castShadow(tip: NormalizedPoint) -> MaskData {
         let width = size.width, height = size.height
         let figures = components()
@@ -191,7 +191,7 @@ extension MaskData {
                 let shift = h * tall * across
                 let from = Double(shape.bottom) + below * tall * down, to = Double(shape.bottom) + h * tall * down
                 let middle = (from + to) / 2, half = max(abs(to - from), thickness) / 2
-                let strength = 1 - 0.6 * h
+                let strength = 1 - 0.45 * h
                 for target in max(0, Int((middle - half).rounded()))...min(height - 1, max(0, Int((middle + half).rounded()))) {
                     for x in columns {
                         let column = Int((Double(x) + shift).rounded())

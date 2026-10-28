@@ -7,6 +7,31 @@ import Testing
 @testable import LumenRender
 
 struct PhotoMeasurementsTests {
+    /// Soft clouds over a crisp strip of town score low as a whole but are sharp somewhere; a photo blurred all over
+    /// is sharp nowhere.
+    @Test func theSharpestPartIsMeasuredApartFromTheWhole() throws {
+        func photo(sharpStrip: Bool) -> CIImage {
+            let width = 600, height = 400
+            var bytes = [UInt8](repeating: 0, count: width * height * 4)
+            for y in 0..<height {
+                for x in 0..<width {
+                    // A smooth sky; in the strip, a fine checker of town lights and roofs.
+                    var value = 120 + Double(y) * 0.15
+                    if sharpStrip, y >= 300, y < 360, (x / 2 + y / 2) % 2 == 0 { value = 230 }
+                    let i = (y * width + x) * 4
+                    bytes[i] = UInt8(value); bytes[i + 1] = UInt8(value); bytes[i + 2] = UInt8(value); bytes[i + 3] = 255
+                }
+            }
+            return CIImage(bitmapData: Data(bytes), bytesPerRow: width * 4, size: CGSize(width: width, height: height),
+                           format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+        }
+        let town = try PhotoStatistics(photo: photo(sharpStrip: true), context: CIContext(), capturedAt: nil).facts
+        let fog = try PhotoStatistics(photo: photo(sharpStrip: false), context: CIContext(), capturedAt: nil).facts
+        let peak = try #require(town.peakSharpness), fogPeak = try #require(fog.peakSharpness)
+        #expect(peak > 0.5 && town.sharpness < peak, "town \(peak), whole \(town.sharpness)")
+        #expect(fogPeak < 0.06, "fog \(fogPeak)")
+    }
+
     /// A rolled camera leans the upright things in a photo with its horizon; verticals converging in a shot taken
     /// upward lean both ways and cancel.
     @Test func uprightLinesLeanWithARolledCameraAndCancelWhenTheyConverge() throws {

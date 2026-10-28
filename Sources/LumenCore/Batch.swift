@@ -72,10 +72,14 @@ public struct PhotoFacts: Codable, Equatable, Sendable {
     /// The tilt of the photo's long level lines (a horizon, a shoreline), positive counterclockwise; nil when there
     /// are none, as in a canyon or water seen from above.
     public var levelTilt: Double?
+    /// The sharpness of the photo's sharpest part, measured at up to 1536 pixels: soft clouds over a crisp town are
+    /// sharp somewhere, a shaken frame or a pocket shot nowhere (under about 0.06).
+    public var peakSharpness: Double?
     public var capturedAt: Date?
 
     public init(size: PixelSize, sharpness: Double, exposure: Double, clippedShadows: Double = 0, clippedHighlights: Double = 0,
-                tilt: Double? = nil, verticalLean: Double? = nil, levelTilt: Double? = nil, capturedAt: Date? = nil) {
+                tilt: Double? = nil, verticalLean: Double? = nil, levelTilt: Double? = nil, peakSharpness: Double? = nil,
+                capturedAt: Date? = nil) {
         self.size = size
         self.sharpness = sharpness
         self.exposure = exposure
@@ -84,6 +88,7 @@ public struct PhotoFacts: Codable, Equatable, Sendable {
         self.tilt = tilt
         self.verticalLean = verticalLean
         self.levelTilt = levelTilt
+        self.peakSharpness = peakSharpness
         self.capturedAt = capturedAt
     }
 }

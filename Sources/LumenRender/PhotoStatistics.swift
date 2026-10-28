@@ -35,13 +35,24 @@ struct PhotoStatistics: Sendable {
             }
             drawing.draw(bitmap, in: bounds)
         }
+        // The sharpest part is measured on a larger sample, where a distant town's own edges still show.
+        let fineScale = min(1, 1536 / max(extent.width, extent.height))
+        let fineWidth = max(3, Int((extent.width * fineScale).rounded())), fineHeight = max(3, Int((extent.height * fineScale).rounded()))
+        var fine = [UInt8](repeating: 0, count: fineWidth * fineHeight * 4)
+        let fineBounds = CGRect(x: 0, y: 0, width: fineWidth, height: fineHeight)
+        context.render(PhotoCompositor.resized(photo, to: fineBounds), toBitmap: &fine, rowBytes: fineWidth * 4, bounds: fineBounds,
+                       format: .RGBA8, colorSpace: colorSpace)
+        let fineLightness = stride(from: 0, to: fine.count, by: 4).map {
+            0.2126 * Double(fine[$0]) / 255 + 0.7152 * Double(fine[$0 + 1]) / 255 + 0.0722 * Double(fine[$0 + 2]) / 255
+        }
         self.init(pixels: pixels, width: width, height: height,
                   photoSize: PixelSize(width: Int(extent.width.rounded()), height: Int(extent.height.rounded())),
                   tilt: Self.tilt(in: sample) ?? Self.tilt(in: photo.transformed(by: CGAffineTransform(scaleX: scale, y: scale))),
-                  capturedAt: capturedAt)
+                  capturedAt: capturedAt, peakSharpness: Sharpness.peak(fineLightness, width: fineWidth, height: fineHeight))
     }
 
-    init(pixels: [UInt8], width: Int, height: Int, photoSize: PixelSize, tilt: Double? = nil, capturedAt: Date? = nil) {
+    init(pixels: [UInt8], width: Int, height: Int, photoSize: PixelSize, tilt: Double? = nil, capturedAt: Date? = nil,
+         peakSharpness: Double? = nil) {
         precondition(width > 0 && height > 0 && pixels.count == width * height * 4)
         var lightness = [Double]()
         lightness.reserveCapacity(width * height)
@@ -76,11 +87,12 @@ struct PhotoStatistics: Sendable {
         meanBlue = blue / count
         self.saturation = saturation / count
         facts = PhotoFacts(size: photoSize,
-                           sharpness: Self.sharpness(lightness, width: width, height: height),
+                           sharpness: Sharpness.of(lightness, width: width, height: height),
                            exposure: lightness.reduce(0, +) / count,
                            clippedShadows: Double(shadows) / count, clippedHighlights: Double(highlights) / count,
                            tilt: tilt, verticalLean: StraightLines.verticalLean(lightness, width: width, height: height),
-                           levelTilt: StraightLines.levelTilt(lightness, width: width, height: height), capturedAt: capturedAt)
+                           levelTilt: StraightLines.levelTilt(lightness, width: width, height: height),
+                           peakSharpness: peakSharpness, capturedAt: capturedAt)
     }
 
     /// A gentle Auto that leaves a photo's intent alone: a high-key or night photo stays bright or dark.
@@ -113,24 +125,6 @@ struct PhotoStatistics: Sendable {
         }
         if saturation < 0.25, saturation > 0.03 { values[.vibrance] = 10 }
         return values
-    }
-
-    /// Maps four-neighbour Laplacian variance v through v / (v + 0.01); variance 0.01 scores 0.5.
-    private static func sharpness(_ lightness: [Double], width: Int, height: Int) -> Double {
-        guard width > 2, height > 2 else { return 0 }
-        var sum = 0.0, squares = 0.0
-        for y in 1..<(height - 1) {
-            for x in 1..<(width - 1) {
-                let index = y * width + x
-                let laplacian = lightness[index - 1] + lightness[index + 1]
-                    + lightness[index - width] + lightness[index + width] - 4 * lightness[index]
-                sum += laplacian
-                squares += laplacian * laplacian
-            }
-        }
-        let count = Double((width - 2) * (height - 2))
-        let variance = max(0, squares / count - pow(sum / count, 2))
-        return variance / (variance + 0.01)
     }
 
     /// The horizon's tilt from Vision's horizon detector, positive counterclockwise (Vision reports the angle

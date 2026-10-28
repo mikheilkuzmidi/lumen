@@ -229,7 +229,17 @@ actor BatchRun {
     }
 
     private func isMisfire(_ photo: PhotoID) -> Bool {
-        options.flagMisfires && reviews[photo]?.misfire == true
+        guard options.flagMisfires, let review = reviews[photo], review.misfire else { return false }
+        return !Self.sharpSomewhere(review, facts[photo])
+    }
+
+    /// A photo the reviewer called blurred that is sharp somewhere is not a misfire: soft storm clouds over a crisp town
+    /// look blurred in a contact sheet's small cell. A shaken frame or a pocket shot is sharp nowhere.
+    static func sharpSomewhere(_ review: PhotoReview, _ facts: PhotoFacts?) -> Bool {
+        let reason = (review.misfireReason ?? "").lowercased()
+        let aboutBlur = ["blur", "focus", "motion", "shak", "soft", "smear"].contains { reason.contains($0) }
+        guard aboutBlur, let peak = facts?.peakSharpness, peak.isFinite else { return false }
+        return peak >= 0.06
     }
 
     private func flagMisfires() async throws {

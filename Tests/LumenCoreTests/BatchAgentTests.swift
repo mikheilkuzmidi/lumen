@@ -25,6 +25,22 @@ struct BatchAgentTests {
         #expect(events.batchTraces.filter { $0.model != nil }.count == summary.modelCalls)
     }
 
+    @Test func aPhotoSharpSomewhereIsNotFlaggedAsBlurred() async throws {
+        // Storm clouds over a crisp town, called blurred from a contact sheet (photo-0); a shaken frame sharp nowhere
+        // (photo-1); a pocket shot flagged for what it shows, not for blur (photo-2).
+        var clouds = batchTestFacts(sharpness: 0.05); clouds.peakSharpness = 0.26
+        var shaken = batchTestFacts(sharpness: 0.08); shaken.peakSharpness = 0.03
+        var pocket = batchTestFacts(sharpness: 0.9); pocket.peakSharpness = 0.5
+        let library = BatchTestLibrary([clouds, shaken, pocket])
+        var reviews = [batchTestReview(PhotoID("photo-0"), quality: 0.2, misfire: true),
+                       batchTestReview(PhotoID("photo-1"), quality: 0.1, misfire: true),
+                       batchTestReview(PhotoID("photo-2"), quality: 0.1, misfire: true)]
+        reviews[2].misfireReason = "Pocket shot of the floor"
+        let agent = batchTestAgent(library, reviewer: BatchTestReviewer(reviews: reviews))
+        _ = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: false, qualityThreshold: 0)))
+        #expect(await library.flags == [PhotoID("photo-1"): "Badly blurred", PhotoID("photo-2"): "Pocket shot of the floor"])
+    }
+
     @Test func disablingMisfireFlagsKeepsThosePhotos() async throws {
         let photo = PhotoID("photo-0")
         let library = BatchTestLibrary([batchTestFacts(sharpness: 0.01)])

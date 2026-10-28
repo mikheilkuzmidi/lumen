@@ -129,6 +129,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     so keep the shadow shorter there. Several people can share one selection: each casts its own shadow.
     Adjust that region exposure -1.6 to -2.0, highlights -30 and temperature -15: shade on sunlit ground is two
     stops or more darker than the light beside it, or it is lost in the grass's or sand's own texture. Skip a subject whose base is out of the photo; use null for shadowTip otherwise.
+    Lights in a night photo (city lights, a lit castle or bridge, street lamps) are its brightest parts: to
+    brighten or warm them, adjust the whole photo's highlights, whites and highlightWarmth (and exposure only a
+    little), with no selection. Those settings leave the dark sky and water as they are, where a selection of a
+    lit building often catches the black sky beside it.
     A gradient region is light falling across the photo: full at from, none at to and beyond. Alone it is the
     region; with a concept, what is found fades along it, such as the sky nearest the sun. Use null for gradient
     otherwise.

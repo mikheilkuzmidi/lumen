@@ -39,4 +39,18 @@ struct SelectionChoiceTests {
         #expect(EditAgent.withoutColour("blue") == nil)
         #expect(EditAgent.withoutColour("sofa") == "sofa")
     }
+
+    @Test func aPointThatMissesAThingByAHairKeepsItButNotANeighbour() {
+        // The black-and-white street: the planner's point lay 0.001 of the photo right of the car's box.
+        func thing(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> Segment {
+            Segment(label: "car", box: NormalizedRect(x: x, y: y, width: w, height: h), mask: MaskData(size: PixelSize(width: 1, height: 1), filledWith: 255))
+        }
+        let cars = [thing(0.502, 0.502, 0.03, 0.019), thing(0.451, 0.501, 0.037, 0.021), thing(0.432, 0.523, 0.117, 0.058)]
+        #expect(EditAgent.nearest(cars, points: [NormalizedPoint(x: 0.55, y: 0.578)], box: nil)?.box == cars[2].box)
+        // The fourth friend's shirt SAM didn't find: the box is around it, and the third shirt is too far to be meant.
+        let shirts = (0..<3).map(shirt)
+        #expect(EditAgent.nearest(shirts, points: [], box: NormalizedRect(x: 0.75, y: 0.35, width: 0.25, height: 0.6)) == nil)
+        // Two equally near: neither.
+        #expect(EditAgent.nearest([thing(0.4, 0.4, 0.1, 0.1), thing(0.52, 0.4, 0.1, 0.1)], points: [NormalizedPoint(x: 0.51, y: 0.45)], box: nil) == nil)
+    }
 }

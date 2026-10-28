@@ -119,6 +119,7 @@ import Testing
     #expect(before["colours"] as? [String: Int] == ["teal": 90, "white": 6] && after["colours"] as? [String: Int] == ["teal": 95])
     #expect(MetaPlanner.critiquePrompt.contains("A recoloured part whose old colour still\n  covers 4% or more of it after"))
     #expect(MetaPlanner.planPrompt.contains("A recolour changes every part of the thing to the new colour"))
+    #expect(MetaPlanner.planPrompt.contains("Lights in a night photo (city lights, a lit castle or bridge, street lamps) are its brightest parts"))
     #expect(MetaPlanner.critiquePrompt.contains("a region it names that changed by\n  less than 3, with its brightest and darkest tenth each moving less than 3 too, has not met it"))
     #expect(MetaPlanner.critiquePrompt.contains("so charcoal, dark grey or dark teal is not black"))
     #expect(MetaPlanner.planPrompt.contains("Low sun also comes from one side: select a gradient with no\nconcept, from the side the light comes from in this photo"))

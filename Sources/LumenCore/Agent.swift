@@ -440,8 +440,16 @@ public actor EditAgent {
             let found = try await call(.select, model: segmenter.modelID, detail: "Find \(selection.concept ?? selection.id) again", events: events) {
                 try await self.segmenter.segment(wider)
             }
-            if found.count == 1 { segments = found }
-            else if found.count > 1 { note(.select, "Found \(found.count) of them elsewhere; none is the one meant.", events: events) }
+            if found.count == 1 {
+                segments = found
+            } else if let near = Self.nearest(found, points: selection.points, box: selection.box) {
+                // The planner's point or box missed the thing by a little (a car in a tall photo): the one clearly
+                // nearest it is the one meant.
+                segments = [near]
+                note(.select, "Found \(found.count) of them elsewhere; kept the one nearest the planner's point.", events: events)
+            } else if found.count > 1 {
+                note(.select, "Found \(found.count) of them elsewhere; none is the one meant.", events: events)
+            }
         }
         if segments.isEmpty, !every, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
             let location = selection.box != nil ? "the planner's box" : request.box != nil ? "the selected area" : "the planner's points"
@@ -516,6 +524,34 @@ public actor EditAgent {
 
     /// A colour's family, as a selection names colours.
     static func family(of colour: ColourMeasurement) -> String { colour.family }
+
+    /// Among several things found, the one the planner most likely meant though its point or box missed it by a
+    /// hair: the one whose box lies nearest the points' middle (or the box's centre), within a quarter of that thing's
+    /// own size (at least 1% of the photo) and at most half as far as any other. A point near a neighbour's shirt is
+    /// not near enough: nil, rather than the wrong one.
+    static func nearest(_ segments: [Segment], points: [NormalizedPoint], box: NormalizedRect?) -> Segment? {
+        let target: NormalizedPoint
+        if !points.isEmpty {
+            target = NormalizedPoint(x: points.map(\.x).reduce(0, +) / Double(points.count),
+                                     y: points.map(\.y).reduce(0, +) / Double(points.count))
+        } else if let box {
+            target = NormalizedPoint(x: box.x + box.width / 2, y: box.y + box.height / 2)
+        } else {
+            return nil
+        }
+        func distance(_ segment: Segment) -> Double {
+            let box = segment.box
+            let dx = max(box.x - target.x, 0, target.x - (box.x + box.width))
+            let dy = max(box.y - target.y, 0, target.y - (box.y + box.height))
+            return (dx * dx + dy * dy).squareRoot()
+        }
+        let ranked = segments.sorted { distance($0) < distance($1) }
+        guard let first = ranked.first, distance(first) <= max(0.01, 0.25 * min(first.box.width, first.box.height)) else {
+            return nil
+        }
+        if ranked.count > 1, distance(ranked[1]) < max(0.02, distance(first) * 2) { return nil }
+        return first
+    }
 
     /// The segments the planner meant: those under one of its points, or else those that fit its box best.
     static func meant(_ segments: [Segment], points: [NormalizedPoint], box: NormalizedRect?) -> [Segment] {

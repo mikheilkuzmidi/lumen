@@ -124,6 +124,23 @@ A face brightened by only +0.05 stop (change 0.5) was rejected both ways: the cr
 
 Golden hour stops at a warm grade, because tone and colour settings can't make low, directional sunlight. Asking Muse Image to relight the whole photo gave convincing golden-hour pictures, but redrawn ones: new clouds, a shifted palm and truck, a slightly different face. Their edge correlation with the original after the best small shift was 0.75 and 0.49. Keeping only their light (the original times the relit photo's smoothed light over its own) gave a blotchy yellow-green sky on the overcast beach and a muddy truck photo, with or without a guided filter. Nothing was added ([#27](https://github.com/mikheilkuzmidi/lumen/issues/27)).
 
+## October 27, late: the remaining flaws (commit 601d590)
+
+The three weaker results above, and two flaws found while fixing them, each fixed and the same request run again. Then all 15 cases ran once more: **the critic was satisfied with all 15, after two revisions; by eye, 14 meet the instruction cleanly**, against 12 earlier the same evening and 10 on October 26. 67 model calls, 297 s, $0.51.
+
+| Problem | Cause | Change | Now |
+| --- | --- | --- | --- |
+| A dark rim round the city's lit spire ([#30](https://github.com/mikheilkuzmidi/lumen/issues/30)). | Clarity was an unsharp mask in linear light; beside a bright edge it pushed the near-black sky below zero (a sky at 20 went to −16). | Clarity is local contrast against a guided filter of the lightness, on encoded values. | No rim. In a test the same sky dips to 17 at clarity 60; faint texture still gains about 30% contrast at 30. |
+| A flat orange band beside the sunset couple ([#30](https://github.com/mikheilkuzmidi/lumen/issues/30)). | Saturation +30 in linear light took the glow's blue from 79 to 8 on its own, and below zero with contrast. | Saturation raises each channel's share of the lightness on encoded values; no channel can pass zero. | A smooth, vivid glow; the blue eases to 64. |
+| Golden hour as an even warm cast ([#31](https://github.com/mikheilkuzmidi/lumen/issues/31)). | Tone and colour settings have no direction. | A selection can be a gradient, built on the Mac; the planner lights golden hour from the side the light comes from. | On four photos the planner picked a side for each (left for three, right for a street lit on that side) and the light falls across the frame. Still no new shadows. |
+| The night city's first pass sent back as too slight ([#32](https://github.com/mikheilkuzmidi/lumen/issues/32)). | The whole photo's measured colour is its middle, black sky, which moved 1.6. | Measurements also give the brightest and darkest tenth. | The pass is accepted, citing the lights going from 58 to 67. |
+| A small smear missed ([#33](https://github.com/mikheilkuzmidi/lumen/issues/33)). | Probed with a headlight smeared on a real redraw of the truck: missed three times in three from the whole photos, two in three with the close-up. | The host compares each redrawn close-up's fine detail with its before and names places that kept under 30%. | Caught three times in three, naming the headlight; the clean redraw named nothing and was accepted three in three. |
+| The truck's fender kept a teal rim and a teal underside ([#34](https://github.com/mikheilkuzmidi/lumen/issues/34)). | SAM's mask, held to the photo's edges, stopped short of them; Muse Image had recoloured them. | A recolour's mask grows into connected pixels of the thing's own colour, at most 3% of the crop out: by hue for a colourful thing, by lightness for a grey one. | Red to the rim and underneath; the black-and-white photo's shirts still stop cleanly at the backpack. |
+
+The weaker one is golden hour (man-in-denim-jacket-posing): warm light now falls from the upper left, but a low sun's long shadows can't come from tone and colour.
+
+![The city's spire before, with the rim, and now](images/eval/spire-close-up.jpg)
+
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:
 

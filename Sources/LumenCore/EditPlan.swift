@@ -43,9 +43,13 @@ public struct Selection: Codable, Equatable, Sendable {
     public var gradient: Gradient?
     /// The shadow what is found casts on the ground, its top landing at this point: a low sun's long shadow.
     public var shadowTip: NormalizedPoint?
+    /// Every one SAM finds by the concept (the flowers, the sails), not only the one under the points or in the box.
+    public var every: Bool
+    /// Keep only what is found in these colours ("orange", "yellow"): the orange flowers among red ones. Empty keeps all.
+    public var colours: [String]
 
     public init(id: String, concept: String? = nil, box: NormalizedRect? = nil, points: [NormalizedPoint] = [], invert: Bool = false,
-                gradient: Gradient? = nil, shadowTip: NormalizedPoint? = nil) {
+                gradient: Gradient? = nil, shadowTip: NormalizedPoint? = nil, every: Bool = false, colours: [String] = []) {
         self.id = id
         self.concept = concept
         self.box = box
@@ -53,9 +57,15 @@ public struct Selection: Codable, Equatable, Sendable {
         self.invert = invert
         self.gradient = gradient
         self.shadowTip = shadowTip
+        self.every = every
+        self.colours = colours
     }
 
-    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert, gradient, shadowTip }
+    /// The colour families a selection can keep.
+    public static let colourFamilies = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown",
+                                        "black", "grey", "white"]
+
+    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert, gradient, shadowTip, every, colours }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -66,6 +76,8 @@ public struct Selection: Codable, Equatable, Sendable {
         invert = try container.decodeIfPresent(Bool.self, forKey: .invert) ?? false
         gradient = try container.decodeIfPresent(Gradient.self, forKey: .gradient)
         shadowTip = try container.decodeIfPresent(NormalizedPoint.self, forKey: .shadowTip)
+        every = try container.decodeIfPresent(Bool.self, forKey: .every) ?? false
+        colours = try container.decodeIfPresent([String].self, forKey: .colours) ?? []
     }
 }
 

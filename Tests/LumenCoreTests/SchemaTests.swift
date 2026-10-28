@@ -63,7 +63,8 @@ struct SchemaTests {
         let plan = try JSONDecoder().decode(EditPlan.self, from: data)
         let expected = EditPlan(summary: "Darker sky and navy coat", steps: [
             .select(Selection(id: "sky", concept: "sky",
-                              gradient: Gradient(from: NormalizedPoint(x: 1, y: 0.3), to: NormalizedPoint(x: 0.3, y: 0.7)))),
+                              gradient: Gradient(from: NormalizedPoint(x: 1, y: 0.3), to: NormalizedPoint(x: 0.3, y: 0.7)),
+                              every: true, colours: ["orange", "yellow"])),
             .select(Selection(id: "coat", box: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5), points: [
                 NormalizedPoint(x: 0.5, y: 0.5),
             ], invert: true, shadowTip: NormalizedPoint(x: 0.9, y: 0.8))),
@@ -81,7 +82,7 @@ struct SchemaTests {
     }
 
     @Test func aStrictCritiqueAnswerDecodes() throws {
-        let data = Data(#"{"satisfied":false,"notes":"The sky needs work.","steps":[{"type":"select","id":"sky","concept":null,"box":{"x":0,"y":0,"width":1,"height":0.5},"points":[],"invert":false,"gradient":null,"shadowTip":null}]}"#.utf8)
+        let data = Data(#"{"satisfied":false,"notes":"The sky needs work.","steps":[{"type":"select","id":"sky","concept":null,"box":{"x":0,"y":0,"width":1,"height":0.5},"points":[],"invert":false,"gradient":null,"shadowTip":null,"every":false,"colours":[]}]}"#.utf8)
         let critique = try JSONDecoder().decode(Critique.self, from: data)
         #expect(critique == Critique(satisfied: false, notes: "The sky needs work.", steps: [
             .select(Selection(id: "sky", box: NormalizedRect(x: 0, y: 0, width: 1, height: 0.5))),
@@ -174,8 +175,8 @@ struct SchemaTests {
     {
       "summary": "Darker sky and navy coat",
       "steps": [
-        {"type":"select","id":"sky","concept":"sky","box":null,"points":[],"invert":false,"gradient":{"from":{"x":1,"y":0.3},"to":{"x":0.3,"y":0.7}},"shadowTip":null},
-        {"type":"select","id":"coat","concept":null,"box":{"x":0.25,"y":0.25,"width":0.5,"height":0.5},"points":[{"x":0.5,"y":0.5}],"invert":true,"gradient":null,"shadowTip":{"x":0.9,"y":0.8}},
+        {"type":"select","id":"sky","concept":"sky","box":null,"points":[],"invert":false,"gradient":{"from":{"x":1,"y":0.3},"to":{"x":0.3,"y":0.7}},"shadowTip":null,"every":true,"colours":["orange","yellow"]},
+        {"type":"select","id":"coat","concept":null,"box":{"x":0.25,"y":0.25,"width":0.5,"height":0.5},"points":[{"x":0.5,"y":0.5}],"invert":true,"gradient":null,"shadowTip":{"x":0.9,"y":0.8},"every":false,"colours":[]},
         {"type":"adjust","region":null,"values":{"exposure":-0.5,"contrast":null,"highlights":null,"shadows":null,"whites":null,"blacks":null,"temperature":null,"tint":null,"vibrance":null,"saturation":10,"highlightWarmth":null,"shadowWarmth":null,"clarity":null,"dehaze":null,"sharpness":null,"noiseReduction":null}},
         {"type":"regenerate","region":"coat","prompt":"a navy wool coat"},
         {"type":"remove","region":"sky"},

@@ -41,8 +41,13 @@ enum ColourMeasuring {
             let part = sorted[min(start, sorted.count - 1)..<min(sorted.count, max(start + 1, start + sorted.count / 10))]
             return part.reduce(0, +) / Double(part.count)
         }
+        var counts: [String: Int] = [:]
+        for index in lightness.indices {
+            counts[ColourMeasurement(lightness: lightness[index], a: a[index], b: b[index]).family, default: 0] += 1
+        }
+        let families = counts.mapValues { Double($0) / Double(lightness.count) }.filter { $0.value >= 0.03 }
         return ColourMeasurement(lightness: median(lightness), a: median(a), b: median(b),
-                                 brightest: tenth(0.9), darkest: tenth(0))
+                                 brightest: tenth(0.9), darkest: tenth(0), families: families)
     }
 
     private static func median(_ values: [Double]) -> Double {

@@ -128,6 +128,14 @@ struct PlanCheck {
                 selection.gradient = nil
             }
         }
+        let colours = proposed.colours.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        selection.colours = colours.filter { Selection.colourFamilies.contains($0) }.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+        if selection.colours.count < colours.count { notes.append("\(label): dropped colours that are not colour families.") }
+        if selection.every || !selection.colours.isEmpty, selection.concept == nil {
+            notes.append("\(label): every one or a colour needs a concept to find them by; dropped.")
+            selection.every = false
+            selection.colours = []
+        }
         if let tip = proposed.shadowTip {
             if !(tip.x.isFinite && tip.y.isFinite) {
                 notes.append("\(label): dropped a shadow tip that is not finite.")

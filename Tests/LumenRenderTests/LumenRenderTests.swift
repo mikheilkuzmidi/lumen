@@ -348,11 +348,14 @@ struct PhotoPixelTests {
         let left = MaskData(size: PixelSize(width: 10, height: 5), coverage: (0..<50).map { $0 % 10 < 4 ? 255 : 0 })
         let black = try #require(await document.measure(render, mask: left))
         #expect(black.lightness < 3 && black.name == "black")
+        #expect(black.families == ["black": 1])
         let teal = try #require(await document.measure(render, mask: left.inverted()))
         #expect(abs(teal.lightness - 42.7) < 2 && teal.name.hasSuffix("teal"), "\(teal)")
         // Most of the photo is teal: a black part doesn't pull it toward grey, but shows in its darkest tenth.
         let whole = try #require(await document.measure(render, mask: nil))
         #expect(abs(whole.lightness - teal.lightness) < 1 && whole.name == teal.name)
+        #expect(abs((whole.families?["black"] ?? 0) - 0.4) < 0.03 && abs((whole.families?["teal"] ?? 0) - 0.6) < 0.03,
+                "the black part shows in the families: \(whole.families ?? [:])")
         #expect(try #require(whole.darkest) < 3 && abs(try #require(whole.brightest) - teal.lightness) < 2)
         #expect(try await document.measure(render, mask: MaskData(size: left.size, filledWith: 0)) == nil)
         // Cropped to its right half, the render shows none of the left half's mask.

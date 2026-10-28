@@ -92,6 +92,15 @@ public actor PhotoDocument: EditHost {
     public func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
         let size = mask.size
         guard size.width >= 16, size.height >= 16 else { return mask }
+        let colours = try sampledColours(size: size, region: region)
+        let short = Double(min(size.width, size.height))
+        return MaskGrowth.alike(mask, colours: colours, reach: max(1, Int((short * 0.03).rounded())),
+                                colourfulReach: max(1, Int((short * 0.08).rounded())),
+                                fringe: max(2, Int((short * 0.006).rounded())))
+    }
+
+    /// The photo as it is now over `region`, at `size`, in CIELAB, rows from the top.
+    func sampledColours(size: PixelSize, region: NormalizedRect) throws -> [ColourMeasurement] {
         let bounds = try Self.bounds(of: region, in: cropBounds())
         let sample = PhotoCompositor.resized(rendered(scale: 1).cropped(to: bounds), to: CGRect(x: 0, y: 0, width: size.width, height: size.height))
         var pixels = [UInt8](repeating: 0, count: size.width * size.height * 4)
@@ -101,10 +110,9 @@ public actor PhotoDocument: EditHost {
                            bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height), format: .RGBA8,
                            colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
         }
-        let colours = (0..<(size.width * size.height)).map {
+        return (0..<(size.width * size.height)).map {
             ColourMeasuring.lab(red: pixels[$0 * 4], green: pixels[$0 * 4 + 1], blue: pixels[$0 * 4 + 2])
         }
-        return MaskGrowth.alike(mask, colours: colours, reach: max(1, Int((Double(min(size.width, size.height)) * 0.03).rounded())))
     }
 
     public func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {

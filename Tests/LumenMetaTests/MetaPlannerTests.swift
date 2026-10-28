@@ -97,8 +97,10 @@ import Testing
 @Test func theCriticReadsEachRegionsColourBeforeAndAfter() async throws {
     let transport = ReplayTransport([try .init(file: "critique.json")])
     let planner = MetaPlanner(configuration: testConfiguration, transport: transport)
-    let cup = RegionChange(region: "cup", before: ColourMeasurement(lightness: 52.4, a: -14, b: -6, brightest: 81.6, darkest: 20.2),
-                           after: ColourMeasurement(lightness: 30.2, a: -12.4, b: -5.1, brightest: 64.4, darkest: 9.5))
+    let cup = RegionChange(region: "cup", before: ColourMeasurement(lightness: 52.4, a: -14, b: -6, brightest: 81.6, darkest: 20.2,
+                                                                    families: ["teal": 0.9, "white": 0.06]),
+                           after: ColourMeasurement(lightness: 30.2, a: -12.4, b: -5.1, brightest: 64.4, darkest: 9.5,
+                                                    families: ["teal": 0.95]))
     _ = try await planner.critique(CritiqueRequest(instruction: "Make the cup matte black", before: testPhoto, after: testPhoto,
                                                    measurements: [cup]))
     let body = try json(#require(await transport.requests.first?.httpBody))
@@ -114,6 +116,9 @@ import Testing
     #expect(after["lightness"] as? Int == 30 && after["colour"] as? String == "muted dark teal")
     #expect(before["brightest"] as? Int == 82 && before["darkest"] as? Int == 20)
     #expect(after["brightest"] as? Int == 64 && after["darkest"] as? Int == 10)
+    #expect(before["colours"] as? [String: Int] == ["teal": 90, "white": 6] && after["colours"] as? [String: Int] == ["teal": 95])
+    #expect(MetaPlanner.critiquePrompt.contains("A recoloured part whose old colour still\n  covers 4% or more of it after"))
+    #expect(MetaPlanner.planPrompt.contains("A recolour changes every part of the thing to the new colour"))
     #expect(MetaPlanner.critiquePrompt.contains("a region it names that changed by\n  less than 3, with its brightest and darkest tenth each moving less than 3 too, has not met it"))
     #expect(MetaPlanner.critiquePrompt.contains("so charcoal, dark grey or dark teal is not black"))
     #expect(MetaPlanner.planPrompt.contains("Low sun also comes from one side: select a gradient with no\nconcept, from the side the light comes from in this photo"))

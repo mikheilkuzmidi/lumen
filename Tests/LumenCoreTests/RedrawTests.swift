@@ -203,6 +203,10 @@ struct RedrawTests {
             == "Recolour the grey T-shirt to navy. Change only the t-shirt on the left of this picture, and nothing else.")
         #expect(EditAgent.redrawPrompt("A navy coat!  ", thing: "coat", place: "in the centre")
             == "A navy coat! Change only the coat in the centre of this picture, and nothing else.")
+        // Seven flowers are seven, not the one in the centre.
+        #expect(EditAgent.redrawPrompt("Recolour the orange flowers to deep purple", thing: "flower", place: "in the centre", count: 7)
+            == "Recolour the orange flowers to deep purple. This is for all 7 of these flowers in the picture: change every one of them fully, and nothing else.")
+        #expect(EditAgent.redrawPrompt(nil, thing: "sign", place: "in the centre", count: 2).hasPrefix("Remove all 2 signs in this picture"))
     }
 
     @Test func regionWithoutAConceptSkipsTheShapeCheck() async throws {

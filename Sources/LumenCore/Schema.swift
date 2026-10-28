@@ -36,6 +36,9 @@ enum PlanSchema {
                         "x": number("Horizontal position, 0...1 of the photo width from the left."),
                         "y": number("Vertical position, 0...1 of the photo height from the top."),
                     ], nullable: true, description: "Makes the region the shadow what is found casts on the ground, its top landing here, away from the light. Null if unused."),
+                    "every": ["type": "boolean", "description": "True selects every one found by the concept (the flowers, the sails), not only the one at the points or in the box."],
+                    "colours": ["type": "array", "description": "Keep only what is found in these colours; empty keeps all.",
+                                "items": ["type": "string", "enum": Selection.colourFamilies, "description": "A colour family."]],
                 ]),
                 step("adjust", properties: [
                     "region": string("An earlier selected region id, or null for the whole photo.", nullable: true),

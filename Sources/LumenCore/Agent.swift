@@ -150,6 +150,8 @@ public actor EditAgent {
         var info: RegionInfo
         var mask: MaskData
         var asset: AssetID
+        /// How many things SAM found for it: seven flowers are redrawn as seven, not as the one in the middle.
+        var count = 1
     }
 
     private struct AppliedLayer {
@@ -402,16 +404,26 @@ public actor EditAgent {
         }
         let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
         try checkCancellation()
+        // Every one of a kind is searched for over the whole photo (or the user's area), and all that is found is kept.
+        let every = selection.every && selection.concept != nil
         let request = SegmentRequest(image: image, concept: selection.concept,
-                                     box: selection.box ?? area, points: selection.points)
+                                     box: every ? area : selection.box ?? area, points: every ? [] : selection.points)
         var segments = try await call(.select, model: segmenter.modelID,
-                                      detail: "Find \(selection.concept ?? selection.id)", events: events) {
+                                      detail: "Find \(every ? "every " : "")\(selection.concept ?? selection.id)", events: events) {
             try await self.segmenter.segment(request)
+        }
+        if every {
+            segments = try await coloured(segments, as: selection, in: image, events: events)
+            guard !segments.isEmpty else {
+                note(.select, "Nothing found for \(selection.id).", events: events)
+                return nil
+            }
+            note(.select, "Found \(segments.count) \(selection.concept ?? selection.id) for \(selection.id).", events: events)
         }
         // When the planner says which one it means among several, keep only that: the segments under its points,
         // or else the ones that fit its box. If nothing fits (SAM found the neighbour's shirt but not this one),
         // nothing is kept, rather than the wrong one.
-        if selection.concept != nil, !segments.isEmpty, selection.box != nil || !selection.points.isEmpty {
+        if !every, selection.concept != nil, !segments.isEmpty, selection.box != nil || !selection.points.isEmpty {
             segments = Self.meant(segments, points: selection.points, box: selection.box)
             if segments.isEmpty {
                 note(.select, "What was found for \(selection.id) is not where the planner pointed.", events: events)
@@ -419,7 +431,10 @@ public actor EditAgent {
         }
         // The planner's box is a guess; when it rules out everything, search the whole photo (or the user's area).
         // That is only trusted when it finds exactly one: with several, it cannot say which was meant.
-        if segments.isEmpty, selection.box != nil, selection.concept != nil {
+        if !every, !selection.colours.isEmpty, !segments.isEmpty {
+            segments = try await coloured(segments, as: selection, in: image, events: events)
+        }
+        if segments.isEmpty, !every, selection.box != nil, selection.concept != nil {
             note(.select, "Nothing found inside the planner's box for \(selection.id); looking again without it.", events: events)
             let wider = SegmentRequest(image: image, concept: selection.concept, box: area, points: selection.points)
             let found = try await call(.select, model: segmenter.modelID, detail: "Find \(selection.concept ?? selection.id) again", events: events) {
@@ -428,7 +443,7 @@ public actor EditAgent {
             if found.count == 1 { segments = found }
             else if found.count > 1 { note(.select, "Found \(found.count) of them elsewhere; none is the one meant.", events: events) }
         }
-        if segments.isEmpty, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
+        if segments.isEmpty, !every, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
             let location = selection.box != nil ? "the planner's box" : request.box != nil ? "the selected area" : "the planner's points"
             note(.select, "Nothing was found for “\(concept)” by name; selecting from \(location).", events: events)
             let object = SegmentRequest(image: image, concept: nil, box: request.box, points: request.points)
@@ -455,8 +470,10 @@ public actor EditAgent {
         if let gradient = selection.gradient {
             mask = mask.multiplied(by: MaskData.gradient(size: mask.size, from: gradient.from, to: gradient.to))
         }
-        return try await region(selection, mask: mask, label: first.label, score: segments.count == 1 ? first.score : nil,
-                                events: events)
+        guard var found = try await region(selection, mask: mask, label: first.label, score: segments.count == 1 ? first.score : nil,
+                                           events: events) else { return nil }
+        found.count = selection.invert || selection.shadowTip != nil ? 1 : segments.count
+        return found
     }
 
     /// Keeps a selection's mask as a region later steps can use.
@@ -477,6 +494,28 @@ public actor EditAgent {
         return Region(info: RegionInfo(id: selection.id, concept: selection.concept, box: box, area: mask.area),
                       mask: mask, asset: asset)
     }
+
+    /// The segments in one of the selection's colours, as the host measures them on `image`; all of them when it names
+    /// none or the host can't measure.
+    private func coloured(_ segments: [Segment], as selection: Selection, in image: EncodedImage,
+                          events: Events) async throws -> [Segment] {
+        guard !selection.colours.isEmpty else { return segments }
+        var kept: [Segment] = []
+        var families: [String] = []
+        for segment in segments {
+            try checkCancellation()
+            guard let colour = try await host.measure(image, mask: segment.mask) else { return segments }
+            families.append(colour.family)
+            if selection.colours.contains(where: { colour.isIn($0) }) { kept.append(segment) }
+        }
+        let others = Set(zip(segments, families).filter { segment, _ in !kept.contains(segment) }.map(\.1)).sorted()
+        note(.select, "Of \(segments.count) found, \(kept.count) are \(selection.colours.joined(separator: " or ")) (the others: "
+             + "\(others.joined(separator: ", "))).", events: events)
+        return kept
+    }
+
+    /// A colour's family, as a selection names colours.
+    static func family(of colour: ColourMeasurement) -> String { colour.family }
 
     /// The segments the planner meant: those under one of its points, or else those that fit its box best.
     static func meant(_ segments: [Segment], points: [NormalizedPoint], box: NormalizedRect?) -> [Segment] {
@@ -558,7 +597,8 @@ public actor EditAgent {
         let reach = kind == .remove ? max(edge, Int((short * 0.06).rounded())) : edge
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         var mask = original.grown(by: reach)
-        let text = Self.redrawPrompt(prompt, thing: region.info.concept ?? region.info.id, place: Self.place(of: box, in: rect))
+        let text = Self.redrawPrompt(prompt, thing: region.info.concept ?? region.info.id, place: Self.place(of: box, in: rect),
+                                     count: region.count)
         let request = GenerateRequest(image: image, mask: mask, prompt: text)
         // The redraw changes how the thing looks, so it is looked for without the old colour: a "white t-shirt"
         // redrawn blue is found as a "t-shirt". A removal is looked for as it was.
@@ -658,13 +698,24 @@ public actor EditAgent {
     }
 
     /// What Muse Image is asked. It sees only the crop, so the prompt says which thing in it to change and where.
-    static func redrawPrompt(_ prompt: String?, thing: String, place: String) -> String {
+    /// Several things (`count` over 1) are named as every one of them, with no single place: told to change "the flower
+    /// in the centre", Muse Image changed one of seven.
+    static func redrawPrompt(_ prompt: String?, thing: String, place: String, count: Int = 1) -> String {
+        let several = count > 1
+        let things = thing.hasSuffix("s") ? thing : thing + "s"
         guard let prompt else {
+            if several {
+                return "Remove all \(count) \(things) in this picture, every part of each. Fill their places with what is "
+                    + "behind them, continuing the surroundings naturally. Change nothing else."
+            }
             return "Remove the whole \(thing) \(place) of this picture, every part of it. Fill its place with what is "
                 + "behind it, continuing the surroundings naturally. Change nothing else."
         }
         let sentence = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let ended = sentence.last.map { ".!?".contains($0) } ?? true ? sentence : sentence + "."
+        if several {
+            return "\(ended) This is for all \(count) of these \(things) in the picture: change every one of them fully, and nothing else."
+        }
         return "\(ended) Change only the \(thing) \(place) of this picture, and nothing else."
     }
 
@@ -706,7 +757,13 @@ public actor EditAgent {
                 let mask = segment.mask.resized(to: original.size)
                 return (mask: mask, overlap: original.intersectionOverUnion(mask))
             }.filter { $0.mask.boundingBox != nil }
-            guard let best = matches.max(by: { $0.overlap < $1.overlap }) else {
+            // Several things redrawn together (the flowers, the sails) are compared all together, not one by one.
+            var candidates = matches
+            if matches.count > 1, let first = matches.first?.mask {
+                let union = matches.dropFirst().reduce(first) { $0.union($1.mask) }
+                candidates.append((mask: union, overlap: original.intersectionOverUnion(union)))
+            }
+            guard let best = candidates.max(by: { $0.overlap < $1.overlap }) else {
                 // Nothing found is what a removal is for.
                 if removed { return RedrawAttempt(image: image, overlap: 0) }
                 return RedrawAttempt(image: image, note: "Could not check the redraw of \(region): nothing found for “\(concept)”.")

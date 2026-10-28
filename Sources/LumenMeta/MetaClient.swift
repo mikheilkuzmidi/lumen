@@ -104,7 +104,11 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Finish when the instruction is met.
     A select concept is what the segmentation model searches for: one short singular noun phrase it can
     see, such as "jacket", "sky", "sofa" or "red gate", without possessives or long descriptions; when
-    there are several, give a point on the one you mean and a box around it.
+    there are several, give a point on the one you mean and a box around it. To change several things of
+    a kind (the flowers, the sails, everyone's shirts), select them once with every true, the plain noun as
+    concept ("flower", "sail") and no points or box: the segmentation model finds each one. To keep only
+    some of them by colour (the orange flowers among red ones), list colours, such as ["orange", "yellow"];
+    use an empty list otherwise.
     Adjustment values: exposure in stops, usually between -1 and 1; the others in percent, usually 10 to 40
     either way for a visible but natural change. Temperature warms or cools the light; vibrance and
     saturation strengthen colours already there, so they make a blue sky bluer. highlightWarmth and
@@ -132,7 +136,11 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
     from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping
     its knit texture and folds". Never ask to keep the colour or pattern being changed: the image model can
-    then leave it as it was. To fix a redraw that went wrong, regenerate the same region id again with a
+    then leave it as it was. A recolour changes every part of the thing to the new colour, its trims, piping,
+    panels, lining and zipper tape too, unless the instruction keeps them: say "the whole jacket, its red trims
+    and piping too, all bright blue", and never ask to keep a part in the old colour. For a black, white or grey thing, ask for it fully dyed the new colour, a solid,
+    clearly saturated colour ("a solid, fully dyed forest green T-shirt, a true deep green, not black with a
+    green tint"): otherwise the image model keeps the old darkness under a hint of the new colour. To fix a redraw that went wrong, regenerate the same region id again with a
     better prompt, because Lumen replaces the earlier redraw from this run; if the colour did not change,
     name the new colour more strongly and the old one it replaces. Do not select the object again for that. Remove is only for taking something out of
     the photo, never for changing how it looks.
@@ -170,8 +178,16 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
       tenth, not the middle colour.
     - A colour the instruction names must be the region's colour now, by its name: black is lightness under
       about 15 with chroma under 10, so charcoal, dark grey or dark teal is not black; white is lightness over
-      about 88 with chroma under 10. If the colour is short of it, redraw again, naming the new colour more
-      strongly.
+      about 88 with chroma under 10. A named hue (green, blue, red, purple...) must measure as that hue and not
+      muted, chroma 20 or more, unless the instruction asked for a muted, dusty or pale shade: "muted dark
+      green" is the old colour tinted, not a forest green. If the colour is short of it, redraw again, asking
+      for it fully dyed and naming the new colour more strongly.
+    - Colours lists the percent of the part in each colour family. A recoloured part whose old colour still
+      covers 4% or more of it after (a red trim or piping left on a jacket made blue, an orange flower left
+      among purple ones) is not fully recoloured: redraw again, asking for every part of it in the new colour,
+      trims, piping, panels and lining included.
+    - Several things asked for in the same colour should measure alike: lightness within about 12 and the same
+      colour name. Redraw the one that differs.
     - The rest of the photo should change only as much as the instruction asks for the whole photo.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
@@ -212,6 +228,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
             var colour: String
             var brightest: Int?
             var darkest: Int?
+            /// Percent of the part in each colour family.
+            var colours: [String: Int]?
 
             init(_ measurement: ColourMeasurement) {
                 lightness = Int(measurement.lightness.rounded())
@@ -220,6 +238,7 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
                 colour = measurement.name
                 brightest = measurement.brightest.map { Int($0.rounded()) }
                 darkest = measurement.darkest.map { Int($0.rounded()) }
+                colours = measurement.families.map { $0.mapValues { Int(($0 * 100).rounded()) } }
             }
         }
 

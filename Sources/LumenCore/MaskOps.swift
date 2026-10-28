@@ -54,12 +54,13 @@ extension MaskData {
     /// Combines coverage, resizing the other mask to this mask's size if needed.
     public func union(_ other: MaskData) -> MaskData {
         let other = other.size == size ? other : other.resized(to: size)
-        return MaskData(size: size, coverage: zip(coverage, other.coverage).map { max($0, $1) })
+        return MaskData(size: size, coverage: zip(coverage, other.coverage).map { max($0, $1) },
+                        followsPhoto: followsPhoto || other.followsPhoto)
     }
 
     /// Selects the share of each pixel this mask leaves untouched.
     public func inverted() -> MaskData {
-        MaskData(size: size, coverage: coverage.map { 255 - $0 })
+        MaskData(size: size, coverage: coverage.map { 255 - $0 }, followsPhoto: followsPhoto)
     }
 
     /// Keeps the pixels intersecting a rectangle on the photo.
@@ -82,7 +83,7 @@ extension MaskData {
         for y in top..<bottom {
             pixels.append(contentsOf: coverage[(y * size.width + left)..<(y * size.width + right)])
         }
-        return MaskData(size: croppedSize, coverage: pixels)
+        return MaskData(size: croppedSize, coverage: pixels, followsPhoto: followsPhoto)
     }
 
     /// Resamples coverage with bilinear interpolation at pixel centers.
@@ -108,7 +109,7 @@ extension MaskData {
                 pixels[y * target.width + x] = UInt8((above * (1 - dy) + below * dy).rounded())
             }
         }
-        return MaskData(size: target, coverage: pixels)
+        return MaskData(size: target, coverage: pixels, followsPhoto: followsPhoto)
     }
 
     /// Extends coverage to pixels within a circular pixel radius.
@@ -139,7 +140,7 @@ extension MaskData {
                 }
             }
         }
-        return MaskData(size: size, coverage: pixels)
+        return MaskData(size: size, coverage: pixels, followsPhoto: followsPhoto)
     }
 
     /// A ramp over a photo of `size`: full at `from`, none at `to` and beyond, eased in between (smoothstep), measured
@@ -149,7 +150,7 @@ extension MaskData {
         let dx = (to.x - from.x) * width, dy = (to.y - from.y) * height
         let length = dx * dx + dy * dy
         var coverage = [UInt8](repeating: 0, count: size.width * size.height)
-        guard length > 0 else { return MaskData(size: size, coverage: coverage) }
+        guard length > 0 else { return MaskData(size: size, coverage: coverage, followsPhoto: false) }
         for y in 0..<size.height {
             for x in 0..<size.width {
                 let px = (Double(x) + 0.5) - from.x * width, py = (Double(y) + 0.5) - from.y * height
@@ -158,13 +159,100 @@ extension MaskData {
                 coverage[y * size.width + x] = UInt8((eased * 255).rounded())
             }
         }
-        return MaskData(size: size, coverage: coverage)
+        return MaskData(size: size, coverage: coverage, followsPhoto: false)
+    }
+
+    /// The shadow this mask's subject casts on the ground: its base row stays where it stands, and each row above it is
+    /// laid along the ground toward `tip`, where the subject's top lands, so a low sun's long shadow stretches out from
+    /// its feet. Each separate figure in it (a group of hikers on rocks) is laid from its own base, the same way and as
+    /// long for its height. Soft, fading to 40% at the tip, and kept off the subject itself.
+    public func castShadow(tip: NormalizedPoint) -> MaskData {
+        let width = size.width, height = size.height
+        let figures = components()
+        guard let whole = Self.extent(of: figures.flatMap { $0 }, width: width) else { return MaskData(size: size, filledWith: 0) }
+        // How far the top of a figure as tall as the whole subject lands from its base, per unit of height.
+        let rise = Double(whole.bottom - whole.top)
+        guard rise > 0 else { return MaskData(size: size, filledWith: 0) }
+        let across = (tip.x * Double(width) - whole.crown) / rise, down = (tip.y * Double(height) - Double(whole.bottom)) / rise
+        var coverage = [Double](repeating: 0, count: width * height)
+        for figure in figures {
+            guard let shape = Self.extent(of: figure, width: width), shape.bottom > shape.top else { continue }
+            let tall = Double(shape.bottom - shape.top)
+            // A shadow lying along the ground still has the figure's depth across it: at least 15% of its width or 6%
+            // of its height, or a cyclist's sideways shadow is a hairline.
+            let thickness = max(1.5, tall * 0.06, Double(shape.right - shape.left) * 0.15)
+            var rows = [Int: [Int]]()
+            for index in figure { rows[index / width, default: []].append(index % width) }
+            // Each row (its height h above the base) is drawn over the target rows between where it and the row below
+            // land, so a shadow longer than its figure has no gaps.
+            for (y, columns) in rows {
+                let h = Double(shape.bottom - y) / tall
+                let below = Double(shape.bottom - min(shape.bottom, y + 1)) / tall
+                let shift = h * tall * across
+                let from = Double(shape.bottom) + below * tall * down, to = Double(shape.bottom) + h * tall * down
+                let middle = (from + to) / 2, half = max(abs(to - from), thickness) / 2
+                let strength = 1 - 0.6 * h
+                for target in max(0, Int((middle - half).rounded()))...min(height - 1, max(0, Int((middle + half).rounded()))) {
+                    for x in columns {
+                        let column = Int((Double(x) + shift).rounded())
+                        guard column >= 0, column < width else { continue }
+                        let index = target * width + column
+                        coverage[index] = max(coverage[index], strength * Double(self[x, y]) / 255)
+                    }
+                }
+            }
+        }
+        // As soft as 2.5% of the subject's height.
+        let cast = MaskData(size: size, coverage: coverage.map { UInt8(min(255, ($0 * 255).rounded())) })
+            .blurred(by: max(1, rise * 0.025)).multiplied(by: inverted())
+        return MaskData(size: size, coverage: cast.coverage, followsPhoto: false)
+    }
+
+    /// The covered pixels (over half covered) of each separate figure, 8-connected, ignoring specks under a thousandth
+    /// of what is covered.
+    func components() -> [[Int]] {
+        let width = size.width, height = size.height
+        var seen = [Bool](repeating: false, count: coverage.count)
+        var figures: [[Int]] = []
+        for start in coverage.indices where coverage[start] > 127 && !seen[start] {
+            var figure: [Int] = [], stack = [start]
+            seen[start] = true
+            while let index = stack.popLast() {
+                figure.append(index)
+                let x = index % width, y = index / width
+                for dy in -1...1 {
+                    for dx in -1...1 where dx != 0 || dy != 0 {
+                        let nx = x + dx, ny = y + dy
+                        guard nx >= 0, nx < width, ny >= 0, ny < height else { continue }
+                        let next = ny * width + nx
+                        if coverage[next] > 127 && !seen[next] { seen[next] = true; stack.append(next) }
+                    }
+                }
+            }
+            figures.append(figure)
+        }
+        let total = figures.reduce(0) { $0 + $1.count }
+        return figures.filter { $0.count * 1000 >= total }
+    }
+
+    /// A figure's rows and columns, and the middle of its top rows.
+    private static func extent(of figure: [Int], width: Int) -> (top: Int, bottom: Int, left: Int, right: Int, crown: Double)? {
+        guard !figure.isEmpty else { return nil }
+        var top = Int.max, bottom = Int.min, left = Int.max, right = Int.min
+        for index in figure {
+            top = min(top, index / width); bottom = max(bottom, index / width)
+            left = min(left, index % width); right = max(right, index % width)
+        }
+        let band = top + max(1, (bottom - top) / 30)
+        let crowns = figure.filter { $0 / width <= band }.map { Double($0 % width) }
+        return (top, bottom, left, right, crowns.reduce(0, +) / Double(max(1, crowns.count)))
     }
 
     /// Coverage where both masks cover, resizing the other mask to this mask's size if needed.
     public func multiplied(by other: MaskData) -> MaskData {
         let other = other.size == size ? other : other.resized(to: size)
-        return MaskData(size: size, coverage: zip(coverage, other.coverage).map { UInt8((Int($0) * Int($1) + 127) / 255) })
+        return MaskData(size: size, coverage: zip(coverage, other.coverage).map { UInt8((Int($0) * Int($1) + 127) / 255) },
+                        followsPhoto: followsPhoto || other.followsPhoto)
     }
 
     /// Softens coverage about as a Gaussian blur of `radius` pixels does: three box blurs each way, with the edge
@@ -191,7 +279,7 @@ extension MaskData {
             pass(count: width, stride: 1, lines: height, lineStride: width)
             pass(count: height, stride: width, lines: width, lineStride: 1)
         }
-        return MaskData(size: size, coverage: values.map { UInt8(min(255, max(0, $0.rounded()))) })
+        return MaskData(size: size, coverage: values.map { UInt8(min(255, max(0, $0.rounded()))) }, followsPhoto: followsPhoto)
     }
 }
 

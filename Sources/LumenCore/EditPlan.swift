@@ -41,18 +41,21 @@ public struct Selection: Codable, Equatable, Sendable {
     /// Light falling across the photo, full at one point and gone at another: alone, the region is that ramp; with a
     /// concept, box or points, what is found fades along it.
     public var gradient: Gradient?
+    /// The shadow what is found casts on the ground, its top landing at this point: a low sun's long shadow.
+    public var shadowTip: NormalizedPoint?
 
     public init(id: String, concept: String? = nil, box: NormalizedRect? = nil, points: [NormalizedPoint] = [], invert: Bool = false,
-                gradient: Gradient? = nil) {
+                gradient: Gradient? = nil, shadowTip: NormalizedPoint? = nil) {
         self.id = id
         self.concept = concept
         self.box = box
         self.points = points
         self.invert = invert
         self.gradient = gradient
+        self.shadowTip = shadowTip
     }
 
-    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert, gradient }
+    private enum CodingKeys: String, CodingKey { case id, concept, box, points, invert, gradient, shadowTip }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -62,6 +65,7 @@ public struct Selection: Codable, Equatable, Sendable {
         points = try container.decodeIfPresent([NormalizedPoint].self, forKey: .points) ?? []
         invert = try container.decodeIfPresent(Bool.self, forKey: .invert) ?? false
         gradient = try container.decodeIfPresent(Gradient.self, forKey: .gradient)
+        shadowTip = try container.decodeIfPresent(NormalizedPoint.self, forKey: .shadowTip)
     }
 }
 

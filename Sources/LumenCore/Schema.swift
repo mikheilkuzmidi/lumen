@@ -32,6 +32,10 @@ enum PlanSchema {
                         "from": point(),
                         "to": point(),
                     ], nullable: true, description: "Light falling across the photo: full at from, none at to and beyond. Alone it is the region; with a concept, what is found fades along it. Null if unused."),
+                    "shadowTip": object([
+                        "x": number("Horizontal position, 0...1 of the photo width from the left."),
+                        "y": number("Vertical position, 0...1 of the photo height from the top."),
+                    ], nullable: true, description: "Makes the region the shadow what is found casts on the ground, its top landing here, away from the light. Null if unused."),
                 ]),
                 step("adjust", properties: [
                     "region": string("An earlier selected region id, or null for the whole photo.", nullable: true),

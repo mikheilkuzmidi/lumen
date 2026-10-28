@@ -445,7 +445,12 @@ public actor EditAgent {
             note(.select, "Nothing found for \(selection.id).", events: events)
             return nil
         }
-        if selection.invert { mask = mask.inverted() }
+        // The region is the shadow what was found casts on the ground, not the thing itself.
+        if let tip = selection.shadowTip {
+            mask = mask.castShadow(tip: tip)
+        } else if selection.invert {
+            mask = mask.inverted()
+        }
         // What was found fades along the gradient: the sky nearest a low sun, say.
         if let gradient = selection.gradient {
             mask = mask.multiplied(by: MaskData.gradient(size: mask.size, from: gradient.from, to: gradient.to))

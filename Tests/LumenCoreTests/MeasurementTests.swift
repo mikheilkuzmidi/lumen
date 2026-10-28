@@ -138,6 +138,23 @@ private actor Counter {
     func add() { value += 1 }
 }
 
+@Suite("Cast shadows", .timeLimit(.minutes(1)))
+struct CastShadowTests {
+    @Test func theRegionIsTheShadowWhatIsFoundCasts() async throws {
+        let tip = NormalizedPoint(x: 0.95, y: 0.9)
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "The cup's long shadow", steps: [
+            .select(Selection(id: "shadow", concept: "cup", invert: true, shadowTip: tip)),
+            .adjust(Adjustment(region: "shadow", values: [.exposure: -0.6])),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        for try await event in agent.run("Low sun from the left") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+        }
+        #expect(masks == [MeasuredSegmenter.cup.castShadow(tip: tip)], "the shadow, not the cup or its inverse")
+    }
+}
+
 private actor CountingSegmenter: Segmenter {
     let modelID = "sam-3.1"
     private(set) var count = 0

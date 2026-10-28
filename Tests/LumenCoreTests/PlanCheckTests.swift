@@ -71,6 +71,20 @@ struct PlanCheckTests {
         #expect(checked.notes.contains { $0.contains("no usable concept, box, points or gradient") })
     }
 
+    @Test func aShadowNeedsSomethingToCastIt() {
+        let checked = EditPlan(summary: "Long shadows", steps: [
+            .select(Selection(id: "post", concept: "post", shadowTip: NormalizedPoint(x: 1.3, y: 0.8))),
+            .select(Selection(id: "light", gradient: Gradient(from: NormalizedPoint(x: 0, y: 0.3), to: NormalizedPoint(x: 0.7, y: 0.3)),
+                              shadowTip: NormalizedPoint(x: 0.9, y: 0.8))),
+        ]).checked()
+        #expect(checked.plan.steps == [
+            .select(Selection(id: "post", concept: "post", shadowTip: NormalizedPoint(x: 1, y: 0.8))),
+            .select(Selection(id: "light", gradient: Gradient(from: NormalizedPoint(x: 0, y: 0.3), to: NormalizedPoint(x: 0.7, y: 0.3)))),
+        ])
+        #expect(checked.notes.contains { $0.contains("clamped the shadow tip") })
+        #expect(checked.notes.contains { $0.contains("dropped a shadow with nothing to cast it") })
+    }
+
     @Test func rectanglesAreClippedToThePhoto() {
         let outside = NormalizedRect(x: -0.25, y: 0.75, width: 0.75, height: 0.5)
         let inside = NormalizedRect(x: 0, y: 0.75, width: 0.5, height: 0.25)

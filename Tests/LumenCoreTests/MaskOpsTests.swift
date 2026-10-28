@@ -96,4 +96,32 @@ struct MaskOpsTests {
         #expect(near[99, 5] > 250 && near[99, 40] == 0 && near[10, 5] == 0)
         #expect(MaskData.gradient(size: size, from: NormalizedPoint(x: 0.5, y: 0.5), to: NormalizedPoint(x: 0.5, y: 0.5)).boundingBox == nil)
     }
+
+    @Test func aSubjectsShadowLiesAlongTheGroundFromItsBase() {
+        // A post at x 40..<44 standing on y 59; the sun on the left lays its shadow out to the right.
+        let post = MaskData(size: PixelSize(width: 100, height: 80), coverage: (0..<8000).map {
+            (40..<44).contains($0 % 100) && (20..<60).contains($0 / 100) ? 255 : 0
+        })
+        let shadow = post.castShadow(tip: NormalizedPoint(x: 0.95, y: 0.76))
+        #expect(shadow[50, 60] > 150, "dark beside the base: \(shadow[50, 60])")
+        #expect(shadow[90, 61] > 20 && shadow[90, 61] < shadow[50, 60], "fading toward the tip: \(shadow[90, 61])")
+        #expect(shadow[42, 40] == 0, "never over the post itself")
+        #expect(shadow[20, 60] < 10 && shadow[60, 30] < 10, "not on the lit side or in the air")
+        // Laid along the ground, it still has some thickness across.
+        #expect(shadow[70, 59] > 60 && shadow[70, 61] > 30)
+        #expect(MaskData(size: post.size, filledWith: 0).castShadow(tip: NormalizedPoint(x: 1, y: 1)).boundingBox == nil)
+    }
+
+    @Test func eachFigureInAGroupCastsFromItsOwnFeet() {
+        // A tall figure standing on y 59 and a short one standing higher up, on y 39.
+        let group = MaskData(size: PixelSize(width: 100, height: 80), coverage: (0..<8000).map {
+            let x = $0 % 100, y = $0 / 100
+            return ((20..<24).contains(x) && (20..<60).contains(y)) || ((60..<64).contains(x) && (20..<40).contains(y)) ? 255 : 0
+        })
+        let shadow = group.castShadow(tip: NormalizedPoint(x: 0.6, y: 0.76))
+        #expect(shadow[30, 60] > 120, "the tall one's shadow starts at its feet")
+        #expect(max(shadow[68, 39], shadow[68, 40]) > 60, "the short one's starts at its own feet, higher up")
+        #expect(shadow[68, 60] < 30, "not at the tall one's ground level")
+        #expect(group.components().count == 2)
+    }
 }

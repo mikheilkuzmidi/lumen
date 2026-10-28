@@ -116,7 +116,15 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     concept, from the side the light comes from in this photo (where the sky is brightest, or the side of the
     subject that is lit) about two thirds of the way across, such as from the left edge (x 0) or the right edge
     (x 1) at the height of the brightest sky, and give it exposure +0.25 to +0.45 and highlightWarmth 30 to 50,
-    so the light falls off across the frame.
+    so the light falls off across the frame. Low sun also casts long shadows: for each subject whose base
+    touches ground you can see (a person's feet, a car's wheels, a tree's trunk), select it with a shadowTip,
+    the point where the top of its shadow lands on the ground, away from the light and from the same side as
+    the gradient's light; with light from one side, about two to three times the subject's height across the
+    frame at about the height of its base, and with light from behind the subject, toward the bottom of the
+    photo. The tip lands on the ground the subject stands on, never on a wall, rail or object in front of it,
+    so keep the shadow shorter there. Several people can share one selection: each casts its own shadow.
+    Adjust that region exposure -0.9 to -1.3, highlights -20 and temperature -15, so it reads as shade on lit
+    ground. Skip a subject whose base is out of the photo; use null for shadowTip otherwise.
     A gradient region is light falling across the photo: full at from, none at to and beyond. Alone it is the
     region; with a concept, what is found fades along it, such as the sky nearest the sun. Use null for gradient
     otherwise.

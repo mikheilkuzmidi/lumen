@@ -25,11 +25,24 @@ public struct EncodedImage: Codable, Equatable, Sendable {
 public struct MaskData: Codable, Equatable, Sendable {
     public var size: PixelSize
     public var coverage: [UInt8]
+    /// A mask of something in the photo, which a host fits to the photo's own edges. A gradient or a cast shadow,
+    /// drawn as it should be, is used as it is: fitted to edges a shadow on even ground doesn't have, it spreads thin.
+    public var followsPhoto: Bool
 
-    public init(size: PixelSize, coverage: [UInt8]) {
+    public init(size: PixelSize, coverage: [UInt8], followsPhoto: Bool = true) {
         precondition(coverage.count == size.width * size.height, "one coverage value per pixel")
         self.size = size
         self.coverage = coverage
+        self.followsPhoto = followsPhoto
+    }
+
+    private enum CodingKeys: String, CodingKey { case size, coverage, followsPhoto }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        size = try container.decode(PixelSize.self, forKey: .size)
+        coverage = try container.decode([UInt8].self, forKey: .coverage)
+        followsPhoto = try container.decodeIfPresent(Bool.self, forKey: .followsPhoto) ?? true
     }
 
     /// Every pixel at `value`.

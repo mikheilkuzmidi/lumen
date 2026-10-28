@@ -118,6 +118,7 @@ import Testing
     #expect(MetaPlanner.critiquePrompt.contains("so charcoal, dark grey or dark teal is not black"))
     #expect(MetaPlanner.planPrompt.contains("Low sun also comes from one side: select a gradient with no\nconcept, from the side the light comes from in this photo"))
     #expect(MetaPlanner.critiquePrompt.contains("golden hour is warm, low light from one side"))
+    #expect(MetaPlanner.planPrompt.contains("Low sun also casts long shadows: for each subject whose base"))
 
     // Without measurements, the context says nothing about them.
     let quiet = ReplayTransport([try .init(file: "critique.json")])

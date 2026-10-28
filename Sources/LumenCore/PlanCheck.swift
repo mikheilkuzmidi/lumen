@@ -128,6 +128,19 @@ struct PlanCheck {
                 selection.gradient = nil
             }
         }
+        if let tip = proposed.shadowTip {
+            if !(tip.x.isFinite && tip.y.isFinite) {
+                notes.append("\(label): dropped a shadow tip that is not finite.")
+                selection.shadowTip = nil
+            } else if selection.concept == nil && selection.box == nil && selection.points.isEmpty {
+                notes.append("\(label): dropped a shadow with nothing to cast it.")
+                selection.shadowTip = nil
+            } else {
+                let clamped = NormalizedPoint(x: unit(tip.x), y: unit(tip.y))
+                if clamped != tip { notes.append("\(label): clamped the shadow tip to the photo.") }
+                selection.shadowTip = clamped
+            }
+        }
         guard selection.concept != nil || selection.box != nil || !selection.points.isEmpty || selection.gradient != nil else {
             notes.append("\(label): dropped selection with no usable concept, box, points or gradient.")
             return nil

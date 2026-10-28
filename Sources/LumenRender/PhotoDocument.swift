@@ -208,9 +208,10 @@ public actor PhotoDocument: EditHost {
         return mask
     }
 
-    /// Masks under 64 px on a side carry no edge detail worth fitting and are used as they are.
+    /// Masks under 64 px on a side carry no edge detail worth fitting and are used as they are, as are masks drawn as
+    /// they should be (a gradient, a cast shadow).
     private func refined(_ mask: MaskData) -> MaskData {
-        guard min(mask.size.width, mask.size.height) >= 64,
+        guard mask.followsPhoto, min(mask.size.width, mask.size.height) >= 64,
               let guide = MaskRefinement.guide(canvas, size: mask.size, context: context) else { return mask }
         // A second pass fits the edge again from the first pass's better start; then smooth parts of the photo
         // get a wider transition, about 8% of the mask's short side.

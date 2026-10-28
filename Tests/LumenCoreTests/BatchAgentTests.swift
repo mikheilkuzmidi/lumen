@@ -48,13 +48,13 @@ struct BatchAgentTests {
         #expect(try batchTestSummary(events).answers.isEmpty)
     }
 
-    @Test func onlyTiltsTheReviewerSeesAndSmallOnesAreStraightened() async throws {
-        // Perspective lines read as tilt (photo-0, the reviewer sees it level), a 7.5° tilt is likely meant (photo-2),
-        // and an unjudged photo keeps its measurement (photo-3).
-        let library = BatchTestLibrary([batchTestFacts(tilt: 3), batchTestFacts(tilt: 4), batchTestFacts(tilt: 7.5),
+    @Test func onlyTiltsThePhotosLinesConfirmAndSmallOnesAreStraightened() async throws {
+        // Perspective read as tilt, the photo's walls standing plumb (photo-0), whatever the reviewer saw; a 7.5° tilt is
+        // likely meant (photo-2); walls leaning with the horizon (photo-1, photo-3) mean a rolled camera.
+        let library = BatchTestLibrary([batchTestFacts(tilt: 3, verticalLean: 0), batchTestFacts(tilt: 4), batchTestFacts(tilt: 7.5),
                                         batchTestFacts(tilt: -2)])
         let reviewer = BatchTestReviewer(reviews: [
-            batchTestReview(PhotoID("photo-0"), tilted: false), batchTestReview(PhotoID("photo-1"), tilted: true),
+            batchTestReview(PhotoID("photo-0"), tilted: true), batchTestReview(PhotoID("photo-1"), tilted: false),
             batchTestReview(PhotoID("photo-2"), tilted: true), batchTestReview(PhotoID("photo-3")),
         ])
         let agent = batchTestAgent(library, reviewer: reviewer)
@@ -62,21 +62,59 @@ struct BatchAgentTests {
         #expect(await library.rotations == [PhotoID("photo-1"): -4, PhotoID("photo-3"): 2])
     }
 
-    @Test func aHorizonOrWaterLineDecidesOverTheReviewersLook() async throws {
-        // A lake the reviewer called level is still straightened (photo-0): a 3° tilt is hard to see in a contact
-        // sheet, a lake is not. With nothing that should be level the measurement read something else (photo-1), and
-        // a building edge leaves it to the reviewer (photo-2 tilted, photo-3 perspective).
-        let library = BatchTestLibrary([batchTestFacts(tilt: 3), batchTestFacts(tilt: 2), batchTestFacts(tilt: -1.5),
-                                        batchTestFacts(tilt: 4)])
+    @Test func levelLinesDecideWithoutUprightOnesButNotInACloseUp() async throws {
+        // A lake with nothing upright, its shore tilted with the horizon (photo-0), is levelled though the reviewer saw
+        // no tilt. In a close-up a level line is not a horizon (photo-1). A receding shore reads as tilt while the long
+        // lines stay level (photo-2). With no lines at all, nothing confirms the reading (photo-3).
+        let library = BatchTestLibrary([batchTestFacts(tilt: 3, levelTilt: 3), batchTestFacts(tilt: 2, levelTilt: 2),
+                                        batchTestFacts(tilt: -1.5, levelTilt: 0), batchTestFacts(tilt: 4, noLines: true)])
         let reviewer = BatchTestReviewer(reviews: [
             batchTestReview(PhotoID("photo-0"), tilted: false, levelLine: .water),
             batchTestReview(PhotoID("photo-1"), tilted: true, levelLine: LevelLine.none),
-            batchTestReview(PhotoID("photo-2"), tilted: true, levelLine: .building),
-            batchTestReview(PhotoID("photo-3"), tilted: false, levelLine: .building),
+            batchTestReview(PhotoID("photo-2"), tilted: true, levelLine: .horizon),
+            batchTestReview(PhotoID("photo-3"), tilted: true, levelLine: .building),
         ])
         let agent = batchTestAgent(library, reviewer: reviewer)
         _ = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: true, qualityThreshold: 0)))
-        #expect(await library.rotations == [PhotoID("photo-0"): -3, PhotoID("photo-2"): 1.5])
+        #expect(await library.rotations == [PhotoID("photo-0"): -3])
+    }
+
+    @Test func aSnapshotFromTheWaterIsLevelledUpToSevenDegrees() async throws {
+        // A sea horizon tilted 6.8° (photo-0) is levelled; 7.5° with walls leaning the same way (photo-1) is likely meant;
+        // 11° (photo-2) is past what a slip of the hand does.
+        let library = BatchTestLibrary([batchTestFacts(tilt: -6.8, levelTilt: -7), batchTestFacts(tilt: 7.5),
+                                        batchTestFacts(tilt: 11, levelTilt: 11)])
+        let reviewer = BatchTestReviewer(reviews: [
+            batchTestReview(PhotoID("photo-0"), tilted: true, levelLine: .water),
+            batchTestReview(PhotoID("photo-1"), tilted: true, levelLine: .building),
+            batchTestReview(PhotoID("photo-2"), tilted: true, levelLine: .horizon),
+        ])
+        let agent = batchTestAgent(library, reviewer: reviewer)
+        let events = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: true,
+                                                                            qualityThreshold: 0)))
+        #expect(await library.rotations == [PhotoID("photo-0"): 6.8])
+        // The summary says what decided each: the measured tilt and the line that should be level.
+        let summary = try #require(events.compactMap { if case .finished(let summary) = $0 { summary } else { nil } }.first)
+        #expect(summary.photos.map(\.measuredTilt) == [-6.8, 7.5, 11])
+        #expect(summary.photos.map(\.levelLine) == [.water, .building, .horizon])
+    }
+
+    @Test func uprightLinesDecideWhetherTheCameraWasRolled() async throws {
+        // A harbour whose buildings lean with its horizon (photo-0) was rolled, though the reviewer saw no tilt. A city
+        // above a strait whose minarets stand plumb (photo-1) has a receding shore, not a tilted horizon. A fountain's
+        // rim the reviewer took for water (photo-2) is the same. A close-up whose window frame leans with the horizon
+        // (photo-3) was rolled too.
+        let library = BatchTestLibrary([batchTestFacts(tilt: -2.9, verticalLean: -2.0), batchTestFacts(tilt: -5.2, verticalLean: -1.9),
+                                        batchTestFacts(tilt: -3, verticalLean: 0), batchTestFacts(tilt: 2, verticalLean: 2)])
+        let reviewer = BatchTestReviewer(reviews: [
+            batchTestReview(PhotoID("photo-0"), tilted: false, levelLine: .building),
+            batchTestReview(PhotoID("photo-1"), tilted: true, levelLine: .horizon),
+            batchTestReview(PhotoID("photo-2"), tilted: true, levelLine: .water),
+            batchTestReview(PhotoID("photo-3"), tilted: true, levelLine: LevelLine.none),
+        ])
+        let agent = batchTestAgent(library, reviewer: reviewer)
+        _ = try await batchTestCollect(await agent.run(BatchOptions(mode: .autonomous, auto: false, straighten: true, qualityThreshold: 0)))
+        #expect(await library.rotations == [PhotoID("photo-0"): 2.9, PhotoID("photo-3"): -2])
     }
 
     @Test(arguments: BatchMode.allCases)

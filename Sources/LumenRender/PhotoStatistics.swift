@@ -37,7 +37,8 @@ struct PhotoStatistics: Sendable {
         }
         self.init(pixels: pixels, width: width, height: height,
                   photoSize: PixelSize(width: Int(extent.width.rounded()), height: Int(extent.height.rounded())),
-                  tilt: Self.tilt(in: sample), capturedAt: capturedAt)
+                  tilt: Self.tilt(in: sample) ?? Self.tilt(in: photo.transformed(by: CGAffineTransform(scaleX: scale, y: scale))),
+                  capturedAt: capturedAt)
     }
 
     init(pixels: [UInt8], width: Int, height: Int, photoSize: PixelSize, tilt: Double? = nil, capturedAt: Date? = nil) {
@@ -78,7 +79,8 @@ struct PhotoStatistics: Sendable {
                            sharpness: Self.sharpness(lightness, width: width, height: height),
                            exposure: lightness.reduce(0, +) / count,
                            clippedShadows: Double(shadows) / count, clippedHighlights: Double(highlights) / count,
-                           tilt: tilt, capturedAt: capturedAt)
+                           tilt: tilt, verticalLean: StraightLines.verticalLean(lightness, width: width, height: height),
+                           levelTilt: StraightLines.levelTilt(lightness, width: width, height: height), capturedAt: capturedAt)
     }
 
     /// A gentle Auto that leaves a photo's intent alone: a high-key or night photo stays bright or dark.

@@ -16,12 +16,15 @@ enum BatchReport {
         var lines = ["# Batch summary", "",
                      "\(summary.photos.count) photos; \(summary.modelCalls) model calls; \(seconds(summary.duration)).", "",
                      "Total cost: \(dollars(summary.totalCost)) USD; \(dollars(summary.costPerPhoto)) per photo (including shared library calls).", "",
-                     "| Photo | Flagged | Auto | Straightened | Instruction | Outcome |",
-                     "| --- | --- | --- | --- | --- | --- |"]
+                     "| Photo | Flagged | Auto | Tilt measured | Level line | Straightened | Instruction | Outcome |",
+                     "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        func degrees(_ value: Double?) -> String {
+            value.map { String(format: "%+.1f°", locale: Locale(identifier: "en_US_POSIX"), $0) } ?? ""
+        }
         for photo in summary.photos {
-            let angle = photo.straightened.map { String(format: "%+.1f°", locale: Locale(identifier: "en_US_POSIX"), $0) } ?? ""
             let outcome = (photo.failed ? "Failed: " : "") + (photo.outcome ?? (photo.flagged == nil ? "Kept" : "Flagged"))
-            lines.append(row([photo.photo.rawValue, photo.flagged ?? "", photo.auto ?? "", angle, photo.instruction ?? "", outcome]))
+            lines.append(row([photo.photo.rawValue, photo.flagged ?? "", photo.auto ?? "", degrees(photo.measuredTilt),
+                              photo.levelLine?.rawValue ?? "", degrees(photo.straightened), photo.instruction ?? "", outcome]))
         }
         lines += ["", "## Questions", "", "| ID | Question | Answer | Answered by |", "| --- | --- | --- | --- |"]
         for answer in summary.answers {

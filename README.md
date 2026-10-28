@@ -44,8 +44,8 @@ An editor can also use the finding step on its own. `AreaSearch` looks for a nam
 lumen batch shoot/ "Make everyone's T-shirts blue" --out edited/ --mode ask
 ```
 
-1. **Look.** Every photo is measured on the Mac: sharpness, exposure, clipping, and the horizon's tilt with Vision. Muse Spark then reviews numbered contact sheets of 20. For each photo it gives a misfire verdict, quality, description and group, says whether the instruction applies, and says whether the camera was visibly tilted.
-2. **Base pass.** Misfires (shaken frames, pocket shots) are flagged and left out. Everything else gets a gentle auto tone and colour, and straightening where a tilt is measured and the reviewer agrees.
+1. **Look.** Every photo is measured on the Mac: sharpness, exposure, clipping, the horizon's tilt with Vision, and the lean of its long straight lines. Muse Spark then reviews numbered contact sheets of 20. For each photo it gives a misfire verdict, quality, description and group, says whether the instruction applies, and names the line that should be level, if any.
+2. **Base pass.** Misfires (shaken frames, pocket shots) are flagged and left out. Everything else gets a gentle auto tone and colour. A photo is straightened only when its own walls and poles, or with none of those its horizon or shoreline, lean with the tilt Vision measured: perspective, a receding shore or a slope reads as tilt too, and is left alone.
 3. **Closer look.** Photos still under the quality threshold get their own edit.
 4. **The instruction.** Muse Wonder groups the photos it applies to and writes each photo's instruction. It asks what only you can decide ("the same blue shirt for everyone, or each keeps his style?"), with a recommendation. Then each photo is edited by its own agent, a few at a time.
 

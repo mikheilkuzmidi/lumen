@@ -1,3 +1,5 @@
+import CoreImage
+import CoreGraphics
 import Foundation
 import ImageIO
 import LumenCore
@@ -5,6 +7,55 @@ import Testing
 @testable import LumenRender
 
 struct PhotoMeasurementsTests {
+    /// A rolled camera leans the upright things in a photo with its horizon; verticals converging in a shot taken
+    /// upward lean both ways and cancel.
+    @Test func uprightLinesLeanWithARolledCameraAndCancelWhenTheyConverge() throws {
+        func photo(_ draw: (CGContext) -> Void) -> CIImage {
+            let context = CGContext(data: nil, width: 600, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.setFillColor(CGColor(red: 0.8, green: 0.85, blue: 0.9, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 600, height: 400))
+            draw(context)
+            return CIImage(cgImage: context.makeImage()!)
+        }
+        func poles(_ context: CGContext) {
+            context.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+            for x in stride(from: -240, through: 240, by: 60) { context.fill(CGRect(x: x, y: -150, width: 8, height: 260)) }
+        }
+        for degrees in [3.0, -3.0] {
+            let rolled = photo { context in
+                context.translateBy(x: 300, y: 200)
+                context.rotate(by: degrees * .pi / 180)
+                poles(context)
+            }
+            let lean = try #require(try PhotoStatistics(photo: rolled, context: CIContext(), capturedAt: nil).facts.verticalLean)
+            #expect(abs(lean - degrees) < 0.6, "rolled \(degrees)°, lean \(lean)")
+        }
+        // Poles converging toward the top, as in a shot taken upward: the left ones lean right, the right ones left.
+        let converging = photo { context in
+            context.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+            for x in stride(from: 60.0, through: 540, by: 60) {
+                let top = 300 + (x - 300) * 0.9, width = 8.0
+                context.move(to: CGPoint(x: x, y: 60)); context.addLine(to: CGPoint(x: x + width, y: 60))
+                context.addLine(to: CGPoint(x: top + width, y: 360)); context.addLine(to: CGPoint(x: top, y: 360))
+                context.closePath(); context.fillPath()
+            }
+        }
+        let lean = try #require(try PhotoStatistics(photo: converging, context: CIContext(), capturedAt: nil).facts.verticalLean)
+        #expect(abs(lean) < 0.6, "converging verticals cancel: \(lean)")
+        // A rolled horizon's long level line tilts with it.
+        for degrees in [3.0, -3.0] {
+            let horizon = photo { context in
+                context.translateBy(x: 300, y: 200)
+                context.rotate(by: degrees * .pi / 180)
+                context.setFillColor(CGColor(red: 0.15, green: 0.3, blue: 0.5, alpha: 1)); context.fill(CGRect(x: -500, y: -500, width: 1000, height: 500))
+            }
+            let level = try #require(try PhotoStatistics(photo: horizon, context: CIContext(), capturedAt: nil).facts.levelTilt)
+            #expect(abs(level - degrees) < 0.6, "horizon rolled \(degrees)°, level lines \(level)")
+        }
+        // An empty sky has no upright things to measure.
+        #expect(try PhotoStatistics(photo: photo { _ in }, context: CIContext(), capturedAt: nil).facts.verticalLean == nil)
+    }
+
     @Test func measuresBlackAndClippedPhotosWithoutARenderer() throws {
         let folder = try LibraryFolder()
         defer { folder.remove() }

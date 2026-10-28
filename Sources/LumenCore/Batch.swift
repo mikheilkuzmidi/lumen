@@ -66,16 +66,24 @@ public struct PhotoFacts: Codable, Equatable, Sendable {
     public var clippedHighlights: Double
     /// The horizon's tilt in degrees, positive counterclockwise, when one was found.
     public var tilt: Double?
+    /// How far the photo's upright lines (poles, walls, door frames) lean, in degrees, positive counterclockwise like
+    /// `tilt`: a rolled camera tilts them with the horizon; nil when there are too few to tell.
+    public var verticalLean: Double?
+    /// The tilt of the photo's long level lines (a horizon, a shoreline), positive counterclockwise; nil when there
+    /// are none, as in a canyon or water seen from above.
+    public var levelTilt: Double?
     public var capturedAt: Date?
 
     public init(size: PixelSize, sharpness: Double, exposure: Double, clippedShadows: Double = 0, clippedHighlights: Double = 0,
-                tilt: Double? = nil, capturedAt: Date? = nil) {
+                tilt: Double? = nil, verticalLean: Double? = nil, levelTilt: Double? = nil, capturedAt: Date? = nil) {
         self.size = size
         self.sharpness = sharpness
         self.exposure = exposure
         self.clippedShadows = clippedShadows
         self.clippedHighlights = clippedHighlights
         self.tilt = tilt
+        self.verticalLean = verticalLean
+        self.levelTilt = levelTilt
         self.capturedAt = capturedAt
     }
 }
@@ -255,6 +263,10 @@ public struct BatchPhotoResult: Codable, Equatable, Sendable {
     public var flagged: String?
     public var auto: String?
     public var straightened: Double?
+    /// The tilt measured on the Mac and the line the reviewer said should be level, which together decide
+    /// straightening; nil in older summaries.
+    public var measuredTilt: Double?
+    public var levelLine: LevelLine?
     public var instruction: String?
     /// The per-photo agent's last word, or why it stopped.
     public var outcome: String?
@@ -263,11 +275,14 @@ public struct BatchPhotoResult: Codable, Equatable, Sendable {
     public var cost: Double?
 
     public init(photo: PhotoID, flagged: String? = nil, auto: String? = nil, straightened: Double? = nil,
+                measuredTilt: Double? = nil, levelLine: LevelLine? = nil,
                 instruction: String? = nil, outcome: String? = nil, failed: Bool = false, cost: Double? = nil) {
         self.photo = photo
         self.flagged = flagged
         self.auto = auto
         self.straightened = straightened
+        self.measuredTilt = measuredTilt
+        self.levelLine = levelLine
         self.instruction = instruction
         self.outcome = outcome
         self.failed = failed

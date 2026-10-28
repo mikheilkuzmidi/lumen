@@ -145,6 +145,7 @@ actor BatchRun {
             let measured = try await host.facts(photo)
             try checkCancellation()
             facts[photo] = measured
+            results[photo]?.measuredTilt = measured.tilt
             events.yield(.measured(photo, measured))
         } catch {
             try record(error, for: photo)
@@ -159,6 +160,7 @@ actor BatchRun {
                 guard let facts = facts[photo] else { continue }
                 let review = measuredReview(photo, facts: facts)
                 reviews[photo] = review
+                results[photo]?.levelLine = review.levelLine
                 events.yield(.reviewed(review))
             }
             return
@@ -197,6 +199,7 @@ actor BatchRun {
                     continue
                 }
                 reviews[input.photo] = review
+                results[input.photo]?.levelLine = review.levelLine
                 events.yield(.reviewed(review))
             }
         } catch is BatchCallLimit {
@@ -272,17 +275,20 @@ actor BatchRun {
         }
     }
 
+    /// The photos whose camera was rolled. Vision's horizon reads perspective, a receding shore or a forest's slope as
+    /// tilt too, so the photo's own straight lines must agree before anything is rotated. Long upright lines (walls,
+    /// poles, frames) stand plumb unless the camera was rolled, and decide where there are enough of them; horizontals
+    /// in a street recede with perspective, so long level lines decide only without them, and not in a close-up or
+    /// studio photo, which the reviewer says has nothing that should be level. With neither, nothing is rotated.
     private func tilted(_ kept: [PhotoID]) -> [PhotoID] {
         kept.filter { photo in
-            // A measured tilt small enough to be an accident (past 5° a tilt is usually meant) counts when the photo
-            // has a horizon or water line, which are level by nature. With nothing that should be level, the measurement
-            // read something else; otherwise the reviewer's look at the photo decides.
-            guard let tilt = facts[photo]?.tilt, tilt.isFinite, abs(tilt) >= 0.5, abs(tilt) <= 5 else { return false }
-            switch reviews[photo]?.levelLine {
-            case .horizon?, .water?: return true
-            case LevelLine.none?: return false
-            case .building?, nil: return reviews[photo]?.tilted != false
+            guard let facts = facts[photo], let tilt = facts.tilt, tilt.isFinite, abs(tilt) >= 0.5, abs(tilt) <= 7 else {
+                return false
             }
+            func agrees(_ measured: Double) -> Bool { abs(measured - tilt) <= max(0.7, abs(tilt) * 0.5) }
+            if let lean = facts.verticalLean, lean.isFinite { return agrees(lean) }
+            if let level = facts.levelTilt, level.isFinite, reviews[photo]?.levelLine != LevelLine.none { return agrees(level) }
+            return false
         }
     }
 

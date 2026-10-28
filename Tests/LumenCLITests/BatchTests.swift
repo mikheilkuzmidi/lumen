@@ -45,9 +45,9 @@ struct BatchTests {
         let trace = try JSONDecoder().decode(BatchSummary.self, from: Data(contentsOf: output.appendingPathComponent("batch-trace.json")))
         #expect(trace == result)
         let markdown = try String(contentsOf: output.appendingPathComponent("batch-summary.md"), encoding: .utf8)
-        #expect(markdown.contains("| Photo | Flagged | Auto | Straightened | Instruction | Outcome |"))
-        #expect(markdown.contains("| misfire.png | Pocket shot |  |  |  | Flagged |"))
-        #expect(markdown.contains("| tilted.png |  | Auto: exposure +0.3 | -2.0° | Make the coat navy |"))
+        #expect(markdown.contains("| Photo | Flagged | Auto | Tilt measured | Level line | Straightened | Instruction | Outcome |"))
+        #expect(markdown.contains("| misfire.png | Pocket shot |  |  |  |  |  | Flagged |"))
+        #expect(markdown.contains("| tilted.png |  | Auto: exposure +0.3 | +2.0° |  | -2.0° | Make the coat navy |"))
         #expect(markdown.contains("| style | Which coat colour? | Navy coats | recommendation |"))
         let size = PixelSize(width: 3 * BatchContactSheet.cellWidth, height: BatchContactSheet.cellHeight)
         #expect(PhotoFixtures.size(of: output.appendingPathComponent("contact-before.jpg")) == size)
@@ -172,7 +172,7 @@ struct BatchTests {
                              instruction: "Navy\ncoat | green", outcome: "Couldn't save & keep", failed: true),
         ], answers: [BatchAnswer(question: question, answer: "<navy>", byPerson: true)], modelCalls: 4, duration: 2)
         let markdown = BatchReport.markdown(summary)
-        #expect(markdown.contains("| a&#124;b.png | Too &lt;dark&gt; | Auto: +0.3 | -2.0° | Navy coat &#124; green | Failed: Couldn't save &amp; keep |"))
+        #expect(markdown.contains("| a&#124;b.png | Too &lt;dark&gt; | Auto: +0.3 |  |  | -2.0° | Navy coat &#124; green | Failed: Couldn't save &amp; keep |"))
         #expect(markdown.contains("| style | Navy &#124; green? | &lt;navy&gt; | person |"))
     }
 

@@ -238,7 +238,7 @@ struct LibraryFixture {
     let folder: URL
     let photos: [PhotoID]
     let host: LibraryTestHost
-    static let facts = PhotoFacts(size: PixelSize(width: 32, height: 24), sharpness: 0.8, exposure: 0.5, tilt: 2)
+    static let facts = PhotoFacts(size: PixelSize(width: 32, height: 24), sharpness: 0.8, exposure: 0.5, tilt: 2, verticalLean: 2)
 
     init() throws {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("library-test-\(UUID())")

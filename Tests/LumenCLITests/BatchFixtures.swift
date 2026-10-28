@@ -46,7 +46,9 @@ actor BatchScriptedLibrary: LibraryHost {
     }
     func facts(_ photo: PhotoID) async throws -> PhotoFacts {
         if photo.rawValue == "broken.png" { throw CLIError("Unreadable photo.") }
-        return PhotoFacts(size: image.size, sharpness: 0.8, exposure: 0.5, tilt: photo.rawValue == "tilted.png" ? 2 : nil)
+        // The tilted photo's walls lean with its horizon: its camera was rolled.
+        let tilt: Double? = photo.rawValue == "tilted.png" ? 2 : nil
+        return PhotoFacts(size: image.size, sharpness: 0.8, exposure: 0.5, tilt: tilt, verticalLean: tilt)
     }
     func applyAuto(_ photo: PhotoID) async throws -> String {
         auto.append(photo)

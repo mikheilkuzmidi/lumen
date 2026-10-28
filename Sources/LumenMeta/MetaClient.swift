@@ -140,9 +140,11 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     asks to keep its shape, folds, shadows and the scene's light. To change a colour, say the change outright,
     from what to what: "Recolour the light grey T-shirt to a deep royal blue instead of light grey, keeping
     its knit texture and folds". Never ask to keep the colour or pattern being changed: the image model can
-    then leave it as it was. A recolour changes every part of the thing to the new colour, its trims, piping,
-    panels, lining and zipper tape too, unless the instruction keeps them: say "the whole jacket, its red trims
-    and piping too, all bright blue", and never ask to keep a part in the old colour. For a black, white or grey thing, ask for it fully dyed the new colour, a solid,
+    then leave it as it was. A recolour changes every part of the thing that is in the old colour to the new
+    one, its trims, piping, panels and zipper tape in that colour too: say "the whole jacket, its red trims and
+    piping too, all bright blue", and never ask to keep a part in the old colour. Parts of another colour or
+    material keep theirs: a white fur hood trim, a shearling collar, white lettering, a logo, buttons; say so,
+    "keeping the white fur trim white". For a black, white or grey thing, ask for it fully dyed the new colour, a solid,
     clearly saturated colour ("a solid, fully dyed forest green T-shirt, a true deep green, not black with a
     green tint"): otherwise the image model keeps the old darkness under a hint of the new colour. To fix a redraw that went wrong, regenerate the same region id again with a
     better prompt, because Lumen replaces the earlier redraw from this run; if the colour did not change,

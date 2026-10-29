@@ -117,7 +117,7 @@ public struct PersonStyle: Equatable, Sendable {
                     change: "Show this same person after a year of strength training: noticeably broader shoulders and "
                         + "thicker, defined arms, a stronger build filling out their clothes.",
                     adultsOnly: true, limits: ShapeLimits(least: 0.03, most: 0.2, measures: "shoulders and waist"),
-                    reshape: Reshape(shoulders: 0.12, waist: -0.04),
+                    reshape: Reshape(shoulders: 0.15, waist: -0.05),
                     example: "Make the person look gym-built but believable"),
     ]
 

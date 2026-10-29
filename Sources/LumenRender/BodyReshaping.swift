@@ -16,11 +16,15 @@ enum BodyReshaping {
         let width = input.width, height = input.height
         guard width > 8, height > 8 else { return nil }
         let pixels = input.bytes
-        let body = mask.resized(to: PixelSize(width: width, height: height))
+        // What the person holds isn't their body: with a big fish held across his arms in it, a man's "shoulders" were
+        // found at the fish, where the warp then had to hold still, and nothing changed.
+        let held = keep.map { $0.resized(to: PixelSize(width: width, height: height)) }
+        let body = held.map { mask.resized(to: PixelSize(width: width, height: height)).multiplied(by: $0.inverted()) }
+            ?? mask.resized(to: PixelSize(width: width, height: height))
         guard let shape = Shape(body), shape.shoulderWidth >= 8 else { return nil }
         // How much each pixel may move: none on what is kept, all of it a little way from it.
         let reach = max(2, Int((shape.shoulderWidth * 0.1).rounded()))
-        let held = keep.map { $0.resized(to: PixelSize(width: width, height: height)).grown(by: reach).blurred(by: Double(reach) / 2) }
+        let still = held.map { $0.grown(by: reach).blurred(by: Double(reach) / 2) }
         var moved = pixels
         var changed = [UInt8](repeating: 0, count: width * height)
         for y in 0..<height {
@@ -40,7 +44,7 @@ enum BodyReshaping {
                 } else {
                     continue
                 }
-                if let held { source = Double(x) + (source - Double(x)) * (1 - Double(held.coverage[y * width + x]) / 255) }
+                if let still { source = Double(x) + (source - Double(x)) * (1 - Double(still.coverage[y * width + x]) / 255) }
                 guard abs(source - Double(x)) > 0.25 else { continue }
                 // Catmull-Rom across four pixels of the row: a straight blend of two softened the twigs beside a waist.
                 let base = Int(source.rounded(.down)), t = source - Double(base)

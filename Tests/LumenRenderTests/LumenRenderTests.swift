@@ -281,6 +281,30 @@ struct PhotoPixelTests {
         #expect(right >= 152, "the far shoulder's edge moved out to \(right)")
     }
 
+    /// A man filling the frame held a big fish across his arms, the widest part of his outline: the warp took it for his
+    /// shoulders and, keeping the fish still, changed nothing. The shoulders are found without what he holds.
+    @Test
+    func theShouldersAreFoundWithoutWhatThePersonHolds() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // Shoulders 100 wide at rows 30–59, a torso 80 wide below; arms and a fish 180 wide across rows 100–129.
+        func person(_ x: Int, _ y: Int) -> Bool {
+            let w = y < 10 ? 0 : y < 30 ? 40 : y < 60 ? 100 : (100..<130).contains(y) ? 180 : 80
+            return abs(Double(x) + 0.5 - 100) < Double(w) / 2
+        }
+        func fish(_ x: Int, _ y: Int) -> Bool { (100..<130).contains(y) && abs(Double(x) + 0.5 - 100) >= 40 && abs(Double(x) + 0.5 - 100) < 90 }
+        let url = try folder.photo(width: 200, height: 300) { x, y in
+            fish(x, y) ? RGB(40, 190, 70) : person(x, y) ? RGB(200, 30, 30) : RGB(140, 140, 140)
+        }
+        let image = EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 300))
+        let body = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { person($0 % 200, $0 / 200) ? 255 : 0 })
+        let held = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { fish($0 % 200, $0 / 200) ? 255 : 0 })
+        let shaped = try #require(try EditSupport.reshaped(image, mask: body, keep: held, shoulders: 0.1, waist: -0.1))
+        let after = try Pixels(data: shaped.image.data)
+        let shoulders = (30..<60).map { y in (0..<200).filter { after[$0, y].red > 0.6 && after[$0, y].green < 0.3 }.count }.max() ?? 0
+        #expect(shoulders >= 106, "the real shoulders widened: \(shoulders)")
+    }
+
     /// The warp blended two pixels at a time, which softened the twigs beside a man's waist enough for the critic to
     /// call it a smear (81% of the twigs' contrast kept). Fine texture beside the body keeps at least 90% of its contrast.
     @Test

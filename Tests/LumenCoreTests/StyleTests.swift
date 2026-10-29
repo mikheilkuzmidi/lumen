@@ -197,7 +197,7 @@ struct StyleTests {
         for try await event in agent.run("Make him look gym-built") {
             if case .applied(let layer) = event { applied.append(layer) }
         }
-        #expect(await host.asked == [0.12, -0.04])
+        #expect(await host.asked == [0.15, -0.05])
         #expect(applied.map(\.label) == ["Person: Gym-built"])
         let done = try #require(await planner.critiqued.first)
         #expect(done.contains { $0.contains("didn't work") && $0.contains("the reshaped build stays") }, "\(done)")
@@ -222,7 +222,7 @@ struct StyleTests {
         #expect(applied.map(\.label) == ["Person: Gym-built"], "only the reshape")
         let done = try #require(await planner.critiqued.first)
         #expect(done.contains { $0.contains("was left out, as its shape went past a believable change; the reshaped build stays") }, "\(done)")
-        #expect(done.contains("Shape: shoulders +12%, waist −4% (a believable change is 3% to 20%)."), "the reshape's own numbers")
+        #expect(done.contains("Shape: shoulders +15%, waist −5% (a believable change is 3% to 20%)."), "the reshape's own numbers")
     }
 
     /// A big fish held against a man's chest was bent by the warp and smeared by the redraw. What the plan says to

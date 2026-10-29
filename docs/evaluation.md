@@ -148,6 +148,31 @@ The weaker one was golden hour (man-in-denim-jacket-posing): warm light fell fro
 
 ![The city's spire before, with the rim, and now](images/eval/spire-close-up.jpg)
 
+## October 28–29: the maintainer's own photos, and person styles (commits db8453e to b8164d3)
+
+The maintainer ran Lumen on 24 of their own photos (16 from their Unsplash profile, 8 local) and named what was off. Each was fixed, tested and run again on the same photo; those photos stay out of the repository.
+
+| Problem | Cause | Change | Now |
+| --- | --- | --- | --- |
+| Orange flowers made purple: one of eight changed ([#37](https://github.com/mikheilkuzmidi/lumen/issues/37)). | The planner pointed at a few flowers; small ones it missed were left out. | A selection can be every one SAM finds, kept by colour family; the redraw names how many. | All 8 poppies purple; the red flowers beside them kept. |
+| A coat redrawn navy kept a red outline; a skier's jacket kept red piping ([#37](https://github.com/mikheilkuzmidi/lumen/issues/37)). | The mask stopped short of a tab and a soft edge; the planner asked to keep trims. | The mask grows over every main colour of the thing, firms its colourful soft edge and adds a tinted ring; trims in the old colour are recoloured, other materials (fur) keep theirs. | Red pixels on the coat 219 → 7; the jacket fully blue, its fur white. |
+| T-shirts asked for in forest green came out black with a green tint ([#37](https://github.com/mikheilkuzmidi/lumen/issues/37)). | Muse Image keeps a dark thing's darkness under a hint of colour. | Black, white or grey things are asked for fully dyed; a named hue must measure chroma 20 or more. | A real forest green. |
+| A car in a black-and-white photo stayed black ([#38](https://github.com/mikheilkuzmidi/lumen/issues/38)). | The planner's point was 0.001 outside the car's box. | The thing a point just misses is kept when it is clearly the nearest. | Deep red. |
+| A sharp storm photo was flagged as blurred ([#39](https://github.com/mikheilkuzmidi/lumen/issues/39)). | Soft clouds over a crisp town read as blurred in a contact sheet. | A blur flag holds only when no part of the photo is sharp (its sharpest tiles, at 1536 px). | Not flagged; a shaken frame (0.031) and a pocket shot (0.002) still are. |
+| A thin red line under the coat's collar tab and a pink rim on its cuff, at 3872 px ([#40](https://github.com/mikheilkuzmidi/lumen/issues/40)). | The patch was blended through a feather 0.3% of the patch wide, fading the coat's last 10 px back to red; enlarged patches got the old colour's detail back per channel. | The feather only smooths the mask's own pixel steps; detail comes back as lightness only. | Red let through at the edge ~1,890 → ~90 pixels; no line at 1:1. |
+| In Photoeditor, recolours had none of this ([#41](https://github.com/mikheilkuzmidi/lumen/issues/41)). | The app's host implemented no fitting, growth or measuring. | `EditSupport` works them out from any render; the app's host uses it. | The same masks and numbers in the app. |
+| The critic rejected gentle edits of overcast skies for "a white grid" ([#42](https://github.com/mikheilkuzmidi/lumen/issues/42)). | Real, in the 1024 px preview only: scaling down left rows, columns and corners a hair under opaque, and saturation's divide made them white or black. | Resizing is clamped and opaque; saturation makes its input opaque first. | Flat skies in previews; saturation +3 alone had reproduced it. |
+
+### Person styles ([#43](https://github.com/mikheilkuzmidi/lumen/issues/43))
+
+A style step redraws only a person's face, head or body: chad, gigachad, Hollywood glow-up, beard, smile, aviator shades, zombie make-up, 30 years older, platinum blonde, athletic, gym-built, and effects (dramatic black and white, main character, vintage film, neon night). Reshaping and ageing are for adults only. Run once each on the maintainer's photos of adults:
+
+- **Worked, judged by eye:** shades, beard, smile (on one of two people), zombie make-up, platinum blonde, gym-built (visibly bigger, defined arms), main character, neon night, 30 years older, chad and gigachad. Subtle: Hollywood, vintage.
+- **Bodies:** asked for "slightly broader shoulders and a slimmer waist", Muse Image changed a body by 1–2% or not at all, three times in three; told outright with amounts it sometimes did. An athletic build is now a warp, shoulders +10% and waist −10% about the body's own centre line, fading out a quarter of a shoulder width past it: exact and natural, but subtle in a loose sweater, and it nudges a person standing close beside.
+- **Face tone:** on a bluish phone photo Muse Image drew the face warmer, twice even when told not to, leaving a seam down the neck. The redraw now gets the photo's own colour cast back under the face's mask, keeping its own lightness; the seam is down to a faint transition.
+- **Dropped:** a 1980s mullet, which doesn't show from the front; platinum blonde took its place.
+- **Faces:** a face reached 10% of the crop past SAM's mask at first, and a head drawn a little to one side showed twice through the soft edge as a pale arc; 5% removed it.
+
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:
 

@@ -254,6 +254,36 @@ struct PhotoPixelTests {
         #expect(light.blue > light.red + 0.1 && dark.blue > dark.red + 0.1, "the coat stays blue")
     }
 
+    /// The warp blended two pixels at a time, which softened the twigs beside a man's waist enough for the critic to
+    /// call it a smear (81% of the twigs' contrast kept). Fine texture beside the body keeps at least 90% of its contrast.
+    @Test
+    func theBackgroundBesideAReshapedBodyKeepsItsTexture() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        func width(_ y: Int) -> Int { y < 20 ? 0 : y < 60 ? 40 : y < 100 ? 100 : y < 250 ? 80 : 60 }
+        func inside(_ x: Int, _ y: Int) -> Bool { abs(Double(x) + 0.5 - 100) < Double(width(y)) / 2 }
+        // Twigs: 2 px light, 2 px dark, beside a red body.
+        let url = try folder.photo(width: 200, height: 300) { x, y in
+            inside(x, y) ? RGB(200, 30, 30) : (x / 2) % 2 == 0 ? RGB(110, 110, 110) : RGB(170, 170, 170)
+        }
+        let image = EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 300))
+        let mask = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { inside($0 % 200, $0 / 200) ? 255 : 0 })
+        let shaped = try #require(try EditSupport.reshaped(image, mask: mask, shoulders: 0.1, waist: -0.1))
+        let after = try Pixels(data: shaped.image.data)
+        // The background the warp moved, beside the waist.
+        var before: [Double] = [], moved: [Double] = []
+        for y in 160..<175 { for x in 0..<200 where shaped.changed[x, y] == 255 && !inside(x, y) && after[x, y].green > 0.3 {
+            moved.append(after[x, y].green)
+            before.append((x / 2) % 2 == 0 ? 110.0 / 255 : 170.0 / 255)
+        } }
+        func spread(_ values: [Double]) -> Double {
+            let mean = values.reduce(0, +) / Double(values.count)
+            return (values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)).squareRoot()
+        }
+        #expect(moved.count > 100)
+        #expect(spread(moved) >= spread(before) * 0.9, "texture kept: \(spread(moved)) of \(spread(before))")
+    }
+
     /// Muse Image redrew a bluish phone photo's face warm, which showed as a seam down the neck. The redraw gets the
     /// photo's own cast back under the face's mask, keeps its own lightness (its new stubble stays dark), and nothing
     /// outside the mask changes.

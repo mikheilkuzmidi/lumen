@@ -36,11 +36,15 @@ enum BodyReshaping {
                     continue
                 }
                 guard abs(source - Double(x)) > 0.25 else { continue }
-                let left = min(max(Int(source.rounded(.down)), 0), width - 1), right = min(left + 1, width - 1)
-                let t = min(max(source - Double(left), 0), 1)
+                // Catmull-Rom across four pixels of the row: a straight blend of two softened the twigs beside a waist.
+                let base = Int(source.rounded(.down)), t = source - Double(base)
+                let taps = (-1...2).map { min(max(base + $0, 0), width - 1) }
+                let t2: Double = t * t, t3: Double = t2 * t
+                let weights: [Double] = [(-t3 + 2 * t2 - t) / 2, (3 * t3 - 5 * t2 + 2) / 2, (-3 * t3 + 4 * t2 + t) / 2, (t3 - t2) / 2]
                 for channel in 0..<4 {
-                    let a = Double(pixels[(y * width + left) * 4 + channel]), b = Double(pixels[(y * width + right) * 4 + channel])
-                    moved[(y * width + x) * 4 + channel] = UInt8(min(255, max(0, (a + (b - a) * t).rounded())))
+                    var value: Double = 0
+                    for (tap, weight) in zip(taps, weights) { value += weight * Double(pixels[(y * width + tap) * 4 + channel]) }
+                    moved[(y * width + x) * 4 + channel] = UInt8(min(255, max(0, value.rounded())))
                 }
                 changed[y * width + x] = 255
             }

@@ -114,9 +114,12 @@ enum PhotoAdjustments {
     /// raised to `factor` and the lightness kept. A channel can near zero but never pass it: in linear light, +30 took
     /// a sunset's blue from 79 to 8, and with contrast to below zero, where it clipped into a flat orange patch.
     static func saturated(_ image: CIImage, by factor: Double) -> CIImage {
+        // The divides below are of premultiplied colour, so the photo is made fully opaque first: a pixel a hair under
+        // opaque came out white.
         let encoded = image.applyingFilter("CILinearToSRGBToneCurve")
             .applyingFilter("CIColorClamp", parameters: ["inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
                                                          "inputMaxComponents": CIVector(x: 4, y: 4, z: 4, w: 1)])
+            .settingAlphaOne(in: image.extent)
         // Core Image's divide blend caps its result at 1, so each share is taken of 16 × the lightness and the 16 put
         // back after: a pure blue's share of its lightness is about 14.
         let power = max(0, factor)

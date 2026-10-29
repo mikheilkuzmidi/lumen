@@ -11,14 +11,20 @@ enum PhotoCompositor {
             .cropped(to: rect)
     }
 
+    /// An opaque photo scaled to fill `rect`, opaque to its last pixel. Lanczos reads past the photo's edge, which left
+    /// its border and corners part transparent, and some rows and columns a hair under opaque; a divide over those
+    /// (saturation's) drew a white grid with black corners on a scaled-down sky.
     static func resized(_ image: CIImage, to rect: CGRect) -> CIImage {
-        image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+        let extent = image.extent
+        return image.clampedToExtent()
+            .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
             .applyingFilter("CILanczosScaleTransform", parameters: [
-                "inputScale": rect.height / image.extent.height,
-                "inputAspectRatio": (rect.width / image.extent.width) / (rect.height / image.extent.height),
+                "inputScale": rect.height / extent.height,
+                "inputAspectRatio": (rect.width / extent.width) / (rect.height / extent.height),
             ])
             .transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
             .cropped(to: rect)
+            .settingAlphaOne(in: rect)
     }
 
     static func feather(_ mask: CIImage, radius: CGFloat) -> CIImage {

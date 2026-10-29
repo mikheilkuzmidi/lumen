@@ -254,6 +254,25 @@ struct PhotoPixelTests {
         #expect(light.blue > light.red + 0.1 && dark.blue > dark.red + 0.1, "the coat stays blue")
     }
 
+    /// The critic turned down a gentle edit of an overcast sky three times for "a white grid over the sky": the preview it
+    /// saw was scaled down, which left some rows, columns and the corners a little transparent, and saturation's divide
+    /// turned them white or black. A flat sky stays flat at any size.
+    @Test
+    func aFlatSkyStaysFlatInAScaledDownPreview() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 1600, height: 1200) { _, _ in RGB(205, 210, 220) })
+        try await document.apply(Layer(label: "Colour", content: .adjustment(values: [.saturation: 3], mask: nil)), assets: AssetStore())
+        let preview = try Pixels(data: try await document.render(maxLongEdge: 1024).data)
+        let middle = preview[preview.width / 2, preview.height / 2]
+        var worst = 0.0, at = (0, 0)
+        for y in 0..<preview.height { for x in 0..<preview.width {
+            let distance = preview[x, y].distance(to: middle)
+            if distance > worst { worst = distance; at = (x, y) }
+        } }
+        #expect(worst <= 4.0 / 255, "the sky is \(Int(worst * 255)) levels off at \(at)")
+    }
+
     /// The navy coat on a 4000 px photo kept a red line under its collar tab and along its cuff: the patch was blended
     /// through an edge a share of the patch wide, which faded the coat's last 10 px back toward red. The edge only
     /// smooths the mask's own pixel steps.

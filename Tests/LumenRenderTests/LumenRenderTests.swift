@@ -254,6 +254,61 @@ struct PhotoPixelTests {
         #expect(light.blue > light.red + 0.1 && dark.blue > dark.red + 0.1, "the coat stays blue")
     }
 
+    /// Muse Image redrew a bluish phone photo's face warm, which showed as a seam down the neck. The redraw gets the
+    /// photo's own cast back under the face's mask, keeps its own lightness (its new stubble stays dark), and nothing
+    /// outside the mask changes.
+    @Test
+    func aRedrawnFaceGetsThePhotosOwnCastBack() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        func face(_ x: Int, _ y: Int) -> Bool { (30..<70).contains(x) && (20..<80).contains(y) }
+        let original = try folder.photo(width: 100, height: 100) { x, y in face(x, y) ? RGB(165, 170, 195) : RGB(60, 120, 60) }
+        let generated = try folder.photo(width: 100, height: 100) { x, y in
+            guard face(x, y) else { return RGB(60, 120, 60) }
+            return y >= 65 ? RGB(120, 85, 75) : RGB(215, 160, 135)
+        }
+        func encoded(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 100, height: 100))
+        }
+        let mask = MaskData(size: PixelSize(width: 100, height: 100), coverage: (0..<10000).map { face($0 % 100, $0 / 100) ? 255 : 0 })
+        let matched = try #require(try EditSupport.toneMatched(try encoded(generated), to: try encoded(original), under: mask))
+        let after = try Pixels(data: matched.data)
+        let cheek = after[50, 40], stubble = after[50, 72]
+        #expect(cheek.blue > cheek.red, "the cheek is the photo's bluish tone again: \(cheek.red), \(cheek.blue)")
+        #expect(stubble.blue > stubble.red - 0.02 && stubble.green < cheek.green - 0.15, "the stubble is dark, in the same cast")
+        #expect(after[5, 5].distance(to: RGB(60, 120, 60)) <= 1.0 / 255, "nothing outside the mask changes")
+    }
+
+    /// Asked for broader shoulders and a slimmer waist, Muse Image changed a body by a percent or two, or not at all. A
+    /// warp moves the outline by exactly the share asked for, leaves the head as it was, and bends only the background
+    /// right beside the body.
+    @Test
+    func aBodyIsReshapedByExactlyTheShareAskedFor() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A red person 200 × 300 on grey stripes: a head 40 wide, shoulders 100 wide (rows 60–99), a torso 80 wide.
+        func width(_ y: Int) -> Int { y < 20 ? 0 : y < 60 ? 40 : y < 100 ? 100 : y < 250 ? 80 : 60 }
+        func inside(_ x: Int, _ y: Int) -> Bool { abs(Double(x) + 0.5 - 100) < Double(width(y)) / 2 }
+        let url = try folder.photo(width: 200, height: 300) { x, y in
+            inside(x, y) ? RGB(200, 30, 30) : (x / 5) % 2 == 0 ? RGB(120, 120, 120) : RGB(160, 160, 160)
+        }
+        let image = EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 300))
+        let mask = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { inside($0 % 200, $0 / 200) ? 255 : 0 })
+        let shaped = try #require(try EditSupport.reshaped(image, mask: mask, shoulders: 0.1, waist: -0.1))
+        let after = try Pixels(data: shaped.image.data)
+        func red(_ y: Int) -> Int { (0..<200).filter { after[$0, y].red > 0.6 && after[$0, y].green < 0.3 }.count }
+        // The shoulders' widest row is found a few rows into them, where the head's narrower rows no longer smooth it.
+        let shoulders = (60..<100).map(red).max() ?? 0
+        #expect(shoulders >= 106 && shoulders <= 114, "shoulders \(shoulders), asked 110")
+        // The waist, a shoulder width below them: 80 narrowed by about a tenth.
+        let waist = (150..<180).map(red).min() ?? 0
+        #expect(waist >= 70 && waist <= 75, "waist \(waist), asked 72")
+        #expect(red(30) == 40, "the head as it was")
+        for y in [30, 80, 170] { #expect(after[2, y].distance(to: RGB((2 / 5) % 2 == 0 ? 120 : 160, 120, 120)) <= 1.0 / 255) }
+        #expect(shaped.changed[2, 80] == 0 && shaped.changed[100, 30] == 0, "only beside the body is changed")
+        #expect(shaped.changed[52, 80] == 255, "the shoulder's new edge is")
+    }
+
     /// The critic turned down a gentle edit of an overcast sky three times for "a white grid over the sky": the preview it
     /// saw was scaled down, which left some rows, columns and the corners a little transparent, and saturation's divide
     /// turned them white or black. A flat sky stays flat at any size.

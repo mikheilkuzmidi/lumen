@@ -150,8 +150,34 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     better prompt, because Lumen replaces the earlier redraw from this run; if the colour did not change,
     name the new colour more strongly and the old one it replaces. Do not select the object again for that. Remove is only for taking something out of
     the photo, never for changing how it looks.
+    """ + styleRules + """
+
     Return only the JSON described by the supplied schema.
     """
+
+    /// The style catalogue in words, from `PersonStyle.all` and `StyleEffect.all`, so the planner chooses from what
+    /// Lumen has.
+    static let styleRules: String = {
+        let styles = PersonStyle.all.map { style in
+            "\(style.id) (\(style.title), \(style.part.rawValue)\(style.adultsOnly ? ", adults only" : ""))"
+        }.joined(separator: ", ")
+        let effects = StyleEffect.all.map { "\($0.id) (\($0.title))" }.joined(separator: ", ")
+        return """
+        A person's looks (a "Chad" or "Gigachad" face, a beard, an older face, a smile, sunglasses, zombie make-up,
+        platinum blonde hair, an athletic or gym-built body) are changed with a style step, never with regenerate: select the person
+        (concept "person", a point on them), then a style step with that region and one style from the catalogue. It
+        redraws only their face, head or body, finds the face itself, and keeps a believable amount. Styles: \(styles).
+        Choose by the words: "chad", "jawline", "chiselled" is chad; "gigachad" or the meme is gigachad; "athletic",
+        "V-taper", "fit", "slimmer waist", "lose the belly" is athletic; "jacked", "buff", "bodybuilder", "muscular" is
+        muscular; "glow-up", "red carpet", "Hollywood" is hollywood. Restyle every person the instruction names, one
+        style step each. A style marked adults only is never for someone who looks under 18: plan nothing for them and
+        finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
+        alone (style none, and the person's region for main character): \(effects). "Black and white meme", "dramatic
+        mono" is monoDrama; "main character", "make them pop" is mainCharacter; "retro", "film", "old photo look" is
+        vintage; "neon", "cyberpunk", "night city" is neonNight. Use effect none otherwise.
+        """
+    }()
+
     static let planPrompt = editingRules + """
 
     Plan the fewest steps needed to meet the instruction in the supplied photo. The plan must contain every
@@ -195,6 +221,13 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     - Several things asked for in the same colour should measure alike: lightness within about 12 and the same
       colour name. Redraw the one that differs.
     - The rest of the photo should change only as much as the instruction asks for the whole photo.
+    A restyled person (a style step) must still be clearly the same person, and the change the style names must
+    be visible and believable: nothing outside the person changed, and where their outline moved, the background
+    continues with no warped lines, doubled limbs or smeared hands. A Shape note gives how far their outline moved
+    and the believable range: outside it, or with a visible flaw, give the same style step again; its effect is
+    already on, so give effect none. For a face the jaw number is rough: judge the face itself in the close-up.
+    A style's own effect, labelled "part of" it (the Gigachad meme's dramatic black and white), was asked for with
+    the style: keep it.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is
     visibly met and the photo still looks natural; ask for more only for a clear gap or a visible flaw.
     If satisfied, give no further steps. Otherwise give only the next steps needed, without repeating

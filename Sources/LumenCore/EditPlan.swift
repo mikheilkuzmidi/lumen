@@ -153,12 +153,14 @@ public struct Finish: Codable, Equatable, Sendable {
 }
 
 /// One thing the agent does. In JSON it is a flat object with a `type` ("select", "adjust", "regenerate",
-/// "remove", "crop", "revert" or "finish") beside that step's own fields; this is the contract every planner answers in.
+/// "remove", "style", "crop", "revert" or "finish") beside that step's own fields; this is the contract every planner
+/// answers in.
 public enum EditStep: Codable, Equatable, Sendable {
     case select(Selection)
     case adjust(Adjustment)
     case regenerate(Regeneration)
     case remove(Removal)
+    case style(StyleStep)
     case crop(Crop)
     case revert(Revert)
     case finish(Finish)
@@ -169,6 +171,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case .adjust: "adjust"
         case .regenerate: "regenerate"
         case .remove: "remove"
+        case .style: "style"
         case .crop: "crop"
         case .revert: "revert"
         case .finish: "finish"
@@ -185,6 +188,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case "adjust": self = .adjust(try Adjustment(from: decoder))
         case "regenerate": self = .regenerate(try Regeneration(from: decoder))
         case "remove": self = .remove(try Removal(from: decoder))
+        case "style": self = .style(try StyleStep(from: decoder))
         case "crop": self = .crop(try Crop(from: decoder))
         case "revert": self = .revert(try Revert(from: decoder))
         case "finish": self = .finish(try Finish(from: decoder))
@@ -201,6 +205,7 @@ public enum EditStep: Codable, Equatable, Sendable {
         case .adjust(let step): try step.encode(to: encoder)
         case .regenerate(let step): try step.encode(to: encoder)
         case .remove(let step): try step.encode(to: encoder)
+        case .style(let step): try step.encode(to: encoder)
         case .crop(let step): try step.encode(to: encoder)
         case .revert(let step): try step.encode(to: encoder)
         case .finish(let step): try step.encode(to: encoder)

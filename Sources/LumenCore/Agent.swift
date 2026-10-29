@@ -32,7 +32,7 @@ public enum LumenError: Error, Equatable, Sendable, LocalizedError {
 /// One thing that happened during an edit, for the timeline and the trace file.
 public struct TraceEvent: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case plan, select, adjust, regenerate, remove, crop, revert, critique, finish, failure
+        case plan, select, adjust, regenerate, remove, style, crop, revert, critique, finish, failure
     }
 
     public var kind: Kind
@@ -357,6 +357,9 @@ public actor EditAgent {
                     run.done.append(label)
                     run.done.append(contentsOf: notes)
                     troubled = troubled || !notes.isEmpty
+                case .style(let restyle):
+                    needsLook = true
+                    try await self.restyle(restyle, run: &run, redraws: &redraws, events: events)
                 case .crop(let crop):
                     let layer = Layer(label: "Photo: cropped", content: .crop(crop.rect))
                     try await apply(layer, kind: step.type, events: events)
@@ -687,6 +690,222 @@ public actor EditAgent {
                                kind: kind, notes: notes, redraws: &redraws, events: events)
     }
 
+    /// Restyles a person: redraws their face, head or body in a catalogue style, then grades the photo with the step's
+    /// effect, or the style's own.
+    private func restyle(_ step: StyleStep, run: inout Run, redraws: inout [String: Layer.ID], events: Events) async throws {
+        let person = try step.region.map { try region($0) }
+        let style = step.style.flatMap(PersonStyle.named)
+        if let style, let person {
+            let part = try await part(style.part, of: person, events: events)
+            let label = "\(title(person.info.id)): \(style.title)"
+            var notes: [String] = []
+            var reshaped = false
+            if let amount = style.reshape,
+               let shaped = try await reshape(part, by: amount, style: style, label: label, redraws: &redraws, events: events) {
+                notes += shaped
+                reshaped = true
+            }
+            if style.redraws || !reshaped {
+                notes += try await redraw(part, as: style, label: label, redraws: &redraws, events: events)
+            }
+            run.edit(person.info.id)
+            run.done.append(label)
+            run.done.append(contentsOf: notes)
+        }
+        guard let effect = (step.effect ?? style?.effect).flatMap(StyleEffect.named) else { return }
+        // A style's own effect is part of it (the Gigachad meme is black and white), and says so for the critic.
+        let ofStyle = step.effect == nil ? style.map { " (part of \($0.title))" } ?? "" : ""
+        for part in effect.parts {
+            let mask: AssetID?
+            let name: String
+            switch part.target {
+            case .photo:
+                (mask, name) = (nil, "Photo")
+            case .person:
+                guard let person else { continue }
+                (mask, name) = (person.asset, title(person.info.id))
+            case .background:
+                guard let person else { continue }
+                (mask, name) = (await assets.put(.mask(person.mask.inverted())), "Behind \(person.info.id)")
+            }
+            let label = "\(name): \(effect.title)\(ofStyle)"
+            // A style redrawn again (the critic asking for more) keeps the grade it already has, not a second one.
+            guard !layers.contains(where: { $0.info.label == label }) else { continue }
+            try await apply(Layer(label: label, content: .adjustment(values: part.values, mask: mask)), kind: "style",
+                            region: part.target == .photo ? nil : person?.info.id, events: events)
+            run.done.append(label)
+        }
+    }
+
+    /// What a style redraws of a person: the person for a body; otherwise their face or head, the largest one SAM finds
+    /// that lies mostly on them, so in a group it is never the face beside theirs.
+    private func part(_ part: PersonStyle.Part, of person: Region, events: Events) async throws -> Region {
+        if part == .body || person.info.concept?.lowercased().contains(part.concept) == true { return person }
+        let id = "\(person.info.id)-\(part.rawValue)"
+        let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
+        let request = SegmentRequest(image: image, concept: part.concept)
+        let found = try await call(.select, model: segmenter.modelID, detail: "Find the \(part.rawValue) of \(person.info.id)", events: events) {
+            try await self.segmenter.segment(request)
+        }
+        let theirs = found.map { $0.mask.resized(to: person.mask.size) }
+            .filter { Self.share(of: $0, inside: person.mask) >= 0.5 }
+            .max { $0.area < $1.area }
+        guard let theirs, let region = try await region(Selection(id: id, concept: part.concept), mask: theirs,
+                                                        label: part.concept, events: events) else {
+            throw LumenError.invalidResponse("No \(part.rawValue) was found on the \(person.info.id).")
+        }
+        regions[id] = region
+        return region
+    }
+
+    /// Redraws a person's face, head or body in a style. Unlike a recolour, its outline may change (a squarer jaw, a
+    /// slimmer waist), so the redraw shows through the part's mask grown well past it and softened, as a removal's is,
+    /// not held to the old edge. How far the outline moved is measured: a change too slight to see or too far to believe
+    /// is asked for once more, and the critic is told the numbers.
+    private func redraw(_ region: Region, as style: PersonStyle, label: String, redraws: inout [String: Layer.ID],
+                        events: Events) async throws -> [String] {
+        try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
+        let box = region.info.box
+        // Room around the part for its outline to grow into: broader shoulders, a wider jaw.
+        let margin = style.part == .body ? 0.25 : 0.3
+        let expanded = NormalizedRect(x: box.x - box.width * margin, y: box.y - box.height * margin,
+                                      width: box.width * (1 + 2 * margin), height: box.height * (1 + 2 * margin))
+        guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
+        let image = try await host.render(region: rect, maxLongEdge: 2048)
+        try checkCancellation()
+        if !closeUpsBefore.contains(where: { $0.region == region.info.id }) {
+            let closeUp = try await host.render(region: rect, maxLongEdge: configuration.closeUpLongEdge)
+            closeUpsBefore.append((region.info.id, rect, closeUp))
+        }
+        let short = Double(min(image.size.width, image.size.height))
+        let original = region.mask.cropped(to: rect).resized(to: image.size)
+        // A body's reaches 8% of the crop past it, for broader shoulders; a face's 5%, for a wider jaw or a beard: further,
+        // a head the redraw drew a little to one side showed twice through the soft edge, as a pale arc.
+        let mask = original.grown(by: max(2, Int((short * (style.part == .body ? 0.08 : 0.05)).rounded())))
+        let position = Self.place(of: box, in: rect)
+        func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
+            let request = GenerateRequest(image: image, mask: mask, prompt: style.prompt(person: "person", place: position, firmer: firmness))
+            return try await redrawAttempt(request, original: original, concept: style.part.concept, region: region.info.id,
+                                           kind: .style, events: events)
+        }
+        var best = try await attempt(.asked)
+        var notes: [String] = []
+        /// Another attempt, or nil and why there is none.
+        func retried(_ firmness: PersonStyle.Firmness) async throws -> (attempt: RedrawAttempt?, note: String?) {
+            do {
+                return (try await attempt(firmness), nil)
+            } catch {
+                let error = cancellationError(error)
+                if error as? LumenError == .cancelled { throw error }
+                return (nil, "Could not retry the \(style.title.lowercased()) of \(region.info.id): \(error.localizedDescription)")
+            }
+        }
+        // Found again well off where they were, the person was replaced or moved: once more, keeping the closer.
+        if let overlap = best.overlap, overlap < Self.samePerson {
+            let retry = try await retried(.asked)
+            if let note = retry.note { notes.append(note) }
+            if let next = retry.attempt, (next.overlap ?? 0) > overlap { best = next }
+        }
+        if let limits = style.limits {
+            func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
+                attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0) }
+            }
+            if let changes = measured(best), Self.miss(changes, limits) > 0 {
+                let largest = changes.map { abs($0.change) }.max() ?? 0
+                let retry = try await retried(largest > limits.most ? .subtler : .stronger)
+                if let note = retry.note { notes.append(note) }
+                if let next = retry.attempt, let nextChanges = measured(next),
+                   Self.miss(nextChanges, limits) < Self.miss(changes, limits), (next.overlap ?? 0) >= Self.samePerson {
+                    best = next
+                }
+            }
+            if let changes = measured(best) { notes.append(Self.shapeNote(changes, limits: limits)) }
+        }
+        // A face redrawn warmer or cooler than the photo around it shows a seam where the redraw ends, down the neck:
+        // Muse Image "corrected" a bluish phone photo's skin, and did again when told not to. The host gives the redraw
+        // back the photo's own cast where it can; otherwise a drifted one is drawn once more, told so, and the closer kept.
+        if style.keepsTone, let matched = try await host.toneMatched(best.image, to: image, under: original) {
+            best.image = matched
+        } else if style.keepsTone, let drift = try await toneDrift(from: image, to: best.image, under: original), drift > Self.toneDrift {
+            let retry = try await retried(.sameTone)
+            if let note = retry.note { notes.append(note) }
+            if let next = retry.attempt, (next.overlap ?? 0) >= Self.samePerson,
+               let nextDrift = try await toneDrift(from: image, to: next.image, under: original), nextDrift < drift {
+                best = next
+            }
+        }
+        if let detail = best.note { notes.append(detail) }
+        if let overlap = best.overlap, overlap < Self.samePerson {
+            let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
+            notes.append("The \(region.info.id) was found well off where it was after the restyle (overlap \(value)).")
+        }
+        // Softened past the part, like a removal's, so the new outline and the background beside it blend in.
+        return try await place(best.image, mask: mask.blurred(by: short * (style.part == .body ? 0.015 : 0.01)), rect: rect, label: label,
+                               region: region.info.id, kind: .style, notes: notes, redraws: &redraws, events: events)
+    }
+
+    /// Reshapes a body by moving its pixels (`EditHost.reshaped`), by exactly the style's amount; nil when the host can't,
+    /// for the image model to try instead. Only the pixels the warp moved are placed.
+    private func reshape(_ region: Region, by amount: PersonStyle.Reshape, style: PersonStyle, label: String,
+                         redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
+        // Its own layer, apart from a redraw of the same person, so one never replaces the other.
+        let key = "\(region.info.id)-shape"
+        try await replaceRedraw(of: key, redraws: &redraws, events: events)
+        let box = region.info.box
+        let expanded = NormalizedRect(x: box.x - box.width * 0.25, y: box.y - box.height * 0.25,
+                                      width: box.width * 1.5, height: box.height * 1.5)
+        guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
+        let image = try await host.render(region: rect, maxLongEdge: 2048)
+        try checkCancellation()
+        let started = Date()
+        let original = region.mask.cropped(to: rect).resized(to: image.size)
+        guard let shaped = try await host.reshaped(image, mask: original, shoulders: amount.shoulders, waist: amount.waist) else {
+            return nil
+        }
+        try checkCancellation()
+        events.yield(.trace(TraceEvent(kind: .style, detail: "Reshape \(region.info.id)", started: started,
+                                       duration: max(0, Date().timeIntervalSince(started)))))
+        if !closeUpsBefore.contains(where: { $0.region == region.info.id }) {
+            let closeUp = try await host.render(region: rect, maxLongEdge: configuration.closeUpLongEdge)
+            closeUpsBefore.append((region.info.id, rect, closeUp))
+        }
+        let changes = [("shoulders", amount.shoulders), ("waist", amount.waist)].map { (name: $0.0, change: $0.1) }
+        let note = style.limits.map { Self.shapeNote(changes, limits: $0) } ?? ""
+        return try await place(shaped.image, mask: shaped.changed.grown(by: 1).blurred(by: 1), rect: rect, label: label,
+                               region: key, kind: .style, notes: [note].filter { !$0.isEmpty }, redraws: &redraws, events: events)
+    }
+
+    /// How far the colour under `mask` moved from `before` to `after` (CIELAB ΔE of their medians); nil when the host
+    /// can't measure.
+    private func toneDrift(from before: EncodedImage, to after: EncodedImage, under mask: MaskData) async throws -> Double? {
+        guard let was = try await host.measure(before, mask: mask), let now = try await host.measure(after, mask: mask) else { return nil }
+        return ((was.lightness - now.lightness) * (was.lightness - now.lightness) + (was.a - now.a) * (was.a - now.a)
+                + (was.b - now.b) * (was.b - now.b)).squareRoot()
+    }
+
+    /// The colour drift past which a restyled face is redrawn: a seam of it shows down the neck.
+    static let toneDrift = 8.0
+
+    /// How much a restyled person found again must overlap where they were to be the same person, in the same place.
+    static let samePerson = 0.6
+
+    /// How far the largest change of an outline falls outside a style's limits; zero within them.
+    static func miss(_ changes: [(name: String, change: Double)], _ limits: ShapeLimits) -> Double {
+        let largest = changes.map { abs($0.change) }.max() ?? 0
+        return max(0, limits.least - largest) + max(0, largest - limits.most)
+    }
+
+    /// The outline's change in words, for the critic: "Shape: shoulders +6%, waist −5% (a believable change is 2% to 12%)."
+    static func shapeNote(_ changes: [(name: String, change: Double)], limits: ShapeLimits) -> String {
+        func percent(_ value: Double) -> String {
+            let rounded = Int((value * 100).rounded())
+            return rounded < 0 ? "−\(-rounded)%" : "+\(rounded)%"
+        }
+        let measured = changes.map { "\($0.name) \(percent($0.change))" }.joined(separator: ", ")
+        let least = Int((limits.least * 100).rounded()), most = Int((limits.most * 100).rounded())
+        return "Shape: \(measured) (a believable change is \(least > 0 ? "\(least)% to " : "up to ")\(most)%)."
+    }
+
     /// SAM looks for a removed thing again where it was. Still found there, it gets one more try, and the attempt
     /// that left less of it is kept.
     private func removal(_ attempt: inout RedrawAttempt, request: GenerateRequest, original: MaskData, concept: String?,
@@ -898,6 +1117,7 @@ private extension EditStep {
         case .adjust(let step): step.region
         case .regenerate(let step): step.region
         case .remove(let step): step.region
+        case .style(let step): step.region
         default: nil
         }
     }

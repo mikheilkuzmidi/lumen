@@ -43,6 +43,18 @@ public enum EditSupport {
         try DetailMeasuring.lost(before: before, after: after)
     }
 
+    /// `image`, a crop around a person, with the person in `mask` reshaped (`BodyReshaping`): wider by `shoulders` at the
+    /// shoulders and by `waist` at the waist, as shares. Nil when the mask holds no body to measure.
+    public static func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) throws -> Reshaped? {
+        try BodyReshaping.reshaped(image, mask: mask, shoulders: shoulders, waist: waist)
+    }
+
+    /// `generated`, a redraw of the crop `original`, with its colour cast under `mask` moved back to the original's
+    /// (`ToneMatching`). Nil when the mask covers too little to measure.
+    public static func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) throws -> EncodedImage? {
+        try ToneMatching.matched(generated, to: original, under: mask)
+    }
+
     /// `photo` at `size`, in CIELAB, rows from the top.
     static func sampledColours(_ photo: CIImage, size: PixelSize, context: CIContext) -> [ColourMeasurement] {
         let sample = PhotoCompositor.resized(photo, to: CGRect(x: 0, y: 0, width: size.width, height: size.height))

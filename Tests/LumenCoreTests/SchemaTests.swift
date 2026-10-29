@@ -15,7 +15,7 @@ struct SchemaTests {
         let steps = try #require(properties["steps"] as? [String: Any])
         let items = try #require(steps["items"] as? [String: Any])
         let choices = try #require(items["anyOf"] as? [[String: Any]])
-        #expect(choices.count == 7)
+        #expect(choices.count == 8)
         var types: [String] = []
         for choice in choices {
             let fields = try #require(choice["properties"] as? [String: Any])
@@ -25,7 +25,7 @@ struct SchemaTests {
             #expect(values.count == 1)
             types += values
         }
-        #expect(Set(types) == ["select", "adjust", "regenerate", "remove", "crop", "revert", "finish"])
+        #expect(Set(types) == ["select", "adjust", "regenerate", "remove", "style", "crop", "revert", "finish"])
     }
 
     @Test func nullableFieldsAndAdjustmentUnitsAreDescribed() throws {

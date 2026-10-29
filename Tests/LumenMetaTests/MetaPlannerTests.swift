@@ -179,3 +179,16 @@ import Testing
         #expect(throws: LumenError.self) { try ChatCompletionRequestBuilder.decode(EditPlan.self, from: Data(content.utf8)) }
     }
 }
+
+/// The planner chooses styles from Lumen's own catalogue, never reshapes a child, and the critic holds a restyle to
+/// the same person and a believable amount.
+@Test func theStyleCatalogueAndItsLimitsAreInTheRules() {
+    for style in PersonStyle.all { #expect(MetaPlanner.planPrompt.contains("\(style.id) (\(style.title)")) }
+    for effect in StyleEffect.all { #expect(MetaPlanner.planPrompt.contains("\(effect.id) (\(effect.title))")) }
+    #expect(MetaPlanner.planPrompt.contains("athletic (Athletic build, body, adults only)"))
+    #expect(MetaPlanner.planPrompt.contains("shades (Aviator shades, face)"))
+    #expect(MetaPlanner.planPrompt.contains("never for someone who looks under 18"))
+    #expect(MetaPlanner.planPrompt.contains("are changed with a style step, never with regenerate"))
+    #expect(MetaPlanner.critiquePrompt.contains("must still be clearly the same person"))
+    #expect(MetaPlanner.critiquePrompt.contains("its effect is\nalready on, so give effect none"))
+}

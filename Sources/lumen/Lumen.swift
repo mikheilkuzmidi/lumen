@@ -7,7 +7,7 @@ import LumenCore
 struct Lumen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Edit a photo by describing the change.",
-        subcommands: [Edit.self, Evaluate.self, Batch.self]
+        subcommands: [Edit.self, Evaluate.self, Batch.self, Styles.self]
     )
 }
 
@@ -28,7 +28,20 @@ struct Edit: AsyncParsableCommand {
     @Option(help: "Write the edit trace as JSON.")
     var trace: String?
 
+    @Option(help: "Restyle the person the instruction names in this style (see lumen styles).")
+    var style: String?
+
+    @Option(help: "Grade the photo with this effect (see lumen styles).")
+    var effect: String?
+
     var photoURL: URL { URL(fileURLWithPath: photo) }
+
+    /// The instruction, with the style and effect asked for by name, which the planner takes as its style step.
+    var styledInstruction: String {
+        let named = [style.map { "style \($0)" }, effect.map { "effect \($0)" }].compactMap { $0 }
+        guard !named.isEmpty else { return instruction }
+        return instruction + " Use a style step with " + named.joined(separator: " and ") + "."
+    }
     var outputURL: URL {
         out.map { URL(fileURLWithPath: $0) }
             ?? photoURL.deletingLastPathComponent()
@@ -43,6 +56,12 @@ struct Edit: AsyncParsableCommand {
         }
         _ = try PhotoOutput.format(for: outputURL)
         try PhotoOutput.validate(photo: photoURL, output: outputURL, trace: traceURL)
+        if let style, PersonStyle.named(style) == nil {
+            throw ValidationError("No style called “\(style)”. See lumen styles.")
+        }
+        if let effect, StyleEffect.named(effect) == nil {
+            throw ValidationError("No effect called “\(effect)”. See lumen styles.")
+        }
     }
 
     func run() async throws {
@@ -50,7 +69,7 @@ struct Edit: AsyncParsableCommand {
         let output = ConsoleOutput()
         let result = try await withInterruptCancellation {
             try await options.backend.withLocalModel(line: output.write) {
-                try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
+                try await EditRunner.run(photo: photoURL, instruction: styledInstruction, options: options,
                                          models: models, output: outputURL, trace: traceURL, line: output.write)
             }
         }
@@ -113,4 +132,21 @@ func withInterruptCancellation<Value: Sendable>(
         do { return try await task.value }
         catch is CancellationError { throw LumenError.cancelled }
     } onCancel: { task.cancel() }
+}
+
+struct Styles: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "List the person styles and effects an edit can use.")
+
+    func run() {
+        print("Styles (redraw only the person's face, head or body):")
+        for style in PersonStyle.all {
+            let part = style.part.rawValue + (style.adultsOnly ? ", adults only" : "")
+            print("  \(style.id.padding(toLength: 10, withPad: " ", startingAt: 0)) \(style.title) (\(part))")
+        }
+        print("Effects:")
+        for effect in StyleEffect.all {
+            let targets = effect.parts.map(\.target.rawValue).joined(separator: ", ")
+            print("  \(effect.id.padding(toLength: 14, withPad: " ", startingAt: 0)) \(effect.title) (\(targets))")
+        }
+    }
 }

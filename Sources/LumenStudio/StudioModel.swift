@@ -616,10 +616,16 @@ extension EditStep {
         case .adjust: "slider.horizontal.3"
         case .regenerate: "paintbrush.pointed"
         case .remove: "eraser"
+        case .style: "theatermasks"
         case .crop: "crop"
         case .revert: "arrow.uturn.backward"
         case .finish: "checkmark"
         }
+    }
+
+    private static func styleLabel(_ step: StyleStep) -> String {
+        let names = [step.style.flatMap(PersonStyle.named)?.title, step.effect.flatMap(StyleEffect.named)?.title].compactMap { $0 }
+        return "Restyle \(step.region ?? "the photo"): \(names.joined(separator: ", "))"
     }
 
     var studioLabel: String {
@@ -628,6 +634,7 @@ extension EditStep {
         case .adjust(let adjustment): "Adjust \(adjustment.region ?? "the photo")"
         case .regenerate(let regeneration): "Redraw \(regeneration.region)"
         case .remove(let removal): "Remove \(removal.region)"
+        case .style(let restyle): Self.styleLabel(restyle)
         case .crop: "Crop the photo"
         case .revert(let revert): "Undo \(revert.layer)"
         case .finish: "Finish the edit"

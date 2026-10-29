@@ -330,6 +330,25 @@ public protocol EditHost: Sendable {
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement?
     /// Where `after`, a close-up of the same place as `before`, lost most of the fine detail `before` had.
     func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail]
+    /// `image`, a crop around a person, with the person in `mask` (the crop's size) reshaped: their outline wider by
+    /// `shoulders` at the shoulders and by `waist` at the waist, as shares (negative narrows). Nil when the host can't,
+    /// or finds no body in the mask.
+    func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) async throws -> Reshaped?
+    /// `generated`, a redraw of the crop `original`, with its colour cast under `mask` moved back to the original's,
+    /// keeping its own lightness, and nothing changed outside the mask. Nil when the host can't.
+    func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage?
+}
+
+/// A crop with a person reshaped, and where its pixels changed.
+public struct Reshaped: Equatable, Sendable {
+    public var image: EncodedImage
+    /// The crop's size: covered where the reshape moved pixels.
+    public var changed: MaskData
+
+    public init(image: EncodedImage, changed: MaskData) {
+        self.image = image
+        self.changed = changed
+    }
 }
 
 public extension EditHost {
@@ -340,4 +359,8 @@ public extension EditHost {
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { nil }
     /// A host that can't look at its pixels finds no lost detail, and the critic looks at the close-ups alone.
     func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] { [] }
+    /// A host that can't move its pixels has a body reshaped by the image model instead.
+    func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) async throws -> Reshaped? { nil }
+    /// A host that can't change its pixels has a drifted face drawn again instead.
+    func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? { nil }
 }

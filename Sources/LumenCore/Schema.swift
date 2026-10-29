@@ -51,6 +51,13 @@ enum PlanSchema {
                 step("remove", properties: [
                     "region": string("An earlier selected region id to remove and fill from its surroundings."),
                 ]),
+                step("style", properties: [
+                    "region": string("The selected person (or face) to restyle, or null for an effect on the whole photo alone.", nullable: true),
+                    "style": ["type": "string", "enum": PersonStyle.all.map(\.id) + ["none"],
+                              "description": "A style from the catalogue to redraw the person in, or none for an effect alone."],
+                    "effect": ["type": "string", "enum": StyleEffect.all.map(\.id) + ["none"],
+                               "description": "An effect from the catalogue to grade the photo with, or none."],
+                ]),
                 step("crop", properties: ["rect": rect()]),
                 step("revert", properties: ["layer": string("The id of an applied layer to take off the photo.")]),
                 step("finish", properties: ["reason": string("Why the edit is complete.")]),

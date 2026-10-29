@@ -57,6 +57,23 @@ struct PlanCheck {
                 checked = .regenerate(regeneration)
             case .remove(let removal):
                 checked = regionID(removal.region, label: label).map { .remove(Removal(region: $0)) }
+            case .style(var restyle):
+                restyle.style = catalogued(restyle.style, ids: PersonStyle.all.map(\.id), kind: "style", label: label)
+                restyle.effect = catalogued(restyle.effect, ids: StyleEffect.all.map(\.id), kind: "effect", label: label)
+                if let region = restyle.region {
+                    guard let id = regionID(region, label: label) else { continue }
+                    restyle.region = id
+                }
+                guard restyle.style != nil || restyle.effect != nil else {
+                    notes.append("\(label): dropped a style step with no style or effect.")
+                    continue
+                }
+                let needsPerson = restyle.style != nil || restyle.effect.flatMap(StyleEffect.named)?.needsPerson == true
+                guard !needsPerson || restyle.region != nil else {
+                    notes.append("\(label): dropped a style step with no person to restyle.")
+                    continue
+                }
+                checked = .style(restyle)
             case .crop(let crop):
                 checked = rect(crop.rect, label: "\(label) crop").map { .crop(Crop(rect: $0)) }
             case .revert(let revert):
@@ -177,6 +194,16 @@ struct PlanCheck {
         if id != proposed { notes.append("\(label): trimmed region reference to \(id).") }
         if resolved != id { notes.append("\(label): updated region reference from \(id) to \(resolved).") }
         return resolved
+    }
+
+    /// A catalogue id as given, or nil for none or one not in the catalogue.
+    private mutating func catalogued(_ proposed: String?, ids: [String], kind: String, label: String) -> String? {
+        guard let id = proposed?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty, id != "none" else { return nil }
+        guard ids.contains(id) else {
+            notes.append("\(label): dropped unknown \(kind) \"\(id)\".")
+            return nil
+        }
+        return id
     }
 
     private mutating func prompt(_ proposed: String, label: String) -> String? {

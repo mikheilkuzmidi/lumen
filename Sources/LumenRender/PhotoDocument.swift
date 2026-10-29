@@ -99,6 +99,14 @@ public actor PhotoDocument: EditHost {
         try EditSupport.lostDetail(before: before, after: after)
     }
 
+    public func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) async throws -> Reshaped? {
+        try EditSupport.reshaped(image, mask: mask, shoulders: shoulders, waist: waist)
+    }
+
+    public func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? {
+        try EditSupport.toneMatched(generated, to: original, under: mask)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?

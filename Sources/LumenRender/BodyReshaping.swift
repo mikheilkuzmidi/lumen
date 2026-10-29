@@ -94,7 +94,9 @@ enum BodyReshaping {
             let fromShoulders = Double(y - shoulders), fromWaist = Double(y - waist)
             let above = shoulderWidth * 0.12, below = shoulderWidth * 0.3, aroundWaist = shoulderWidth * 0.3
             let spread = fromShoulders < 0 ? above : below
-            return amount * exp(-0.5 * pow(fromShoulders / spread, 2)) + narrowing * exp(-0.5 * pow(fromWaist / aroundWaist, 2))
+            let atShoulders: Double = exp(-0.5 * (fromShoulders / spread) * (fromShoulders / spread))
+            let atWaist: Double = exp(-0.5 * (fromWaist / aroundWaist) * (fromWaist / aroundWaist))
+            return amount * atShoulders + narrowing * atWaist
         }
     }
 }

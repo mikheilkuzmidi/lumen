@@ -14,10 +14,13 @@ enum ToneMatching {
         let weights = mask.resized(to: PixelSize(width: drawn.width, height: drawn.height))
             .blurred(by: Double(min(drawn.width, drawn.height)) * 0.01)
         guard let now = mean(drawn, under: weights) else { return nil }
-        // Gains that give the redraw the photo's cast, then scaled so its lightness is its own.
-        var gains = (0..<3).map { was[$0] / max(now[$0], 1e-6) * (now[3] / max(was[3], 1e-6)) }
-        let lightness = zip(luma, zip(gains, now)).reduce(0) { $0 + $1.0 * $1.1.0 * $1.1.1 }
-        gains = gains.map { $0 * now[3] / max(lightness, 1e-6) }
+        // Gains that give the redraw the photo's cast: each channel's share of the lightness the photo's, the
+        // lightness the redraw's own.
+        var gains: [Double] = []
+        for channel in 0..<3 {
+            let share: Double = was[channel] / max(was[3], 1e-6)
+            gains.append(share * now[3] / max(now[channel], 1e-6))
+        }
         for index in 0..<(drawn.width * drawn.height) {
             let weight = Double(weights.coverage[index]) / 255
             guard weight > 0 else { continue }
@@ -41,8 +44,9 @@ enum ToneMatching {
             total += weight
         }
         guard total > 16 else { return nil }
-        let means = sums.map { $0 / total }
-        return means + [zip(luma, means).reduce(0) { $0 + $1.0 * $1.1 }]
+        let means: [Double] = sums.map { $0 / total }
+        let lightness: Double = luma[0] * means[0] + luma[1] * means[1] + luma[2] * means[2]
+        return means + [lightness]
     }
 
     private static func linear(_ value: UInt8) -> Double {

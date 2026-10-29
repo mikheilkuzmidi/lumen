@@ -42,8 +42,10 @@ struct PhotoStatistics: Sendable {
         let fineBounds = CGRect(x: 0, y: 0, width: fineWidth, height: fineHeight)
         context.render(PhotoCompositor.resized(photo, to: fineBounds), toBitmap: &fine, rowBytes: fineWidth * 4, bounds: fineBounds,
                        format: .RGBA8, colorSpace: colorSpace)
-        let fineLightness = stride(from: 0, to: fine.count, by: 4).map {
-            0.2126 * Double(fine[$0]) / 255 + 0.7152 * Double(fine[$0 + 1]) / 255 + 0.0722 * Double(fine[$0 + 2]) / 255
+        let fineLightness: [Double] = stride(from: 0, to: fine.count, by: 4).map { (index: Int) -> Double in
+            let red: Double = 0.2126 * Double(fine[index]), green: Double = 0.7152 * Double(fine[index + 1])
+            let blue: Double = 0.0722 * Double(fine[index + 2])
+            return (red + green + blue) / 255
         }
         self.init(pixels: pixels, width: width, height: height,
                   photoSize: PixelSize(width: Int(extent.width.rounded()), height: Int(extent.height.rounded())),

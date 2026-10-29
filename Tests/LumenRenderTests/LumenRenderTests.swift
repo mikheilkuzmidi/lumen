@@ -231,6 +231,59 @@ struct PhotoPixelTests {
         #expect(after[64, 48].green > after[64, 48].red, "still the patch's colour")
     }
 
+    /// A red coat redrawn blue would get red ripples back: its detail is nearly all in the red channel, and was added back
+    /// as it was. Only its lightness comes back, the same in every channel.
+    @Test
+    func anEnlargedRecolourGetsTheDetailButNotTheOldColourBack() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x % 4 < 2 ? RGB(220, 30, 30) : RGB(150, 20, 20) })
+        let assets = AssetStore()
+        // A mid blue, so the darker stripes don't fall below black in any channel.
+        let patchURL = try folder.photo(width: 16, height: 12) { _, _ in RGB(60, 80, 160) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 16, height: 12))))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 16, height: 12), filledWith: 255)))
+        try await document.apply(Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let after = try await folder.pixels(document)
+        let light = after[64, 48], dark = after[66, 48]
+        let red = linear(light.red) - linear(dark.red), green = linear(light.green) - linear(dark.green)
+        let blue = linear(light.blue) - linear(dark.blue)
+        #expect(green > 0.005, "the weave comes back: \(green)")
+        #expect(abs(red - green) < 0.01 && abs(red - blue) < 0.01, "as lightness, not red: \(red), \(green), \(blue)")
+        #expect(light.blue > light.red + 0.1 && dark.blue > dark.red + 0.1, "the coat stays blue")
+    }
+
+    /// The navy coat on a 4000 px photo kept a red line under its collar tab and along its cuff: the patch was blended
+    /// through an edge a share of the patch wide, which faded the coat's last 10 px back toward red. The edge only
+    /// smooths the mask's own pixel steps.
+    @Test
+    func aLargeRecolourIsItsNewColourRightToItsMasksEdge() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A red coat at x 300..<900 on white snow, the patch over x 100..<1100, y 100..<900, its mask the coat exactly.
+        let coat: (Int, Int) -> Bool = { x, y in (300..<900).contains(x) && (200..<800).contains(y) }
+        let document = try PhotoDocument(contentsOf: folder.photo(width: 1200, height: 1000) { x, y in
+            coat(x, y) ? RGB(200, 30, 35) : RGB(245, 245, 245)
+        })
+        let assets = AssetStore()
+        let navy = RGB(30, 40, 110)
+        let patchURL = try folder.photo(width: 1000, height: 800) { x, y in coat(x + 100, y + 100) ? navy : RGB(245, 245, 245) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png,
+                                                          size: PixelSize(width: 1000, height: 800))))
+        let coverage = (0..<(1000 * 800)).map { coat($0 % 1000 + 100, $0 / 1000 + 100) ? UInt8(255) : 0 }
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 1000, height: 800), coverage: coverage)))
+        try await document.apply(Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
+                                                                       rect: NormalizedRect(x: 100.0 / 1200, y: 0.1, width: 1000.0 / 1200, height: 0.8))),
+                                 assets: assets)
+        let after = try await folder.pixels(document)
+        for x in [301, 302, 304, 898] {
+            let pixel = after[x, 500]
+            #expect(pixel.red < pixel.blue, "no red at x \(x), \(x < 600 ? x - 300 : 899 - x) px inside the coat's edge: \(pixel.red), \(pixel.blue)")
+        }
+        #expect(after[296, 500].distance(to: RGB(245, 245, 245)) <= 2.0 / 255, "the snow beside it is untouched")
+    }
+
     @Test
     func patchShowsOnlyThroughItsOwnMask() async throws {
         let folder = try PhotoFolder()

@@ -45,21 +45,29 @@ enum PhotoCompositor {
 
     /// The generator draws at a fixed size, so an enlarged patch is soft. The photo's own fine detail under it
     /// (fabric, grain, edges) is added back at the scale the enlargement lost, so a recoloured coat keeps its weave.
+    /// Only its lightness: a red coat's detail is nearly all in its red channel, and added as it was it brought red
+    /// ripples back onto the coat redrawn navy.
     static func restoringDetail(_ patch: CIImage, from photo: CIImage, enlargement: CGFloat, strength: CGFloat = 0.7) -> CIImage {
         guard enlargement > 1.2 else { return patch }
         let base = photo.cropped(to: patch.extent)
         let sigma = min(8, max(0.8, enlargement * 0.6))
         let blurred = base.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: patch.extent)
-        // patch + strength × (photo − its blur). Every term stays opaque so Core Image keeps its colour; the sum of
-        // three opaque images has alpha 3, which the last matrix divides back out.
+        // patch + strength × (lightness of the photo − of its blur), the same in each channel. Every term stays opaque
+        // so Core Image keeps its colour; the sum of three opaque images has alpha 3, which the last matrix divides back out.
         func term(_ image: CIImage, _ factor: CGFloat) -> CIImage {
             image.applyingFilter("CIColorMatrix", parameters: [
                 "inputRVector": CIVector(x: factor, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: factor, z: 0, w: 0),
                 "inputBVector": CIVector(x: 0, y: 0, z: factor, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
             ])
         }
-        let sum = term(base, strength)
-            .applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: term(blurred, -strength)])
+        func lightness(_ image: CIImage, _ factor: CGFloat) -> CIImage {
+            let row = CIVector(x: 0.2126 * factor, y: 0.7152 * factor, z: 0.0722 * factor, w: 0)
+            return image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": row, "inputGVector": row, "inputBVector": row, "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            ])
+        }
+        let sum = lightness(base, strength)
+            .applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: lightness(blurred, -strength)])
             .applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: term(patch, 1)])
         return sum.applyingFilter("CIColorMatrix", parameters: [
             "inputRVector": CIVector(x: 3, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 3, z: 0, w: 0),

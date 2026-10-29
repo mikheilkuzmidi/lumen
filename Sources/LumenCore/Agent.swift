@@ -473,6 +473,13 @@ public actor EditAgent {
         }
         // The region is the shadow what was found casts on the ground, not the thing itself.
         if let tip = selection.shadowTip {
+            // A thing that runs off the bottom of the photo stands on no ground in it: a bench's shadow, laid from the
+            // frame's edge, fell on the legs and hands of the man sitting on it.
+            if let box = mask.boundingBox, box.y + box.height >= 0.985 {
+                note(.select, "No shadow for \(selection.id): it runs off the bottom of the photo, so there is no ground for its shadow.",
+                     events: events)
+                return nil
+            }
             mask = mask.castShadow(tip: tip)
         } else if selection.invert {
             mask = mask.inverted()

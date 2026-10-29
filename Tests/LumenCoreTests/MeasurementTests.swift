@@ -146,12 +146,40 @@ struct CastShadowTests {
             .select(Selection(id: "shadow", concept: "cup", invert: true, shadowTip: tip)),
             .adjust(Adjustment(region: "shadow", values: [.exposure: -0.6])),
         ]))
-        let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        let agent = EditAgent(planner: planner, segmenter: StandingSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
         var masks: [MaskData] = []
         for try await event in agent.run("Low sun from the left") {
             if case .selected(_, let segment) = event { masks.append(segment.mask) }
         }
-        #expect(masks == [MeasuredSegmenter.cup.castShadow(tip: tip)], "the shadow, not the cup or its inverse")
+        #expect(masks == [StandingSegmenter.cup.castShadow(tip: tip)], "the shadow, not the cup or its inverse")
+    }
+
+    /// A bench running off the bottom of the photo stands on no ground in it: its shadow, laid from the frame's edge,
+    /// fell on the legs and hands of the man sitting on it. It casts none, and says why.
+    @Test func aThingCutOffAtTheBottomCastsNoShadow() async throws {
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "The bench's long shadow", steps: [
+            .select(Selection(id: "shadow", concept: "cup", shadowTip: NormalizedPoint(x: 0.05, y: 0.9))),
+            .adjust(Adjustment(region: "shadow", values: [.exposure: -1.8])),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        var notes: [String] = []
+        for try await event in agent.run("Golden hour") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+            if case .trace(let trace) = event { notes.append(trace.detail) }
+        }
+        #expect(masks.isEmpty)
+        #expect(notes.contains { $0.contains("runs off the bottom of the photo, so there is no ground for its shadow") })
+    }
+}
+
+/// A cup standing on a table, its base above the bottom of the photo.
+private actor StandingSegmenter: Segmenter {
+    let modelID = "sam-3.1"
+    static let cup = MaskData(size: PixelSize(width: 10, height: 10),
+                              coverage: (0..<100).map { (2..<5).contains($0 % 10) && (2..<8).contains($0 / 10) ? 255 : 0 })
+    func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        [Segment(label: "cup", box: Self.cup.boundingBox!, mask: Self.cup)]
     }
 }
 

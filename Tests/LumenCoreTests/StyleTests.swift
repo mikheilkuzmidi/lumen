@@ -203,6 +203,28 @@ struct StyleTests {
         #expect(done.contains { $0.contains("didn't work") && $0.contains("the reshaped build stays") }, "\(done)")
     }
 
+    /// Over loose clothes the muscle redraw came back with a waist far wider and smeared, where the reshape alone was
+    /// clean: a redraw that isn't believable on a reshaped body is left out, and the critic told why.
+    @Test func anUnbelievableRedrawOnAReshapedBodyIsLeftOut() async throws {
+        let planner = StylePlanner(plan: EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "person", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .style(StyleStep(region: "person", style: "muscular")),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.person(waist: 40))],
+                                                 [Self.segment(Self.person(waist: 36))]])
+        let generator = StyleGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: ReshapingHost())
+        var applied: [Layer] = []
+        for try await event in agent.run("Make him look gym-built") {
+            if case .applied(let layer) = event { applied.append(layer) }
+        }
+        #expect(await generator.prompts.count == 2, "asked once more, subtler, first")
+        #expect(applied.map(\.label) == ["Person: Gym-built"], "only the reshape")
+        let done = try #require(await planner.critiqued.first)
+        #expect(done.contains { $0.contains("was left out, as its shape went past a believable change; the reshaped build stays") }, "\(done)")
+        #expect(done.contains("Shape: shoulders +12%, waist −4% (a believable change is 3% to 20%)."), "the reshape's own numbers")
+    }
+
     @Test func aFaceStyleFindsTheFaceInsideThePerson() async throws {
         let planner = StylePlanner(plan: EditPlan(summary: "Chad", steps: [
             .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),

@@ -707,7 +707,7 @@ public actor EditAgent {
             }
             if style.redraws || !reshaped {
                 do {
-                    notes += try await redraw(part, as: style, label: label, redraws: &redraws, events: events)
+                    notes += try await redraw(part, as: style, label: label, optional: reshaped, redraws: &redraws, events: events)
                 } catch {
                     // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
                     // gym-built redraw of a man beside his wife, twice.
@@ -770,8 +770,11 @@ public actor EditAgent {
     /// slimmer waist), so the redraw shows through the part's mask grown well past it and softened, as a removal's is,
     /// not held to the old edge. How far the outline moved is measured: a change too slight to see or too far to believe
     /// is asked for once more, and the critic is told the numbers.
-    private func redraw(_ region: Region, as style: PersonStyle, label: String, redraws: inout [String: Layer.ID],
-                        events: Events) async throws -> [String] {
+    /// An `optional` redraw, on a body already reshaped, is left out when it isn't believable: past the style's limits,
+    /// off where the person is, or smeared. Over loose clothes Muse Image's muscles came back with shoulders 21% wider
+    /// or a waist 17% wider, and soft, where the reshape alone was clean.
+    private func redraw(_ region: Region, as style: PersonStyle, label: String, optional: Bool = false,
+                        redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
         // Room around the part for its outline to grow into: broader shoulders, a wider jaw.
@@ -814,10 +817,10 @@ public actor EditAgent {
             if let note = retry.note { notes.append(note) }
             if let next = retry.attempt, (next.overlap ?? 0) > overlap { best = next }
         }
+        func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
+            attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0) }
+        }
         if let limits = style.limits {
-            func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
-                attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0) }
-            }
             if let changes = measured(best), Self.miss(changes, limits) > 0 {
                 let largest = changes.map { abs($0.change) }.max() ?? 0
                 let retry = try await retried(largest > limits.most ? .subtler : .stronger)
@@ -840,6 +843,21 @@ public actor EditAgent {
             if let next = retry.attempt, (next.overlap ?? 0) >= Self.samePerson,
                let nextDrift = try await toneDrift(from: image, to: next.image, under: original), nextDrift < drift {
                 best = next
+            }
+        }
+        if optional {
+            var flaw: String?
+            if let limits = style.limits, let changes = measured(best), Self.miss(changes, limits) > 0 {
+                flaw = "its shape went past a believable change"
+            } else if let overlap = best.overlap, overlap < Self.samePerson {
+                flaw = "it moved the person"
+            } else if try await !host.lostDetail(before: image, after: best.image).isEmpty {
+                flaw = "it smeared fine detail"
+            }
+            if let flaw {
+                let note = "The \(style.title.lowercased()) redraw of \(region.info.id) was left out, as \(flaw); the reshaped build stays."
+                for detail in notes + [note] { self.note(.style, detail, events: events) }
+                return notes.filter { !$0.hasPrefix("Shape:") } + [note]
             }
         }
         if let detail = best.note { notes.append(detail) }

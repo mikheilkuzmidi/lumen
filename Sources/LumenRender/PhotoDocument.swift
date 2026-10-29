@@ -77,52 +77,26 @@ public actor PhotoDocument: EditHost {
     }
 
     public func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
-        guard min(mask.size.width, mask.size.height) >= 64 else { return mask }
-        let bounds = try Self.bounds(of: region, in: cropBounds())
-        guard let guide = MaskRefinement.guide(rendered(scale: 1).cropped(to: bounds), size: mask.size, context: context) else { return mask }
-        // A window a few times SAM's usual miss, so the photo's own colours decide each side of the edge; then what
-        // they decided clearly (a quarter either side of the middle) is taken all in or all out.
-        let radius = MaskRefinement.radius(for: mask.size) * 3
-        let fitted = MaskRefinement.refined(MaskRefinement.refined(mask, guide: guide, radius: radius), guide: guide, radius: radius)
-        return MaskData(size: fitted.size, coverage: fitted.coverage.map { value in
-            UInt8((min(1, max(0, (Double(value) / 255 - 0.3) / 0.4)) * 255).rounded())
-        })
+        EditSupport.fitted(mask, photo: try photo(in: region), context: context)
     }
 
     public func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
-        let size = mask.size
-        guard size.width >= 16, size.height >= 16 else { return mask }
-        let colours = try sampledColours(size: size, region: region)
-        let short = Double(min(size.width, size.height))
-        return MaskGrowth.alike(mask, colours: colours, reach: max(1, Int((short * 0.03).rounded())),
-                                colourfulReach: max(1, Int((short * 0.08).rounded())),
-                                fringe: max(2, Int((short * 0.006).rounded())))
+        EditSupport.extended(mask, photo: try photo(in: region), context: context)
     }
 
-    /// The photo as it is now over `region`, at `size`, in CIELAB, rows from the top.
-    func sampledColours(size: PixelSize, region: NormalizedRect) throws -> [ColourMeasurement] {
-        let bounds = try Self.bounds(of: region, in: cropBounds())
-        let sample = PhotoCompositor.resized(rendered(scale: 1).cropped(to: bounds), to: CGRect(x: 0, y: 0, width: size.width, height: size.height))
-        var pixels = [UInt8](repeating: 0, count: size.width * size.height * 4)
-        pixels.withUnsafeMutableBytes { buffer in
-            // Core Image writes a bitmap's top row first, as mask rows run.
-            context.render(sample, toBitmap: buffer.baseAddress!, rowBytes: size.width * 4,
-                           bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height), format: .RGBA8,
-                           colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
-        }
-        return (0..<(size.width * size.height)).map {
-            ColourMeasuring.lab(red: pixels[$0 * 4], green: pixels[$0 * 4 + 1], blue: pixels[$0 * 4 + 2])
-        }
+    /// The photo as it is now, framed, over `region`.
+    private func photo(in region: NormalizedRect) throws -> CIImage {
+        rendered(scale: 1).cropped(to: try Self.bounds(of: region, in: cropBounds()))
     }
 
     public func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
         // A render shows the photo as it is framed now; a mask over the whole photo is cut to that frame first.
         let framed = mask.map { mask in cropRect().map { mask.cropped(to: $0) } ?? mask }
-        return try ColourMeasuring.measure(image, mask: framed)
+        return try EditSupport.measure(image, mask: framed)
     }
 
     public func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] {
-        try DetailMeasuring.lost(before: before, after: after)
+        try EditSupport.lostDetail(before: before, after: after)
     }
 
     public func apply(_ layer: Layer, assets: AssetStore) async throws {

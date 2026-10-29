@@ -445,6 +445,29 @@ struct PhotoPixelTests {
         #expect(fitted[48, 150] == 0, "and nothing past the shirt on the other side")
     }
 
+    /// An app's editor renders its own photo and asks the same of it: a red coat's mask that stops 6 px short of the
+    /// coat's edge, fitted and grown from the app's render alone, reaches it, and the coat's colour is measured.
+    @Test
+    func anyHostsRenderGetsTheSameFittedAndGrownMask() throws {
+        // A red coat at x 40..<160, y 40..<160 on white, as an app renders it (origin bottom-left, not at zero).
+        let size = 200
+        let red = CIImage(color: CIColor(red: 0.8, green: 0.1, blue: 0.12)).cropped(to: CGRect(x: 540, y: 340, width: 120, height: 120))
+        let photo = red.composited(over: CIImage(color: .white)).cropped(to: CGRect(x: 500, y: 300, width: size, height: size))
+        let short = MaskData(size: PixelSize(width: size, height: size), coverage: (0..<(size * size)).map { i in
+            let x = i % size, y = i / size
+            return x >= 46 && x < 154 && y >= 46 && y < 154 ? 255 : 0
+        })
+        let context = CIContext()
+        let mask = EditSupport.extended(EditSupport.fitted(short, photo: photo, context: context), photo: photo, context: context)
+        #expect(mask[41, 100] > 230 && mask[158, 100] > 230 && mask[100, 41] > 230, "the coat's edge: \(mask[41, 100]), \(mask[158, 100])")
+        #expect(mask[20, 100] == 0 && mask[100, 180] == 0, "and not the snow")
+        let image = EncodedImage(data: try #require(context.pngRepresentation(of: photo.transformed(by: CGAffineTransform(translationX: -500, y: -300)),
+                                                                              format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)),
+                                 format: .png, size: PixelSize(width: size, height: size))
+        let colour = try #require(try EditSupport.measure(image, mask: mask))
+        #expect(colour.family == "red", "measured \(colour.family)")
+    }
+
     /// Golden-hour light is warm highlights over shadows a little less warm: each tonal range is warmed on its own.
     @Test
     func highlightAndShadowWarmthWarmTheirOwnTones() async throws {

@@ -254,6 +254,33 @@ struct PhotoPixelTests {
         #expect(light.blue > light.red + 0.1 && dark.blue > dark.red + 0.1, "the coat stays blue")
     }
 
+    /// A warp widening a man bent the big fish he held against his chest. What he holds stays exactly where it is, and
+    /// his body is still reshaped around it.
+    @Test
+    func aThingHeldInFrontOfTheBodyIsNotReshaped() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        func width(_ y: Int) -> Int { y < 20 ? 0 : y < 60 ? 40 : y < 100 ? 100 : y < 250 ? 80 : 60 }
+        func inside(_ x: Int, _ y: Int) -> Bool { abs(Double(x) + 0.5 - 100) < Double(width(y)) / 2 }
+        // A green fish held across the shoulders' left side, x 20..<70, y 70..<90, half outside the body.
+        func fish(_ x: Int, _ y: Int) -> Bool { (20..<70).contains(x) && (70..<90).contains(y) }
+        let url = try folder.photo(width: 200, height: 300) { x, y in
+            fish(x, y) ? ((x + y) % 3 == 0 ? RGB(20, 150, 40) : RGB(40, 190, 70)) : inside(x, y) ? RGB(200, 30, 30) : RGB(140, 140, 140)
+        }
+        let image = EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 300))
+        let original = try Pixels(data: image.data)
+        let body = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { inside($0 % 200, $0 / 200) ? 255 : 0 })
+        let held = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { fish($0 % 200, $0 / 200) ? 255 : 0 })
+        let shaped = try #require(try EditSupport.reshaped(image, mask: body, keep: held, shoulders: 0.1, waist: -0.1))
+        let after = try Pixels(data: shaped.image.data)
+        for (x, y) in [(22, 72), (45, 80), (68, 88), (30, 85)] {
+            #expect(after[x, y].distance(to: original[x, y]) <= 1.0 / 255, "the fish stays put at \(x), \(y)")
+        }
+        // The shoulder away from the fish still moves out by about half the tenth asked for (from x 149).
+        let right = (60..<100).compactMap { y in (0..<200).last { after[$0, y].red > 0.6 && after[$0, y].green < 0.3 } }.max() ?? 0
+        #expect(right >= 152, "the far shoulder's edge moved out to \(right)")
+    }
+
     /// The warp blended two pixels at a time, which softened the twigs beside a man's waist enough for the critic to
     /// call it a smear (81% of the twigs' contrast kept). Fine texture beside the body keeps at least 90% of its contrast.
     @Test

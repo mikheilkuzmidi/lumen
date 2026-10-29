@@ -210,11 +210,15 @@ public struct StyleStep: Codable, Equatable, Sendable {
     public var region: String?
     public var style: String?
     public var effect: String?
+    /// A selected thing the person holds in front of them (a fish, a bag, a baby), left as it is when their body is
+    /// reshaped or redrawn: a warp widening a man bent the big fish held against his chest.
+    public var keep: String?
 
-    public init(region: String? = nil, style: String? = nil, effect: String? = nil) {
+    public init(region: String? = nil, style: String? = nil, effect: String? = nil, keep: String? = nil) {
         self.region = region
         self.style = style
         self.effect = effect
+        self.keep = keep
     }
 }
 

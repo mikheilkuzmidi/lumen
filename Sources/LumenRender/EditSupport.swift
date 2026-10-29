@@ -44,9 +44,11 @@ public enum EditSupport {
     }
 
     /// `image`, a crop around a person, with the person in `mask` reshaped (`BodyReshaping`): wider by `shoulders` at the
-    /// shoulders and by `waist` at the waist, as shares. Nil when the mask holds no body to measure.
-    public static func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) throws -> Reshaped? {
-        try BodyReshaping.reshaped(image, mask: mask, shoulders: shoulders, waist: waist)
+    /// shoulders and by `waist` at the waist, as shares, and what `keep` covers left where it is. Nil when the mask holds
+    /// no body to measure.
+    public static func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData? = nil, shoulders: Double,
+                                waist: Double) throws -> Reshaped? {
+        try BodyReshaping.reshaped(image, mask: mask, keep: keep, shoulders: shoulders, waist: waist)
     }
 
     /// `generated`, a redraw of the crop `original`, with its colour cast under `mask` moved back to the original's

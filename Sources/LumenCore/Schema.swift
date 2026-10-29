@@ -57,6 +57,7 @@ enum PlanSchema {
                               "description": "A style from the catalogue to redraw the person in, or none for an effect alone."],
                     "effect": ["type": "string", "enum": StyleEffect.all.map(\.id) + ["none"],
                                "description": "An effect from the catalogue to grade the photo with, or none."],
+                    "keep": string("An earlier selected thing the person holds in front of their body, left as it is, or null.", nullable: true),
                 ]),
                 step("crop", properties: ["rect": rect()]),
                 step("revert", properties: ["layer": string("The id of an applied layer to take off the photo.")]),

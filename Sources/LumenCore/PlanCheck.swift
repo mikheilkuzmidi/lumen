@@ -64,6 +64,11 @@ struct PlanCheck {
                     guard let id = regionID(region, label: label) else { continue }
                     restyle.region = id
                 }
+                if let keep = restyle.keep {
+                    // A held thing that wasn't selected only loses its protection, not the restyle.
+                    restyle.keep = regions.contains(aliases[keep] ?? keep) ? (aliases[keep] ?? keep) : nil
+                    if restyle.keep == nil { notes.append("\(label): dropped keep using unknown region \"\(keep)\".") }
+                }
                 guard restyle.style != nil || restyle.effect != nil else {
                     notes.append("\(label): dropped a style step with no style or effect.")
                     continue

@@ -9,13 +9,18 @@ enum BodyReshaping {
     /// widest row between a tenth and two fifths of the way down) and by `waist` around the waist (a shoulder width
     /// below them, where it is on a standing adult, so a half-length shot finds it too). The change fades out a quarter
     /// of a shoulder width past the outline, so only the background next to the body bends.
-    static func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) throws -> Reshaped? {
+    /// What `keep` covers, something the person holds in front of them, stays where it is: the warp fades out around
+    /// it over a tenth of a shoulder width, so a big fish held against a chest isn't bent with the body.
+    static func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData? = nil, shoulders: Double, waist: Double) throws -> Reshaped? {
         let input = try RGBAPixels(image)
         let width = input.width, height = input.height
         guard width > 8, height > 8 else { return nil }
         let pixels = input.bytes
         let body = mask.resized(to: PixelSize(width: width, height: height))
         guard let shape = Shape(body), shape.shoulderWidth >= 8 else { return nil }
+        // How much each pixel may move: none on what is kept, all of it a little way from it.
+        let reach = max(2, Int((shape.shoulderWidth * 0.1).rounded()))
+        let held = keep.map { $0.resized(to: PixelSize(width: width, height: height)).grown(by: reach).blurred(by: Double(reach) / 2) }
         var moved = pixels
         var changed = [UInt8](repeating: 0, count: width * height)
         for y in 0..<height {
@@ -25,7 +30,7 @@ enum BodyReshaping {
             let edge = half * scale, falloff = shape.falloff
             for x in 0..<width {
                 let d = Double(x) - centre
-                let source: Double
+                var source: Double
                 if abs(d) <= edge {
                     source = centre + d / scale
                 } else if abs(d) <= edge + falloff {
@@ -35,6 +40,7 @@ enum BodyReshaping {
                 } else {
                     continue
                 }
+                if let held { source = Double(x) + (source - Double(x)) * (1 - Double(held.coverage[y * width + x]) / 255) }
                 guard abs(source - Double(x)) > 0.25 else { continue }
                 // Catmull-Rom across four pixels of the row: a straight blend of two softened the twigs beside a waist.
                 let base = Int(source.rounded(.down)), t = source - Double(base)

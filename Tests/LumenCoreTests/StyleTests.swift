@@ -225,6 +225,39 @@ struct StyleTests {
         #expect(done.contains("Shape: shoulders +12%, waist −4% (a believable change is 3% to 20%)."), "the reshape's own numbers")
     }
 
+    /// A big fish held against a man's chest was bent by the warp and smeared by the redraw. What the plan says to
+    /// keep reaches the host's reshape, and the redraw doesn't show over it.
+    @Test func whatThePersonHoldsIsKeptOutOfTheReshapeAndTheRedraw() async throws {
+        let fish = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (2..<20).contains(i % 40) && (16..<24).contains(i / 40) ? 255 : 0
+        })
+        let planner = StylePlanner(plan: EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .select(Selection(id: "fish", concept: "fish", points: [NormalizedPoint(x: 0.25, y: 0.5)])),
+            .style(StyleStep(region: "man", style: "muscular", keep: "fish")),
+        ]))
+        // The redraw found again 4% slimmer at the waist: a believable change, so it is placed.
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(fish, "fish")],
+                                                 [Self.segment(Self.person(waist: 23))]])
+        let host = KeepingHost()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: StyleGenerator(), host: host)
+        for try await _ in agent.run("Make him look gym-built") {}
+        let kept = try #require(await host.kept)
+        #expect(kept[10, 20] > 200 && kept[30, 5] == 0, "the fish reaches the reshape")
+        let redrawn = try #require(await host.patchMasks.last)
+        #expect(await host.patchMasks.count == 2, "the reshape and the redraw")
+        #expect(redrawn[10, 20] < 30 && redrawn[20, 30] > 200, "the redraw shows over him but not over the fish")
+    }
+
+    @Test func thePlanCheckDropsAnUnknownKeepButNotTheStyle() {
+        let checked = EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "man", concept: "person")),
+            .style(StyleStep(region: "man", style: "muscular", keep: "fish")),
+        ]).checked()
+        #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "muscular")))
+        #expect(checked.notes.contains { $0.contains("dropped keep using unknown region \"fish\"") })
+    }
+
     @Test func aFaceStyleFindsTheFaceInsideThePerson() async throws {
         let planner = StylePlanner(plan: EditPlan(summary: "Chad", steps: [
             .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
@@ -333,8 +366,10 @@ private actor ReshapingHost: EditHost {
     }
     func apply(_ layer: Layer, assets: AssetStore) async throws {}
     func remove(_ layer: Layer.ID) async throws {}
-    func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) async throws -> Reshaped? {
+    private(set) var kept: MaskData?
+    func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData?, shoulders: Double, waist: Double) async throws -> Reshaped? {
         asked = [shoulders, waist]
+        kept = keep
         return Reshaped(image: image, changed: mask)
     }
 }
@@ -398,5 +433,27 @@ private actor DecliningGenerator: Generator {
     let modelID = "muse-image-1.0"
     func generate(_ request: GenerateRequest) async throws -> EncodedImage {
         throw LumenError.http(status: 400, message: "The response was filtered due to the prompt triggering our content management policy.")
+    }
+}
+
+/// A host that warps and keeps each patch's mask, for what is kept out of both.
+private actor KeepingHost: EditHost {
+    private(set) var kept: MaskData?
+    private(set) var patchMasks: [MaskData] = []
+    func size() async -> PixelSize { PixelSize(width: 40, height: 40) }
+    func render(maxLongEdge: Int) async throws -> EncodedImage {
+        EncodedImage(data: Data([0]), format: .png, size: PixelSize(width: 40, height: 40))
+    }
+    func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage {
+        EncodedImage(data: Data([0]), format: .png, size: PixelSize(width: max(1, Int((region.width * 40).rounded())),
+                                                                   height: max(1, Int((region.height * 40).rounded()))))
+    }
+    func apply(_ layer: Layer, assets: AssetStore) async throws {
+        if case .patch(_, let mask, _) = layer.content, case .mask(let data) = await assets.get(mask) { patchMasks.append(data) }
+    }
+    func remove(_ layer: Layer.ID) async throws {}
+    func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData?, shoulders: Double, waist: Double) async throws -> Reshaped? {
+        kept = keep
+        return Reshaped(image: image, changed: mask)
     }
 }

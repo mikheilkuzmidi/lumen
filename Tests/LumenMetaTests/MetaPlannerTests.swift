@@ -189,6 +189,7 @@ import Testing
     #expect(MetaPlanner.planPrompt.contains("shades (Aviator shades, face)"))
     #expect(MetaPlanner.planPrompt.contains("never for someone who looks under 18"))
     #expect(MetaPlanner.planPrompt.contains("are changed with a style step, never with regenerate"))
+    #expect(MetaPlanner.planPrompt.contains("select it too and give its region as keep"))
     #expect(MetaPlanner.critiquePrompt.contains("must still be clearly the same person"))
     #expect(MetaPlanner.critiquePrompt.contains("its effect is\nalready on, so give effect none"))
 }

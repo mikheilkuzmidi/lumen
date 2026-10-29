@@ -99,8 +99,8 @@ public actor PhotoDocument: EditHost {
         try EditSupport.lostDetail(before: before, after: after)
     }
 
-    public func reshaped(_ image: EncodedImage, mask: MaskData, shoulders: Double, waist: Double) async throws -> Reshaped? {
-        try EditSupport.reshaped(image, mask: mask, shoulders: shoulders, waist: waist)
+    public func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData?, shoulders: Double, waist: Double) async throws -> Reshaped? {
+        try EditSupport.reshaped(image, mask: mask, keep: keep, shoulders: shoulders, waist: waist)
     }
 
     public func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? {

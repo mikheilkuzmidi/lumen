@@ -695,19 +695,20 @@ public actor EditAgent {
     private func restyle(_ step: StyleStep, run: inout Run, redraws: inout [String: Layer.ID], events: Events) async throws {
         let person = try step.region.map { try region($0) }
         let style = step.style.flatMap(PersonStyle.named)
+        let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
             let part = try await part(style.part, of: person, events: events)
             let label = "\(title(person.info.id)): \(style.title)"
             var notes: [String] = []
             var reshaped = false
             if let amount = style.reshape,
-               let shaped = try await reshape(part, by: amount, style: style, label: label, redraws: &redraws, events: events) {
+               let shaped = try await reshape(part, by: amount, keeping: held, style: style, label: label, redraws: &redraws, events: events) {
                 notes += shaped
                 reshaped = true
             }
             if style.redraws || !reshaped {
                 do {
-                    notes += try await redraw(part, as: style, label: label, optional: reshaped, redraws: &redraws, events: events)
+                    notes += try await redraw(part, as: style, label: label, keeping: held, optional: reshaped, redraws: &redraws, events: events)
                 } catch {
                     // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
                     // gym-built redraw of a man beside his wife, twice.
@@ -773,7 +774,7 @@ public actor EditAgent {
     /// An `optional` redraw, on a body already reshaped, is left out when it isn't believable: past the style's limits,
     /// off where the person is, or smeared. Over loose clothes Muse Image's muscles came back with shoulders 21% wider
     /// or a waist 17% wider, and soft, where the reshape alone was clean.
-    private func redraw(_ region: Region, as style: PersonStyle, label: String, optional: Bool = false,
+    private func redraw(_ region: Region, as style: PersonStyle, label: String, keeping held: MaskData? = nil, optional: Bool = false,
                         redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
@@ -792,7 +793,9 @@ public actor EditAgent {
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         // A body's reaches 8% of the crop past it, for broader shoulders; a face's 5%, for a wider jaw or a beard: further,
         // a head the redraw drew a little to one side showed twice through the soft edge, as a pale arc.
-        let mask = original.grown(by: max(2, Int((short * (style.part == .body ? 0.08 : 0.05)).rounded())))
+        // What the person holds stays as it was: the redraw doesn't show over it.
+        let grown = original.grown(by: max(2, Int((short * (style.part == .body ? 0.08 : 0.05)).rounded())))
+        let mask = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
         let position = Self.place(of: box, in: rect)
         func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
             let request = GenerateRequest(image: image, mask: mask, prompt: style.prompt(person: "person", place: position, firmer: firmness))
@@ -872,8 +875,8 @@ public actor EditAgent {
 
     /// Reshapes a body by moving its pixels (`EditHost.reshaped`), by exactly the style's amount; nil when the host can't,
     /// for the image model to try instead. Only the pixels the warp moved are placed.
-    private func reshape(_ region: Region, by amount: PersonStyle.Reshape, style: PersonStyle, label: String,
-                         redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
+    private func reshape(_ region: Region, by amount: PersonStyle.Reshape, keeping held: MaskData? = nil, style: PersonStyle,
+                         label: String, redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
         // Its own layer, apart from a redraw of the same person, so one never replaces the other.
         let key = "\(region.info.id)-shape"
         try await replaceRedraw(of: key, redraws: &redraws, events: events)
@@ -885,7 +888,8 @@ public actor EditAgent {
         try checkCancellation()
         let started = Date()
         let original = region.mask.cropped(to: rect).resized(to: image.size)
-        guard let shaped = try await host.reshaped(image, mask: original, shoulders: amount.shoulders, waist: amount.waist) else {
+        let kept = held.map { $0.cropped(to: rect).resized(to: image.size) }
+        guard let shaped = try await host.reshaped(image, mask: original, keep: kept, shoulders: amount.shoulders, waist: amount.waist) else {
             return nil
         }
         try checkCancellation()

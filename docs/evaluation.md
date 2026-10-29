@@ -163,6 +163,8 @@ The maintainer ran Lumen on 24 of their own photos (16 from their Unsplash profi
 | In Photoeditor, recolours had none of this ([#41](https://github.com/mikheilkuzmidi/lumen/issues/41)). | The app's host implemented no fitting, growth or measuring. | `EditSupport` works them out from any render; the app's host uses it. | The same masks and numbers in the app. |
 | The critic rejected gentle edits of overcast skies for "a white grid" ([#42](https://github.com/mikheilkuzmidi/lumen/issues/42)). | Real, in the 1024 px preview only: scaling down left rows, columns and corners a hair under opaque, and saturation's divide made them white or black. | Resizing is clamped and opaque; saturation makes its input opaque first. | Flat skies in previews; saturation +3 alone had reproduced it. |
 
+| Golden hour on a man sitting on a bench darkened his legs and hands ([#49](https://github.com/mikheilkuzmidi/lumen/issues/49)). | The bench runs off the bottom of the photo, so its shadow was laid from the frame's edge onto whatever was beside it. | A subject that reaches the bottom edge casts no shadow, and the agent says why. | The bench and two children cut off at the bottom are skipped; a tree's shadow is cast instead; a grandfather's and child's shadow falls on the wet sand, faint as shade on dark sand is. |
+
 ### Person styles ([#43](https://github.com/mikheilkuzmidi/lumen/issues/43))
 
 A style step redraws only a person's face, head or body: chad, gigachad, Hollywood glow-up, beard, smile, aviator shades, zombie make-up, 30 years older, platinum blonde, athletic, gym-built, and effects (dramatic black and white, main character, vintage film, neon night). Reshaping and ageing are for adults only. Run once each on the maintainer's photos of adults:

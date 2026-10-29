@@ -33,6 +33,8 @@ public struct PersonStyle: Equatable, Sendable {
     /// Whether the image model redraws the part as `change` says; a style that only reshapes asks it only where the
     /// host can't warp.
     public var redraws: Bool
+    /// An instruction that asks for it, for an app to offer.
+    public var example: String
 
     public struct Reshape: Equatable, Sendable {
         public var shoulders: Double
@@ -45,8 +47,9 @@ public struct PersonStyle: Equatable, Sendable {
     }
 
     public init(id: String, title: String, part: Part, change: String, adultsOnly: Bool, limits: ShapeLimits? = nil,
-                effect: String? = nil, reshape: Reshape? = nil, redraws: Bool = true) {
+                effect: String? = nil, reshape: Reshape? = nil, redraws: Bool = true, example: String = "") {
         self.id = id
+        self.example = example
         self.title = title
         self.part = part
         self.change = change
@@ -63,47 +66,59 @@ public struct PersonStyle: Equatable, Sendable {
         PersonStyle(id: "chad", title: "Chad face", part: .face,
                     change: "Give this person a chiselled \"Chad\" look: a visibly stronger, squarer jawline and chin, "
                         + "defined cheekbones, a focused, confident gaze and light stubble.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.2, measures: "jaw")),
+                    adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.2, measures: "jaw"),
+                    example: "Give the person a chad face"),
         PersonStyle(id: "gigachad", title: "Gigachad", part: .face,
                     change: "Turn this person into the \"Gigachad\" meme: a very strong, wide, square jaw and chin, sharply "
                         + "defined cheekbones and brow ridge, an intense stare and a short dark beard shadow.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.3, measures: "jaw"), effect: "monoDrama"),
+                    adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.3, measures: "jaw"), effect: "monoDrama",
+                    example: "Make the person a gigachad"),
         PersonStyle(id: "hollywood", title: "Hollywood glow-up", part: .face,
                     change: "Give this person a red-carpet polish: even, healthy skin that keeps its real texture and pores, "
                         + "groomed brows, bright eyes and soft, natural contouring.",
-                    adultsOnly: true),
+                    adultsOnly: true,
+                    example: "Give the person a Hollywood glow-up"),
         PersonStyle(id: "beard", title: "Full beard", part: .face,
                     change: "Give this person a full, well-groomed beard and moustache in the colour of their own hair.",
-                    adultsOnly: true),
+                    adultsOnly: true,
+                    example: "Give the man a full beard"),
         PersonStyle(id: "older", title: "30 years older", part: .head,
                     change: "Show this person about 30 years older: natural wrinkles, softer skin, thinner greying hair, "
                         + "the same face grown older.",
-                    adultsOnly: true),
+                    adultsOnly: true,
+                    example: "Make the person look 30 years older"),
         PersonStyle(id: "smile", title: "Big smile", part: .face,
                     change: "Change this person's expression to a natural, wide smile that reaches the eyes, showing the teeth.",
-                    adultsOnly: false),
+                    adultsOnly: false,
+                    example: "Make the person smile big"),
         PersonStyle(id: "shades", title: "Aviator shades", part: .face,
                     change: "Put a pair of classic aviator sunglasses on this person, sitting naturally on the nose, "
                         + "with real reflections of the scene in the lenses.",
-                    adultsOnly: false),
+                    adultsOnly: false,
+                    example: "Put aviator sunglasses on the person"),
         PersonStyle(id: "zombie", title: "Zombie make-up", part: .face,
                     change: "Give this person Halloween zombie make-up on the same face: pale grey-green skin, dark sunken "
                         + "eyes and painted scars.",
-                    adultsOnly: false),
+                    adultsOnly: false,
+                    example: "Give the person zombie make-up for Halloween"),
         PersonStyle(id: "platinum", title: "Platinum blonde", part: .head,
                     change: "Dye this person's hair a bright platinum blonde, a solid, fully dyed colour from the roots to "
                         + "the tips, keeping its cut, length and texture.",
-                    adultsOnly: false),
+                    adultsOnly: false,
+                    example: "Dye the person's hair platinum blonde"),
         PersonStyle(id: "athletic", title: "Athletic build", part: .body,
                     change: "Make this person clearly more athletic, as after a few months of training: shoulders about 10% "
                         + "broader and waist about 10% narrower for a visible V-shaped torso, a firmer chest and more "
                         + "defined arms, their clothes fitting the new shape.",
                     adultsOnly: true, limits: ShapeLimits(least: 0.02, most: 0.15, measures: "shoulders and waist"),
-                    reshape: Reshape(shoulders: 0.1, waist: -0.1), redraws: false),
+                    reshape: Reshape(shoulders: 0.1, waist: -0.1), redraws: false,
+                    example: "Make the person's body athletic, a realistic V-taper"),
         PersonStyle(id: "muscular", title: "Gym-built", part: .body,
-                    change: "Show this same person after a year of serious gym training: noticeably broader shoulders, a "
-                        + "bigger chest and thicker, defined arms, their clothes stretched over the new muscles.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0.03, most: 0.2, measures: "shoulders and waist")),
+                    change: "Show this same person after a year of strength training: noticeably broader shoulders and "
+                        + "thicker, defined arms, a stronger build filling out their clothes.",
+                    adultsOnly: true, limits: ShapeLimits(least: 0.03, most: 0.2, measures: "shoulders and waist"),
+                    reshape: Reshape(shoulders: 0.12, waist: -0.04),
+                    example: "Make the person look gym-built but believable"),
     ]
 
     /// What Muse Image is asked: the change, which part of whom and where, what stays, and how to fill where the
@@ -162,6 +177,8 @@ public struct StyleEffect: Equatable, Sendable {
 
     public var id: String
     public var title: String
+    /// An instruction that asks for it, for an app to offer.
+    public var example: String
     public var parts: [Part]
 
     /// Whether it needs a person to work on.
@@ -170,18 +187,18 @@ public struct StyleEffect: Equatable, Sendable {
     public static func named(_ id: String) -> StyleEffect? { all.first { $0.id == id } }
 
     public static let all: [StyleEffect] = [
-        StyleEffect(id: "monoDrama", title: "Dramatic black and white", parts: [
+        StyleEffect(id: "monoDrama", title: "Dramatic black and white", example: "Make it dramatic black and white", parts: [
             Part(target: .photo, values: [.saturation: -100, .contrast: 45, .clarity: 35, .blacks: -20, .highlights: -20]),
         ]),
-        StyleEffect(id: "mainCharacter", title: "Main character", parts: [
+        StyleEffect(id: "mainCharacter", title: "Main character", example: "Make it a main character shot", parts: [
             Part(target: .background, values: [.exposure: -0.5, .saturation: -20]),
             Part(target: .person, values: [.exposure: 0.15]),
             Part(target: .photo, values: [.highlightWarmth: 15, .shadowWarmth: -15]),
         ]),
-        StyleEffect(id: "vintage", title: "Vintage film", parts: [
+        StyleEffect(id: "vintage", title: "Vintage film", example: "Give the photo a vintage film look", parts: [
             Part(target: .photo, values: [.contrast: -15, .blacks: 20, .saturation: -25, .highlightWarmth: 12, .highlights: -15]),
         ]),
-        StyleEffect(id: "neonNight", title: "Neon night", parts: [
+        StyleEffect(id: "neonNight", title: "Neon night", example: "Give it a neon night look", parts: [
             Part(target: .photo, values: [.tint: 25, .temperature: -20, .contrast: 20, .vibrance: 30, .shadows: -15]),
         ]),
     ]

@@ -143,6 +143,22 @@ struct PromptBar: View {
             HStack(spacing: 14) {
                 Image(systemName: "sparkle").foregroundStyle(StudioStyle.accent)
                     .font(.system(size: 18))
+                // Lumen's person styles and effects, each filling in an instruction that asks for it.
+                Menu {
+                    Section("Person styles") {
+                        ForEach(PersonStyle.all, id: \.id) { style in Button(style.title) { model.prompt = style.example } }
+                    }
+                    Section("Effects") {
+                        ForEach(StyleEffect.all, id: \.id) { effect in Button(effect.title) { model.prompt = effect.example } }
+                    }
+                } label: {
+                    Image(systemName: "theatermasks")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(model.isRunning)
+                .accessibilityLabel("Styles")
+                .help("Restyle a person, or grade the photo")
                 TextField("Describe what you want to change", text: $model.prompt)
                     .textFieldStyle(.plain)
                     .font(.system(size: 15))

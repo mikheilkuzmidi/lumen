@@ -706,7 +706,15 @@ public actor EditAgent {
                 reshaped = true
             }
             if style.redraws || !reshaped {
-                notes += try await redraw(part, as: style, label: label, redraws: &redraws, events: events)
+                do {
+                    notes += try await redraw(part, as: style, label: label, redraws: &redraws, events: events)
+                } catch {
+                    // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
+                    // gym-built redraw of a man beside his wife, twice.
+                    let error = cancellationError(error)
+                    guard reshaped, error as? LumenError != .cancelled else { throw error }
+                    notes.append("The redraw of \(part.info.id) didn't work (\(error.localizedDescription)); the reshaped build stays.")
+                }
             }
             run.edit(person.info.id)
             run.done.append(label)

@@ -37,6 +37,8 @@ struct StyleTests {
         }
         #expect(PersonStyle.named("athletic")?.adultsOnly == true && PersonStyle.named("shades")?.adultsOnly == false)
         #expect(PersonStyle.named("gigachad")?.effect == "monoDrama")
+        #expect(PersonStyle.all.allSatisfy { !$0.example.isEmpty } && StyleEffect.all.allSatisfy { !$0.example.isEmpty },
+                "an instruction for every style and effect, for Studio's menu")
     }
 
     @Test func aPromptNamesThePartThePlaceAndWhatStays() {
@@ -179,6 +181,26 @@ struct StyleTests {
         for try await _ in agent.run("Give him a beard") {}
         #expect(await generator.prompts.count == 1)
         #expect(await host.placed == [Data([9])], "the matched redraw")
+    }
+
+    /// A gym-built body is reshaped first and then redrawn for its muscles; when the image model declines the redraw,
+    /// the new shape stays and the critic is told.
+    @Test func aGymBuiltBodyKeepsItsWarpWhenTheRedrawIsDeclined() async throws {
+        let planner = StylePlanner(plan: EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "person", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .style(StyleStep(region: "person", style: "muscular")),
+        ]))
+        let host = ReshapingHost()
+        let agent = EditAgent(planner: planner, segmenter: StyleSegmenter(answers: [[Self.segment(Self.person())]]),
+                              generator: DecliningGenerator(), host: host)
+        var applied: [Layer] = []
+        for try await event in agent.run("Make him look gym-built") {
+            if case .applied(let layer) = event { applied.append(layer) }
+        }
+        #expect(await host.asked == [0.12, -0.04])
+        #expect(applied.map(\.label) == ["Person: Gym-built"])
+        let done = try #require(await planner.critiqued.first)
+        #expect(done.contains { $0.contains("didn't work") && $0.contains("the reshaped build stays") }, "\(done)")
     }
 
     @Test func aFaceStyleFindsTheFaceInsideThePerson() async throws {
@@ -346,5 +368,13 @@ private actor MatchingHost: EditHost {
     func remove(_ layer: Layer.ID) async throws {}
     func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? {
         EncodedImage(data: Data([9]), format: .png, size: generated.size)
+    }
+}
+
+/// An image model that declines every request.
+private actor DecliningGenerator: Generator {
+    let modelID = "muse-image-1.0"
+    func generate(_ request: GenerateRequest) async throws -> EncodedImage {
+        throw LumenError.http(status: 400, message: "The response was filtered due to the prompt triggering our content management policy.")
     }
 }

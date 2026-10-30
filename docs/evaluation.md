@@ -208,7 +208,7 @@ Every style and effect was run again on the final code, on the maintainer's own 
 
 Spoken instructions are new ([#81](https://github.com/mikheilkuzmidi/lumen/issues/81)): an English and a Russian sentence, said aloud by the Mac into Studio's and Photoeditor's microphones, were written down word for word in about 1.5 s.
 
-**Every person style and effect on the maintainer, judged by eye:** beard, older, smile, aviator shades, platinum blonde, vampire, pirate captain, a knight's costume, zombie make-up, Day of the Dead, tiger, evening glam, gym-built and athletic (on him in a T-shirt between two friends, whose arms and hands stayed as they were) clearly worked; chad, gigachad, Hollywood, festival glitter, main character, vintage, neon night, black and white and red carpet glow worked and are subtle by design. 32 live runs cost $1.43.
+**Every person style and effect on the maintainer, judged by eye:** beard, older, smile, aviator shades, platinum blonde, vampire, pirate captain, a knight's costume, zombie make-up, Day of the Dead, tiger, evening glam, gym-built and athletic (on him in a T-shirt between two friends, whose arms and hands stayed as they were) clearly worked; chad, gigachad, Hollywood, festival glitter, main character, vintage, neon night, black and white and red carpet glow worked and are subtle by design. 29 live runs cost $1.38.
 
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:

@@ -269,9 +269,10 @@ struct StudioLibraryView: View {
             HStack {
                 Text("About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? "")).font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)
                 Spacer()
-                StudioChip(action: model.stop) { Text("Cancel") }
+                // Photoeditor's words for the same choice, in its library sheet.
+                StudioChip(action: model.stop) { Text("Stop") }
                 Button { Task { await model.approve() } } label: {
-                    Text("Go ahead").font(StudioStyle.body.weight(.semibold)).foregroundStyle(.white)
+                    Text("Approve Plan").font(StudioStyle.body.weight(.semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).frame(height: StudioStyle.control)
                         .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.accent))
                 }

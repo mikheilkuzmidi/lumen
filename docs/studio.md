@@ -81,6 +81,8 @@ Selection and redraw snapshots are omitted when the plan never reaches those eve
 
 ![The Library window after Muse Spark's review: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten three tilted photos?), with a recommendation](images/studio-library-question.jpg)
 
+![The Library window in plan-first mode: Muse Wonder's plan for "Make everyone's T-shirts blue", its photo highlighted, the estimate, and Stop or Approve Plan](images/studio-library-plan.jpg)
+
 Choose **File › Open Folder…** (⇧⌘O), or drop a folder on a Studio window. Each folder opens its own Library window. Lumen lists JPEG, PNG and HEIC photos directly in that folder. The grid loads thumbnails as they become visible and keeps a bounded image cache, including for libraries of 1,000 photos.
 
 Results default to `<folder>/Lumen`. Use **Change folder…** before Run to choose a different destination. The destination must be separate from the originals. **Results** reveals it in Finder. HEIC files export as JPEG; each exported photo has a `.lumen.json` sidecar with its layer labels, rotation and any misfire flag.
@@ -89,7 +91,7 @@ Enter an instruction for the library, or leave it blank for the base pass. Choos
 
 - **Autonomous** takes recommended answers without waiting. Each choice appears briefly as **Decided: …** and remains in Decisions and the event history.
 - **Ask me** pauses for personal choices. A card above the grid shows the question and its options, with the recommendation marked. Affected photos have an accent outline. Choose an option to continue.
-- **Plan first** reviews the library and asks its questions before making changes. The plan panel shows each group's title, photo count and instruction, plus estimated remaining model calls. Select a group to highlight its photos. **Go ahead** starts the edits; **Cancel** stops without applying the base pass or edits.
+- **Plan first** reviews the library and asks its questions before making changes. The plan panel shows each group's title, photo count and instruction, plus estimated remaining model calls. Select a group to highlight its photos. **Approve Plan** starts the edits; **Stop** stops without applying the base pass or edits, as in Photoeditor's library sheet.
 
 The side panel controls **Auto**, **Straighten** (Ask, Yes or No), **Flag misfires**, and the **quality threshold**. The agent measures and reviews the library, flags misfires, applies the base pass, gives low-quality photos a closer look, and plans the instruction across the remaining photos. Straighten Ask raises a question only when a horizon looks tilted. Misfires stay in the source folder and are left out of later editing.
 

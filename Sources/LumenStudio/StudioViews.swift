@@ -420,7 +420,8 @@ struct StudioSidebar: View {
                     sidebarEmpty("Built one layer at a time", detail: "Applied edits appear here. Adjust their opacity, hide them, or undo a step.", symbol: "square.3.layers.3d")
                 } else {
                     HStack {
-                        Text("\(model.layers.count + (model.batchStraightening == nil ? 0 : 1)) layers").font(StudioStyle.section)
+                        let count = model.layers.count + (model.batchStraightening == nil ? 0 : 1)
+                        Text("\(count) \(count == 1 ? "layer" : "layers")").font(StudioStyle.section)
                             .foregroundStyle(StudioStyle.textSecondary)
                         Spacer()
                         StudioIconButton(symbol: "arrow.uturn.backward", help: "Undo (⌘Z)", action: model.undo)
@@ -432,10 +433,16 @@ struct StudioSidebar: View {
                         LayerRow(model: model, layer: layer)
                     }
                     if let angle = model.batchStraightening {
-                        Toggle(isOn: Binding(get: { model.straighteningAngle != 0 }, set: { _ in model.toggleStraightening() })) {
+                        let on = model.straighteningAngle != 0
+                        HStack(spacing: 8) {
+                            StudioIconButton(symbol: on ? "circle.inset.filled" : "circle", help: on ? "Turn off" : "Turn on",
+                                             isActive: on, action: model.toggleStraightening)
+                                .accessibilityLabel("Straighten")
                             Text("Straighten · \(angle.formatted())°").font(StudioStyle.body.weight(.medium))
+                                .foregroundStyle(on ? StudioStyle.textPrimary : StudioStyle.textTertiary)
+                            Spacer(minLength: 0)
                         }
-                        .toggleStyle(.switch).controlSize(.mini).disabled(model.isBusy)
+                        .disabled(model.isBusy)
                         .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
                         .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
                     }
@@ -547,12 +554,19 @@ private struct LayerRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Toggle(isOn: Binding(get: { layer.isEnabled }, set: { _ in model.toggleLayer(layer.id) })) {
+            // Photoeditor's mask and layer rows: a filled circle while it shows, an empty one while it's off.
+            HStack(alignment: .top, spacing: 8) {
+                StudioIconButton(symbol: layer.isEnabled ? "circle.inset.filled" : "circle",
+                                 help: layer.isEnabled ? "Turn off" : "Turn on", isActive: layer.isEnabled) {
+                    model.toggleLayer(layer.id)
+                }
+                .accessibilityLabel(layer.label)
+                .accessibilityValue(layer.isEnabled ? "On" : "Off")
                 Text(layer.label).font(StudioStyle.body.weight(.medium))
+                    .foregroundStyle(layer.isEnabled ? StudioStyle.textPrimary : StudioStyle.textTertiary)
                     .lineLimit(2).truncationMode(.tail).help(layer.label)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: StudioStyle.control, alignment: .leading)
             }
-            .toggleStyle(.switch).controlSize(.mini)
             HStack(spacing: 10) {
                 Text("Opacity").font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)
                 Slider(value: Binding(get: { layer.opacity }, set: { model.setOpacity($0, for: layer.id) }),

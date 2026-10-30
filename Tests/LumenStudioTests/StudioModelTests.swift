@@ -42,9 +42,11 @@ struct StudioModelTests {
                 #expect(model.showsOriginal && model.original != nil)
             case .layers:
                 #expect(!model.showsOriginal && model.sidebar == .layers)
+            case .failed:
+                Issue.record("an edit that finished isn't captured as failed")
             }
         }
-        #expect(snapshots == StudioSnapshot.allCases)
+        #expect(snapshots == StudioSnapshot.allCases.filter { $0 != .failed })
         #expect(model.phase == .idle && model.canUndo && model.canExport)
         #expect(await planner.requestedArea == script.area)
         let result = folder.appendingPathComponent("result.jpg")
@@ -80,7 +82,9 @@ struct StudioModelTests {
         let runner = StudioScriptRunner(model: model, script: script,
                                         scriptURL: folder.appendingPathComponent("edit.json"), output: folder)
         let models = StudioModels(planner: StudioPlanner(fails: true), segmenter: StudioSegmenter(), generator: StudioGenerator())
-        await #expect(throws: (any Error).self) { try await runner.run(using: models) { _ in } }
+        var snapshots: [StudioSnapshot] = []
+        await #expect(throws: (any Error).self) { try await runner.run(using: models) { snapshots.append($0) } }
+        #expect(snapshots == [.opened, .failed], "the window is captured as it shows the failure")
         #expect(model.phase == .idle)
         #expect(model.issue?.contains("recorded failure") == true)
         let timeline = try String(contentsOf: folder.appendingPathComponent("timeline.txt"), encoding: .utf8)

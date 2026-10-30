@@ -359,6 +359,39 @@ struct AgentTests {
         #expect(events.reasons == ["Step limit reached."])
     }
 
+    /// Re-selecting three women's tops each round used up all 12 steps before the critic's first revision was done.
+    /// Selections change nothing in the photo, so the limit counts only the steps that do.
+    @Test func selectionsDontCountTowardTheStepLimit() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Coat", steps: [
+            .select(Selection(id: "coat", concept: "coat")),
+            .select(Selection(id: "sleeve", concept: "coat")),
+            .adjust(Adjustment(region: "coat", values: [.exposure: 0.2])),
+        ]))
+        let host = AgentHost()
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: [segment()]), generator: AgentGenerator(),
+                              host: host, configuration: AgentConfiguration(maxSteps: 1))
+        let events = try await collect(agent.run("Brighten the coat"))
+        #expect(events.stepIndices == [0, 1, 2])
+        #expect(await host.layers.count == 1, "the adjustment, after two selections")
+    }
+
+    /// The black top under a woman's poncho answered to no name, so SAM found it by where it was; looked for by name
+    /// after its redraw, it came back "could not check" each time and the critic asked for it again. A thing found only
+    /// by location isn't looked for again by name.
+    @Test func aThingFoundOnlyByLocationIsNotLookedForAgainByName() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Top", steps: [
+            .select(Selection(id: "top", concept: "top", box: NormalizedRect(x: 0.2, y: 0.3, width: 0.4, height: 0.5))),
+            .regenerate(Regeneration(region: "top", prompt: "Make it royal blue")),
+        ]))
+        // Nothing by name in the box, nothing by name anywhere, then the box itself.
+        let segmenter = AgentSegmenter(answers: [[], [], [segment()]])
+        let events = try await collect(EditAgent(planner: planner, segmenter: segmenter, generator: AgentGenerator(),
+                                                 host: AgentHost()).run("Make her top royal blue"))
+        let requests = await segmenter.requests
+        #expect(requests.count == 3 && requests[2].concept == nil, "selected by location, and not looked for again")
+        #expect(!events.traces.contains { $0.detail.contains("Could not check the redraw") })
+    }
+
     @Test func zeroStepsMakesNoModelCalls() async throws {
         let planner = AgentPlanner(plan: EditPlan(summary: "Unused", steps: []))
         let host = AgentHost()

@@ -62,7 +62,9 @@ public struct TraceEvent: Codable, Equatable, Sendable {
 }
 
 public struct AgentConfiguration: Sendable {
-    /// Steps attempted for one instruction, across every revision.
+    /// Steps that change the photo, attempted for one instruction across every revision. Selections don't count: they
+    /// change nothing and cost a fraction of a cent, and re-selecting three women's tops each round used up all 12
+    /// before the critic's first revision was done.
     public var maxSteps = 12
     /// Times the planner may look at its result and revise it.
     public var maxRevisions = 2
@@ -152,6 +154,9 @@ public actor EditAgent {
         var asset: AssetID
         /// How many things SAM found for it: seven flowers are redrawn as seven, not as the one in the middle.
         var count = 1
+        /// Whether SAM found it only by where it is, nothing answering to its name, so a redraw of it can't be found
+        /// again by name either.
+        var byLocation = false
     }
 
     private struct AppliedLayer {
@@ -166,6 +171,8 @@ public actor EditAgent {
         var missing: Set<String> = []
         var done: [String] = []
         var steps = 0
+        /// The steps that changed the photo, which the step limit counts.
+        var changes = 0
         /// The regions this run changed, in the order it first changed them.
         var edited: [String] = []
 
@@ -226,7 +233,7 @@ public actor EditAgent {
                     return
                 }
                 try checkCancellation()
-                if run.steps >= configuration.maxSteps {
+                if run.changes >= configuration.maxSteps {
                     finish("Step limit reached.", events: events)
                     return
                 }
@@ -302,9 +309,10 @@ public actor EditAgent {
         var needsLook = false
         for step in plan.steps {
             try checkCancellation()
-            guard run.steps < configuration.maxSteps else { return "Step limit reached." }
+            guard run.changes < configuration.maxSteps else { return "Step limit reached." }
             let index = run.steps
             run.steps += 1
+            if step.type != "select" { run.changes += 1 }
             events.yield(.stepStarted(index: index, step: step))
             if let region = step.region, run.missing.contains(region) {
                 note(.failure, "Skipped \(step.type): nothing was found for \(region).", events: events)
@@ -454,6 +462,7 @@ public actor EditAgent {
                 note(.select, "Found \(found.count) of them elsewhere; none is the one meant.", events: events)
             }
         }
+        var byLocation = false
         if segments.isEmpty, !every, let concept = selection.concept, request.box != nil || !request.points.isEmpty {
             let location = selection.box != nil ? "the planner's box" : request.box != nil ? "the selected area" : "the planner's points"
             note(.select, "Nothing was found for “\(concept)” by name; selecting from \(location).", events: events)
@@ -461,6 +470,7 @@ public actor EditAgent {
             segments = try await call(.select, model: segmenter.modelID, detail: "Select \(concept) by location", events: events) {
                 try await self.segmenter.segment(object)
             }
+            byLocation = true
         }
         guard let first = segments.first else {
             note(.select, "Nothing found for \(selection.id).", events: events)
@@ -491,6 +501,7 @@ public actor EditAgent {
         guard var found = try await region(selection, mask: mask, label: first.label, score: segments.count == 1 ? first.score : nil,
                                            events: events) else { return nil }
         found.count = selection.invert || selection.shadowTip != nil ? 1 : segments.count
+        found.byLocation = byLocation
         return found
     }
 
@@ -648,7 +659,10 @@ public actor EditAgent {
         let request = GenerateRequest(image: image, mask: mask, prompt: text)
         // The redraw changes how the thing looks, so it is looked for without the old colour: a "white t-shirt"
         // redrawn blue is found as a "t-shirt". A removal is looked for as it was.
-        let concept = kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : region.info.concept
+        // One SAM found only by where it is can't be found again by name: looked for, the black top under a woman's
+        // poncho came back "could not check" each time, and the critic asked for it again until the steps ran out.
+        let concept = region.byLocation ? nil
+            : kind == .regenerate ? region.info.concept.flatMap(Self.withoutColour) : region.info.concept
         var attempt = try await redrawAttempt(request, original: original, concept: concept,
                                               region: region.info.id, kind: kind, events: events)
         // A removal keeps its grown mask, to take all of the thing out, with an edge as soft as 1.5% of the crop

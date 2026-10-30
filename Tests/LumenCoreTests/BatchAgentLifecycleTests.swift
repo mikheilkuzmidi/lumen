@@ -50,6 +50,18 @@ struct BatchAgentLifecycleTests {
         #expect(try batchTestSummary(events).photos.map(\.failed) == [true, false, true])
     }
 
+    @Test func aFailedReviewLeavesItsPhotosJudgedByMeasurement() async throws {
+        let library = BatchTestLibrary([batchTestFacts(), batchTestFacts(sharpness: 0.01)])
+        let reviewer = BatchTestReviewer(reviewError: LumenError.timedOut)
+        let events = try await batchTestCollect(await batchTestAgent(library, reviewer: reviewer).run(BatchOptions(straighten: false)))
+        let summary = try batchTestSummary(events)
+        #expect(summary.photos.map(\.failed) == [false, false])
+        #expect(summary.photos[1].flagged == "Almost no fine detail was measured.")
+        #expect(await library.autos == [PhotoID("photo-0")])
+        #expect(await library.saved == [PhotoID("photo-0")])
+        #expect(summary.photos.allSatisfy { ($0.outcome ?? "").contains("The library review failed") })
+    }
+
     @Test func aFinishedAgentCanRunAnotherBatchImmediately() async throws {
         let library = BatchTestLibrary([batchTestFacts()])
         let agent = batchTestAgent(library)

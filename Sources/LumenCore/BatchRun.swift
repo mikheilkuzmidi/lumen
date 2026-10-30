@@ -205,7 +205,16 @@ actor BatchRun {
         } catch is BatchCallLimit {
             return
         } catch {
-            for input in inputs { try record(error, for: input.photo) }
+            // A review that failed as a whole (a timeout, a refusal) leaves its photos judged by measurement, as without
+            // a reviewer, so they still get their base pass: one slow answer lost a whole shoot's edit.
+            if isCancellation(error) { throw LumenError.cancelled }
+            for input in inputs {
+                let review = measuredReview(input.photo, facts: input.facts)
+                reviews[input.photo] = review
+                results[input.photo]?.levelLine = review.levelLine
+                note("The library review failed (\(error.localizedDescription)), so this photo was judged by measurement.", for: input.photo)
+                events.yield(.reviewed(review))
+            }
         }
     }
 

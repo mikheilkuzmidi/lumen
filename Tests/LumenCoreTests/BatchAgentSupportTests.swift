@@ -138,14 +138,16 @@ actor BatchTestReviewer: BatchPlanner {
     private let gate: BatchTestGate?
     private let repeatQuestions: Bool
     private let reviewResponse: [PhotoReview]?
+    private let reviewError: (any Error)?
     private(set) var reviewRequests: [ReviewRequest] = []
     private(set) var planRequests: [BatchPlanRequest] = []
     private(set) var active = 0
     private(set) var peak = 0
 
     init(reviews: [PhotoReview] = [], plans: [BatchPlan] = [], gate: BatchTestGate? = nil, repeatQuestions: Bool = false,
-         reviewResponse: [PhotoReview]? = nil) {
+         reviewResponse: [PhotoReview]? = nil, reviewError: (any Error)? = nil) {
         self.reviews = Dictionary(uniqueKeysWithValues: reviews.map { ($0.photo, $0) })
+        self.reviewError = reviewError
         self.plans = plans
         self.gate = gate
         self.repeatQuestions = repeatQuestions
@@ -158,6 +160,7 @@ actor BatchTestReviewer: BatchPlanner {
         peak = max(peak, active)
         await gate?.enter()
         active -= 1
+        if let reviewError { throw reviewError }
         return reviewResponse ?? request.photos.map { reviews[$0.photo] ?? batchTestReview($0.photo) }
     }
 

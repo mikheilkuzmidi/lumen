@@ -7,6 +7,9 @@ Or point it at a folder of a thousand photos and say "edit them all, and make ev
 - **Planning and checking:** Muse Spark; Muse Wonder plans across a library.
 - **Finding things:** SAM 3.1 finds them by name, by a box you draw, or by points.
 - **Redrawing:** Muse Image redraws what's inside a region.
+- **Listening:** Muse Voice Transcribe writes down an instruction you say, in your own language, for you to check before it runs.
+
+It also restyles a person, redrawing only them: a chad face, Day of the Dead face paint, a knight's armour, 30 years older and more.
 
 Every step is a separate, non-destructive layer. You can turn any of them off, adjust them or undo them, and the original photo is never changed.
 

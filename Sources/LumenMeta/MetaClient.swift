@@ -163,14 +163,16 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         }.joined(separator: ", ")
         let effects = StyleEffect.all.map { "\($0.id) (\($0.title))" }.joined(separator: ", ")
         return """
-        A person's looks (a "Chad" or "Gigachad" face, a beard, an older face, a smile, sunglasses, zombie make-up,
-        platinum blonde hair, an athletic or gym-built body, a costume) are changed with a style step, never with regenerate: select the person
+        A person's looks (a "Chad" or "Gigachad" face, a beard, an older face, a smile, sunglasses, zombie make-up, face
+        paint, glam or glitter make-up, platinum blonde hair, an athletic or gym-built body, a costume) are changed with a style step, never with regenerate: select the person
         (concept "person", a point on them), then a style step with that region and one style from the catalogue. It
         redraws only their face, head or body and what goes with it, finds the face itself, and keeps a believable
         amount. Styles: \(styles).
         Choose by the words: "chad", "jawline", "chiselled" is chad; "gigachad" or the meme is gigachad; "athletic",
         "V-taper", "fit", "slimmer waist", "lose the belly" is athletic; "jacked", "buff", "bodybuilder", "muscular" is
-        muscular; "glow-up", "red carpet", "Hollywood" is hollywood. Restyle every person the instruction names, one
+        muscular; "glow-up", "red carpet", "Hollywood" is hollywood; "Day of the Dead", "sugar skull", "calavera",
+        "skull face paint" is skull; "tiger" face paint is tiger; "glam", "evening make-up", "smoky eyes" is glam;
+        "glitter", "festival make-up", "rhinestones" is glitter. Restyle every person the instruction names, one
         style step each. When the person holds something in front of their body (a fish, a bag, a baby, a dog),
         select it too and give its region as keep, so reshaping or redrawing them leaves it as it is; use null
         otherwise. For a body style (athletic, muscular), say in wears what the person has on their upper body: bare

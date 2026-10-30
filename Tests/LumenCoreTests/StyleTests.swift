@@ -427,9 +427,40 @@ struct StyleTests {
         #expect(hands.first?.contains("Cover this person's hands and arms in grey-green theatrical body paint") == true)
         #expect(hands.last?.contains("Cover this person's hands in grey-green theatrical body paint") == true
                 && hands.last?.contains("Change only the bare skin of the hands in this picture") == true)
-        // A sunlit thumb was left pink: every finger and the thumb are named.
-        #expect(hands.allSatisfy { $0.contains("every finger and the thumb, to their tips") })
+        // A sunlit thumb was left pink, then the shaded underside of a palm on a knee: both are named.
+        #expect(hands.allSatisfy { $0.contains("every finger and the thumb, to their tips, and the skin in shadow where a hand rests on something") })
         #expect(await host.patchMasks.count == 2, "the face, then the hands")
+    }
+
+    /// Zombie make-up's face was let through Meta's content filter one day and filtered the next, and the whole edit
+    /// failed with it. Turned down, a style is asked for once more in its milder words, and the critic is told; a style
+    /// with none still fails, with the filter's reason.
+    @Test func aFilteredStyleIsAskedForOnceMoreInMilderWords() async throws {
+        func run(_ style: String) async throws -> (prompts: [String], critiqued: [String], patches: Int) {
+            let planner = StylePlanner(plan: EditPlan(summary: "Make-up", steps: [
+                .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+                .style(StyleStep(region: "man", style: style)),
+            ]))
+            let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
+                                                     [Self.segment(Self.face, "face")], [Self.segment(Self.face, "face")]])
+            let host = StyleHost(skin: Self.skin)
+            let generator = WordDecliningGenerator(declined: ["sunken eyes", "stitched smile", "tiger"])
+            let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
+            for try await _ in agent.run("Make-up") {}
+            return (await generator.prompts, await planner.critiqued.first ?? [], await host.patchMasks.count)
+        }
+        let zombie = try await run("zombie")
+        #expect(zombie.prompts.first?.contains("dark sunken eyes and painted scars") == true)
+        #expect(zombie.prompts.dropFirst().first?.contains("grey-green theatrical Halloween face paint") == true)
+        #expect(zombie.critiqued.contains { $0.hasPrefix("Meta's content filter turned down the zombie make-up as first worded") })
+        #expect(zombie.patches >= 1)
+
+        let skull = try await run("skull")
+        #expect(skull.prompts.dropFirst().first?.contains("festive Day of the Dead face paint") == true)
+
+        let tiger = try await run("tiger")
+        #expect(tiger.patches == 0, "no milder words to ask with")
+        #expect(tiger.critiqued.isEmpty || !tiger.critiqued.contains { $0.hasPrefix("Meta's content filter") })
     }
 
     /// Athletic on a man in a T-shirt only warped his outline. A body whose build shows (a fitted top, or none) is
@@ -666,6 +697,21 @@ private actor ArmsHost: EditHost {
 }
 
 /// An image model behind a filter that turns down body paint on "hands and arms", as Meta's did, and lets the rest by.
+/// Meta's content filter, turning down any prompt with one of the `declined` words.
+private actor WordDecliningGenerator: Generator {
+    let modelID = "muse-image-1.0"
+    let declined: [String]
+    private(set) var prompts: [String] = []
+    init(declined: [String]) { self.declined = declined }
+    func generate(_ request: GenerateRequest) async throws -> EncodedImage {
+        prompts.append(request.prompt)
+        if declined.contains(where: request.prompt.contains) {
+            throw LumenError.http(status: 400, message: "The response was filtered due to the prompt triggering our content management policy.")
+        }
+        return request.image
+    }
+}
+
 private actor ArmsDecliningGenerator: Generator {
     let modelID = "muse-image-1.0"
     private(set) var prompts: [String] = []

@@ -46,6 +46,9 @@ public struct PersonStyle: Equatable, Sendable {
     public var buildChange: String?
     /// Whether the redraw keeps the part's outline where it is: it is placed only inside it, a little in from its edge.
     public var keepsOutline = false
+    /// The change in milder words, asked for once when Meta's content filter turns `change` down: zombie make-up with
+    /// sunken eyes and painted scars was let through one day and filtered the next.
+    public var gentler: String?
 
     /// A part of a person a style redraws besides its own, found on them or, for what isn't there yet, made room for.
     public enum Piece: String, CaseIterable, Sendable {
@@ -81,8 +84,9 @@ public struct PersonStyle: Equatable, Sendable {
 
     public init(id: String, title: String, part: Part, change: String, adultsOnly: Bool, limits: ShapeLimits? = nil,
                 effect: String? = nil, reshape: Reshape? = nil, redraws: Bool = true, pieces: Set<Piece> = [],
-                skinChange: String? = nil, buildChange: String? = nil, example: String = "") {
+                skinChange: String? = nil, buildChange: String? = nil, gentler: String? = nil, example: String = "") {
         self.id = id
+        self.gentler = gentler
         self.example = example
         self.pieces = pieces
         self.skinChange = skinChange
@@ -150,7 +154,37 @@ public struct PersonStyle: Equatable, Sendable {
                     adultsOnly: false, pieces: [.neck, .skin],
                     skinChange: "Cover this person's hands and arms in grey-green theatrical body paint, the kind worn "
                         + "with a Halloween costume, applied evenly.",
+                    gentler: "Give this person grey-green theatrical Halloween face paint on the same face, down the neck "
+                        + "and over the ears, with darker shading around the eyes.",
                     example: "Give the person zombie make-up for Halloween"),
+        PersonStyle(id: "skull", title: "Day of the Dead face paint", part: .face,
+                    change: "Paint this person's face for the Day of the Dead, as face painters do for the holiday: a white "
+                        + "base, black around the eyes and on the tip of the nose, a stitched smile drawn across the lips, "
+                        + "and colourful flowers and swirls on the forehead and cheeks, over the same face, down the neck "
+                        + "and over the ears.",
+                    adultsOnly: false, pieces: [.neck],
+                    gentler: "Paint this person's face in festive Day of the Dead face paint: a white base, black around "
+                        + "the eyes and on the tip of the nose, and colourful flowers on the forehead and cheeks, down the "
+                        + "neck and over the ears.",
+                    example: "Paint the person's face for the Day of the Dead"),
+        PersonStyle(id: "tiger", title: "Tiger face paint", part: .face,
+                    change: "Paint this person's face as a tiger, as a face painter at a festival would: an orange base, "
+                        + "bold black stripes on the forehead, cheeks and chin, white around the mouth and above the brows, "
+                        + "and a black nose tip, over the same face, down the neck and over the ears.",
+                    adultsOnly: false, pieces: [.neck],
+                    example: "Paint the person's face like a tiger"),
+        PersonStyle(id: "glam", title: "Evening glam make-up", part: .face,
+                    change: "Give this person full evening glam make-up on the same face: an even matte base that keeps the "
+                        + "skin's texture, smoky eyes with winged black liner and long lashes, softly sculpted cheekbones, "
+                        + "groomed brows and deep berry lipstick.",
+                    adultsOnly: false,
+                    example: "Give the person evening glam make-up"),
+        PersonStyle(id: "glitter", title: "Festival glitter", part: .face,
+                    change: "Give this person festival make-up on the same face: fine gold and iridescent glitter across the "
+                        + "cheekbones and around the eyes, a few small rhinestones at the outer corners of the eyes, and a "
+                        + "soft shimmer on the eyelids, catching the photo's light.",
+                    adultsOnly: false,
+                    example: "Give the person festival glitter make-up"),
         PersonStyle(id: "platinum", title: "Platinum blonde", part: .head,
                     change: "Dye this person's hair a bright platinum blonde, a solid, fully dyed colour from the roots to "
                         + "the tips, keeping its cut, length and texture.",
@@ -240,9 +274,10 @@ public struct PersonStyle: Equatable, Sendable {
             change = change.replacingOccurrences(of: "hands and arms", with: "hands")
             parts = "hands in this picture"
         }
-        // Asked for the hands, Muse Image made a man's hand up as a zombie's and left its sunlit thumb pink.
+        // Asked for the hands, Muse Image made a man's hand up as a zombie's and left its sunlit thumb pink, and then the
+        // shaded underside of his palm where it rested on his knee.
         return "Edit this photo. \(change) Change only the bare skin of the \(parts), all of it: every finger and the thumb, "
-            + "to their tips. Keep their clothes, their pose, what they hold or wear and everything else exactly as it is, "
+            + "to their tips, and the skin in shadow where a hand rests on something. Keep their clothes, their pose, what they hold or wear and everything else exactly as it is, "
             + "in the photo's own light. Photorealistic."
     }
 
@@ -251,6 +286,15 @@ public struct PersonStyle: Equatable, Sendable {
         var style = self
         style.change = change.replacingOccurrences(of: "{outfit}", with: outfit)
         style.skinChange = skinChange?.replacingOccurrences(of: "{outfit}", with: outfit)
+        return style
+    }
+
+    /// The style asked for in its milder words; nil for one that has none.
+    public func gentled() -> PersonStyle? {
+        guard let gentler else { return nil }
+        var style = self
+        style.change = gentler
+        style.gentler = nil
         return style
     }
 
@@ -277,7 +321,7 @@ public struct PersonStyle: Equatable, Sendable {
 
     /// Whether the part keeps the photo's own colour: all but those that recolour it (make-up, dyed or greying hair, a
     /// costume).
-    public var keepsTone: Bool { !["zombie", "platinum", "older", "vampire"].contains(id) && !dressesUp }
+    public var keepsTone: Bool { !["zombie", "skull", "tiger", "platinum", "older", "vampire"].contains(id) && !dressesUp }
 
     /// Whether a head's mask must also cover the face under the hair: SAM's "head" was sometimes only the hair.
     public var coversFace: Bool { part == .head && id != "platinum" }

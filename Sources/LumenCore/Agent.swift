@@ -961,8 +961,8 @@ public actor EditAgent {
         let kept = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
         let mask = frame.map { Self.below($0, kept) } ?? kept
         let position = Self.place(of: box, in: rect)
-        func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
-            let prompt = style.prompt(person: "person", place: position, firmer: firmness, pieces: pieces, wears: attire)
+        func attempt(_ firmness: PersonStyle.Firmness, as asked: PersonStyle) async throws -> RedrawAttempt {
+            let prompt = asked.prompt(person: "person", place: position, firmer: firmness, pieces: pieces, wears: attire)
             let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
             // A costume changes the head's outline (a hat on it) on purpose, and a build is placed inside an outline it
             // can't move, so neither is looked for again to compare.
@@ -970,12 +970,23 @@ public actor EditAgent {
                                            concept: style.dressesUp || style.keepsOutline ? nil : style.part.concept,
                                            region: region.info.id, kind: .style, events: events)
         }
-        var best = try await attempt(.asked)
         var notes: [String] = []
+        let asked: PersonStyle
+        var best: RedrawAttempt
+        do {
+            best = try await attempt(.asked, as: style)
+            asked = style
+        } catch let error where Self.filtered(error) {
+            // Turned down by Meta's content filter, it is asked for once more in milder words.
+            guard let gentle = style.gentled() else { throw error }
+            best = try await attempt(.asked, as: gentle)
+            asked = gentle
+            notes.append("Meta's content filter turned down the \(style.title.lowercased()) as first worded; it was asked for in milder words.")
+        }
         /// Another attempt, or nil and why there is none.
         func retried(_ firmness: PersonStyle.Firmness) async throws -> (attempt: RedrawAttempt?, note: String?) {
             do {
-                return (try await attempt(firmness), nil)
+                return (try await attempt(firmness, as: asked), nil)
             } catch {
                 let error = cancellationError(error)
                 if error as? LumenError == .cancelled { throw error }
@@ -1167,6 +1178,12 @@ public actor EditAgent {
     /// The longest edge a crop to warp is rendered at.
     static let warpLongEdge = 4096
 
+    /// Whether Meta's content filter turned the request down, which milder words can get past.
+    static func filtered(_ error: any Error) -> Bool {
+        guard case LumenError.http(400, let message) = error else { return false }
+        return message.contains("content management policy")
+    }
+
     /// Redraws the rest of a person's bare skin (their hands and arms, a bare chest) as their style has it, in its own
     /// close-up so the face's redraw keeps its detail: a face made 30 years older over young hands, or zombie make-up
     /// that stopped at the wrists, showed where the face's mask ended.
@@ -1192,10 +1209,10 @@ public actor EditAgent {
         do {
             attempt = try await redrawAttempt(GenerateRequest(image: image, mask: mask, prompt: prompt), original: mask,
                                               concept: nil, region: id, kind: .style, events: events)
-        } catch LumenError.http(let status, let message) where status == 400 && message.contains("content management policy") {
+        } catch let error where Self.filtered(error) {
             // Turned down by the content filter, the hands alone are asked for once more.
             guard let hands = style.skinPrompt(person: "person", place: Self.place(of: box, in: rect), handsOnly: true),
-                  hands != prompt else { throw LumenError.http(status: status, message: message) }
+                  hands != prompt else { throw error }
             attempt = try await redrawAttempt(GenerateRequest(image: image, mask: mask, prompt: hands), original: mask,
                                               concept: nil, region: id, kind: .style, events: events)
         }

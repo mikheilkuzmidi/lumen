@@ -111,7 +111,17 @@ For a whole library, plan-first mode shows the plan and waits for approval befor
 
 The last full run of this library took 47 model calls in 393 s and cost $0.43.
 
-Without a key, `swift test` runs everything against recorded responses.
+### Without a key
+
+Two live edits are recorded in [`Samples/`](Samples/README.md), every answer the Meta models gave. Replayed, they run
+the whole edit again on your Mac, with no key, no account and no cost, and make the same result:
+
+```sh
+.build/release/lumen edit Fixtures/photos/man-in-denim-jacket-posing.jpg "Dress the man up as a medieval knight" \
+  --replay Samples/knight-costume.run.json --out knight.jpg
+```
+
+`swift test` also runs everything against recorded responses.
 
 ## Build
 

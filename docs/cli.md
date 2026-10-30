@@ -28,6 +28,8 @@ The default result is `coat-lumen.jpg` beside the original. Output extensions se
 | `--max-revisions N` | `2` | Additional plans the critic may request. Zero still allows the first critique. |
 | `--style <id>` | None | Restyle the person the instruction names: one of `lumen styles` (chad, gigachad, hollywood, beard, older, smile, shades, zombie, skull, tiger, glam, glitter, platinum, vampire, pirate, costume, athletic, muscular). Only that person is redrawn, with the parts the style needs (an older face's neck and hands, a costume's clothes and hat); for `costume`, name the costume in the instruction. Reshaping and ageing are for adults only. |
 | `--effect <id>` | None | Grade with one of `lumen styles`' effects (monoDrama, mainCharacter, vintage, neonNight, redCarpet), with a style or alone. |
+| `--record <file.json>` | Not recorded | Keep every Meta answer of this run in a file. |
+| `--replay <file.json>` | Live | Answer this run from a recorded one instead of the Meta API: no key, no account, no cost. Muse Spark plans only (`--backend meta`), and the instruction in words. See [Samples](../Samples/README.md). |
 | `--preview N` | `1024` | Long edge seen by the planner and critic: Muse Spark reads a 1024 px photo as about 860 input tokens, against about 1,940 at 1536 px. SAM selects at 1536 px; region redraws use crops up to 2048 px. Export remains full size. |
 
 Progress prints the plan summary, completed selections and changes with model timings, the critic's verdict and notes, and the reason the edit finished. Colour is used only when stdout is a terminal. Selection counts describe the merged region retained by the agent. Redirected output has one plain-text line per reported event.

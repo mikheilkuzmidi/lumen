@@ -34,6 +34,15 @@ struct ArgumentsTests {
         #expect(try Lumen.parseAsRoot(["transcribe", recording.path]) is Transcribe)
     }
 
+    /// A recorded run is replayed with Muse Spark's plans and words for an instruction: recording and replaying at
+    /// once, another planner or a spoken instruction can't be replayed.
+    @Test func aRunIsRecordedOrReplayedNotBoth() throws {
+        let replay = try #require(Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "Make it warm", "--replay", "run.json"]) as? Edit)
+        #expect(replay.replay == "run.json" && replay.record == nil)
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "Make it warm", "--replay", "a.json", "--record", "b.json"]) }
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "Make it warm", "--replay", "a.json", "--backend", "glimmer"]) }
+    }
+
     @Test func editOptions() throws {
         let command = try #require(Lumen.parseAsRoot([
             "edit", "photo.jpg", "Change the coat", "--area", "0.1,0.2,0.3,0.4", "--backend", "spark-open",

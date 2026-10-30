@@ -8,32 +8,36 @@ enum Backend: String, ExpressibleByArgument, Codable, Sendable {
     case meta, glimmer
     case sparkOpen = "spark-open"
 
-    func models(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> EditModels {
+    func models(environment: [String: String] = ProcessInfo.processInfo.environment,
+                transport: any MetaTransport = RetryingMetaTransport()) throws -> EditModels {
         switch self {
         case .meta:
             guard let key = environment["META_API_KEY"],
                   !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
-            let configuration = MetaConfiguration(apiKey: key)
-            return EditModels(planner: MetaPlanner(configuration: configuration),
-                              segmenter: MetaSegmenter(configuration: configuration),
-                              generator: MetaGenerator(configuration: configuration))
+            return Self.meta(MetaConfiguration(apiKey: key), transport: transport)
         case .glimmer:
             // Muse Glimmer plans and checks on this Mac; SAM 3.1 and Muse Image still answer through the Meta API.
             guard let key = environment["META_API_KEY"],
                   !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
             let configuration = MetaConfiguration(apiKey: key)
             return EditModels(planner: LocalGlimmerPlanner(baseURL: Self.glimmerURL(environment)),
-                              segmenter: MetaSegmenter(configuration: configuration),
-                              generator: MetaGenerator(configuration: configuration))
+                              segmenter: MetaSegmenter(configuration: configuration, transport: transport),
+                              generator: MetaGenerator(configuration: configuration, transport: transport))
         case .sparkOpen:
             // Muse Spark Open plans and checks on a hosting provider; SAM 3.1 and Muse Image answer through the Meta API.
             guard let key = environment["META_API_KEY"],
                   !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
             let configuration = MetaConfiguration(apiKey: key)
             return EditModels(planner: try HostedSparkOpenPlanner.fromEnvironment(environment),
-                              segmenter: MetaSegmenter(configuration: configuration),
-                              generator: MetaGenerator(configuration: configuration))
+                              segmenter: MetaSegmenter(configuration: configuration, transport: transport),
+                              generator: MetaGenerator(configuration: configuration, transport: transport))
         }
+    }
+
+    static func meta(_ configuration: MetaConfiguration, transport: any MetaTransport) -> EditModels {
+        EditModels(planner: MetaPlanner(configuration: configuration, transport: transport),
+                   segmenter: MetaSegmenter(configuration: configuration, transport: transport),
+                   generator: MetaGenerator(configuration: configuration, transport: transport))
     }
 }
 

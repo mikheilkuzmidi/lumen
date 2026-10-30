@@ -39,6 +39,12 @@ struct Edit: AsyncParsableCommand {
     @Option(help: "Grade the photo with this effect (see lumen styles).")
     var effect: String?
 
+    @Option(help: "Keep every Meta answer of this run in a file, to replay it later with --replay.")
+    var record: String?
+
+    @Option(help: "Answer this run from a recorded one (--record) instead of the Meta API: no key, no account, no cost.")
+    var replay: String?
+
     var photoURL: URL { URL(fileURLWithPath: photo) }
 
     /// The instruction, with the style and effect asked for by name, which the planner takes as its style step.
@@ -64,6 +70,11 @@ struct Edit: AsyncParsableCommand {
         case (true, _?): throw ValidationError("Give the instruction in words or as --voice, not both.")
         case (false, nil): throw ValidationError("The instruction must not be empty.")
         }
+        if record != nil, replay != nil { throw ValidationError("Record a run or replay one, not both.") }
+        if replay != nil {
+            guard options.backend == .meta else { throw ValidationError("A recorded run replays Muse Spark's plans: use --backend meta.") }
+            guard voice == nil else { throw ValidationError("Give the instruction in words to replay a run.") }
+        }
         _ = try PhotoOutput.format(for: outputURL)
         try PhotoOutput.validate(photo: photoURL, output: outputURL, trace: traceURL)
         if let style, PersonStyle.named(style) == nil {
@@ -75,8 +86,22 @@ struct Edit: AsyncParsableCommand {
     }
 
     func run() async throws {
-        let models = try options.backend.models()
         let output = ConsoleOutput()
+        let recording = record.map { _ in RecordingMetaTransport() }
+        let models: EditModels
+        if let replay {
+            let run = try RecordedRun.read(URL(fileURLWithPath: replay))
+            output.write("Replaying the run recorded on \(run.recorded.formatted(date: .abbreviated, time: .shortened)): "
+                         + "\(run.answers.count) answers from the Meta API, so no key and no cost; the cost below is what the recorded run cost.")
+            if run.instruction != styledInstruction || run.photo != photoURL.lastPathComponent {
+                output.write("It was recorded for \(run.photo), \"\(run.instruction)\"; another photo or instruction may go differently.")
+            }
+            models = Backend.meta(MetaConfiguration(apiKey: "replay", recordsCost: true), transport: ReplayingMetaTransport(run))
+        } else if let recording {
+            models = try options.backend.models(transport: recording)
+        } else {
+            models = try options.backend.models()
+        }
         var said = styledInstruction
         if let voice {
             let transcript = try await Transcribe.transcribe(voice)
@@ -89,6 +114,12 @@ struct Edit: AsyncParsableCommand {
                 try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
                                          models: models, output: outputURL, trace: traceURL, line: output.write)
             }
+        }
+        if let recording, let record {
+            let answers = await recording.answers
+            try RecordedRun(photo: photoURL.lastPathComponent, instruction: instruction, answers: answers)
+                .write(to: URL(fileURLWithPath: record))
+            output.write("Recorded \(answers.count) answers to \(record).")
         }
         if let failure = result.failure { throw CLIError(failure) }
     }

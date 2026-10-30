@@ -191,6 +191,25 @@ A style step redraws only a person's face, head or body: chad, gigachad, Hollywo
 - **Too subtle, then fixed ([#52](https://github.com/mikheilkuzmidi/lumen/issues/52)):** run again on the maintainer, Hollywood came back identical three times in three, chad was light stubble on two photos of three, and 30 years older greyed the hair of a face as young as before. SAM's "head" on him was only his hair, so the redraw never reached his eyes or mouth, and the prompt kept "exactly the photo's skin tone". Hollywood now comes with its own soft "red carpet glow" on the person; chad names its amounts and is asked once more below +5% at the jaw; an ageing head takes in the face, and styles that recolour skin or hair aren't held to its tone. Each now shows: groomed brows and even skin, a firmer jaw with stubble, crow's feet and aged skin, on the same face.
 - **Faces:** a face reached 10% of the crop past SAM's mask at first, and a head drawn a little to one side showed twice through the soft edge as a pale arc; 5% removed it.
 
+## October 30: the final code, on the maintainer's photos and the fixtures
+
+Every style and effect was run again on the final code, on the maintainer's own photos only (and, for the demo, on CC0 fixtures), and each result was judged at 1:1: the same person, the skin covered to the fingertips, neck and ears, nothing beyond the mask, nothing on anyone else.
+
+| Problem | Cause | Change | Now |
+| --- | --- | --- | --- |
+| Zombie make-up left a sunlit thumb pink ([#78](https://github.com/mikheilkuzmidi/lumen/issues/78)), then the shaded underside of the palm. | The thumb read 37° to 69° pinker than the face, past the skin finder's hue; the palm's crease was left by Muse Image inside the mask. | Joined skin up to 75° redder (never yellower) is taken; the hands prompt names the thumb, every fingertip and skin in shadow where a hand rests. | The whole hand made up, in the command line and in Photoeditor. |
+| A style turned down by Meta's content filter failed the whole edit ([#79](https://github.com/mikheilkuzmidi/lumen/issues/79)). | The filter let zombie make-up through on one run and turned it down on the next; a chad face, three times in a row for the maintainer between two friends; 30 years older on a CC0 portrait every time. | Zombie, Day of the Dead, chad, gigachad and older carry milder words, asked for once when filtered, and the critic is told. | Each filtered style tried again went through in milder words. A chad face on one CC0 photo was refused in both wordings, four times. |
+| Zombie was the only make-up look ([#80](https://github.com/mikheilkuzmidi/lumen/issues/80)). | | Day of the Dead face paint, tiger face paint, evening glam make-up and festival glitter. | All four on the maintainer's photos: Day of the Dead and tiger painted down the neck and over the ears; glam and glitter on the face. |
+| A golden hour finished with the critic satisfied and exited with an error ([#82](https://github.com/mikheilkuzmidi/lumen/issues/82)). | The darkening of a bench's shadow, left out because the bench runs off the photo, counted as a failed step. | Such a step is noted as left out. | Exit 0. |
+| Asked to straighten a tilted lake, the planner said it was already level ([#83](https://github.com/mikheilkuzmidi/lumen/issues/83)). | No step rotates a single photo. | The planner says so and points to the library run, which measures and levels. | Honest; straightening a single photo remains the library's or the host's. |
+| A new sunset stopped at a bridge's main cable ([#84](https://github.com/mikheilkuzmidi/lumen/issues/84)). | SAM's sky leaves out, with the bridge, the sky between its hangers and over the skyline under its deck. | A sky's redraw takes in those pockets of the old sky that it changed, and fills its own copy of the hangers there. | The pockets take the sunset; at 2x a stub of the redraw's own tower and faint lines along some hangers remain. |
+| A judge without a Meta account could only run the tests ([#85](https://github.com/mikheilkuzmidi/lumen/issues/85)). | | `lumen edit --record` and `--replay`, and two recorded runs in `Samples/`. | Replayed with no key: the jacket byte for byte the same, the knight within 2 of 255. |
+| Hikers seen only as silhouettes were planned for blue shirts and failed ([#86](https://github.com/mikheilkuzmidi/lumen/issues/86)). | The review said they matched. | A clothes instruction doesn't apply to silhouettes; a plural name that finds nothing is looked for in the singular. | Left out; see the library run below. |
+
+Spoken instructions are new ([#81](https://github.com/mikheilkuzmidi/lumen/issues/81)): an English and a Russian sentence, said aloud by the Mac into Studio's and Photoeditor's microphones, were written down word for word in about 1.5 s.
+
+**Every person style and effect on the maintainer, judged by eye:** beard, older, smile, aviator shades, platinum blonde, vampire, pirate captain, a knight's costume, zombie make-up, Day of the Dead, tiger, evening glam, gym-built and athletic (on him in a T-shirt between two friends, whose arms and hands stayed as they were) clearly worked; chad, gigachad, Hollywood, festival glitter, main character, vintage, neon night, black and white and red carpet glow worked and are subtle by design. 32 live runs cost $1.43.
+
 ## A whole library
 `Fixtures/library` is a small CC0 shoot of 16 photos:
 
@@ -203,7 +222,9 @@ A style step redraws only a person's face, head or body: chad, gigachad, Hollywo
 lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode autonomous
 ```
 
-The last run on October 27 took 47 model calls and 393 s, and cost $0.43. Each part, judged by eye:
+On October 30, on the final code, the autonomous run took 42 model calls and 361 s, and cost $0.52: both misfires flagged, the lake and the street straightened, the silhouettes left out, and the shirts made blue on the hilltop, in the forest, in the black-and-white photo and by the grain elevators. The critic marked that last one failed: its three tops came out three shades of blue (lightness 44, 34 and 26), and it ran out of revisions asking for one. The run before it, without the silhouette rule, took 47 calls, 491 s and $0.66, and failed on the silhouettes.
+
+The run on October 27 took 47 model calls and 393 s, and cost $0.43. Each part, judged by eye:
 
 | Part | Result |
 | --- | --- |

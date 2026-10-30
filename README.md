@@ -109,7 +109,7 @@ For a whole library, plan-first mode shows the plan and waits for approval befor
 .build/release/lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode plan
 ```
 
-The last full run of this library took 47 model calls in 393 s and cost $0.43.
+The last full run of this library, autonomous, took 42 model calls in 361 s and cost $0.52.
 
 ### Without a key
 

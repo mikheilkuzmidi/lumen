@@ -23,6 +23,11 @@ struct StyleTests {
         })
     }
 
+    /// The face on `person()`'s head, its chin at row 5.
+    static let face = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+        (16..<24).contains(i % 40) && (1..<6).contains(i / 40) ? 255 : 0
+    })
+
     static func segment(_ mask: MaskData, _ label: String = "person") -> Segment {
         Segment(label: label, box: mask.boundingBox!, mask: mask)
     }
@@ -70,6 +75,31 @@ struct StyleTests {
                 "Shape: shoulders +0%, waist −8% (a believable change is 2% to 12%).")
     }
 
+    /// Measured from the face, a half-length body's shoulders are found below the chin, not in hair wider than they
+    /// are where arms cover them.
+    @Test func aBodyIsMeasuredDownFromItsFace() throws {
+        // Hair 30 wide (rows 0–9), covered shoulders 12 wide (rows 10–13), a torso 26 wide, a waist 20 (rows 26–31).
+        let body = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            let y = i / 40, w = y < 10 ? 30 : y < 14 ? 12 : (26..<32).contains(y) ? 20 : 26
+            return abs(Double(i % 40) + 0.5 - 20) < Double(w) / 2 ? 255 : 0
+        })
+        let frame = BodyFrame(chin: 9, face: 7)
+        #expect(frame.shoulders == 11...20 && frame.waist == 25)
+        let measured = try #require(ShapeMeasure.body(body, frame: frame))
+        #expect(measured.shoulders == 26 && measured.waist == 20)
+        #expect(ShapeMeasure.body(body)?.shoulders == 30, "without it, the hair")
+        #expect(frame.reach(9) == 0 && frame.reach(12) == 1)
+    }
+
+    /// A muscle redraw widened a slim man's waist by a fifth, within the largest change allowed, and read as heavier.
+    @Test func aWaistWiderThanTheStyleAllowsIsNotBelievable() {
+        let limits = PersonStyle.named("muscular")!.limits!
+        #expect(EditAgent.miss([("shoulders", 0.12), ("waist", 0.04)], limits) == 0)
+        #expect(abs(EditAgent.miss([("shoulders", 0.12), ("waist", 0.20)], limits) - 0.12) < 0.001)
+        #expect(EditAgent.shapeNote([("shoulders", 0.15), ("waist", -0.05)], limits: limits)
+                == "Shape: shoulders +15%, waist −5% (a believable change is 3% to 20%, the waist at most +8% wider).")
+    }
+
     @Test func thePlanCheckKeepsOnlyCatalogueStylesWithAPerson() {
         let select = EditStep.select(Selection(id: "person", concept: "person"))
         let checked = EditPlan(summary: "Styles", steps: [
@@ -109,8 +139,8 @@ struct StyleTests {
             .select(Selection(id: "person", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
             .style(StyleStep(region: "person", style: "athletic")),
         ]))
-        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.person(waist: 16))],
-                                                 [Self.segment(Self.person(waist: 22))]])
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
+                                                 [Self.segment(Self.person(waist: 16))], [Self.segment(Self.person(waist: 22))]])
         let generator = StyleGenerator(), host = StyleHost()
         let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
         for try await _ in agent.run("Make my body athletic") {}
@@ -119,7 +149,7 @@ struct StyleTests {
         #expect(prompts.first?.contains("V-shaped torso") == true && prompts.last?.contains("subtler") == true)
         let done = try #require(await planner.critiqued.first)
         #expect(done.contains("Person: Athletic build"))
-        #expect(done.contains("Shape: shoulders +0%, waist −8% (a believable change is 2% to 15%)."), "\(done)")
+        #expect(done.contains("Shape: shoulders +0%, waist −8% (a believable change is 2% to 15%, the waist at most +2% wider)."), "\(done)")
         let mask = try #require(await host.patchMasks.first)
         #expect(mask[6, 20] > 0, "reaches past the waist, where the outline may move in or out")
         #expect(mask.coverage.contains { $0 > 0 && $0 < 255 }, "with a soft edge")
@@ -143,7 +173,7 @@ struct StyleTests {
         #expect(await host.asked == [0.1, -0.1])
         #expect(applied.map(\.label) == ["Person: Athletic build"])
         let done = try #require(await planner.critiqued.first)
-        #expect(done.contains("Shape: shoulders +10%, waist −10% (a believable change is 2% to 15%)."), "\(done)")
+        #expect(done.contains("Shape: shoulders +10%, waist −10% (a believable change is 2% to 15%, the waist at most +2% wider)."), "\(done)")
     }
 
     /// Muse Image redrew a bluish phone photo's face warmer than the photo, which showed as a seam down the neck. A face
@@ -210,8 +240,8 @@ struct StyleTests {
             .select(Selection(id: "person", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
             .style(StyleStep(region: "person", style: "muscular")),
         ]))
-        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.person(waist: 40))],
-                                                 [Self.segment(Self.person(waist: 36))]])
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
+                                                 [Self.segment(Self.person(waist: 40))], [Self.segment(Self.person(waist: 36))]])
         let generator = StyleGenerator()
         let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: ReshapingHost())
         var applied: [Layer] = []
@@ -222,7 +252,29 @@ struct StyleTests {
         #expect(applied.map(\.label) == ["Person: Gym-built"], "only the reshape")
         let done = try #require(await planner.critiqued.first)
         #expect(done.contains { $0.contains("was left out, as its shape went past a believable change; the reshaped build stays") }, "\(done)")
-        #expect(done.contains("Shape: shoulders +15%, waist −5% (a believable change is 3% to 20%)."), "the reshape's own numbers")
+        #expect(done.contains("Shape: shoulders +15%, waist −5% (a believable change is 3% to 20%, the waist at most +8% wider)."), "the reshape's own numbers")
+    }
+
+    /// In a half-length photo, a man's friends' arms covered his shoulders and his hair was the widest part of him: the
+    /// warp took it for his shoulders and widened his head, and the muscle redraw redrew his face and hair. A body's
+    /// face is found first; it reaches the warp, and nothing at or above the chin is redrawn.
+    @Test func aBodyIsReshapedAndRedrawnBelowItsFace() async throws {
+        let planner = StylePlanner(plan: EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .style(StyleStep(region: "man", style: "muscular")),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
+                                                 [Self.segment(Self.person(waist: 23))]])
+        let host = KeepingHost()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: StyleGenerator(), host: host)
+        for try await _ in agent.run("Make him look gym-built") {}
+        #expect(await segmenter.requests.map(\.concept) == ["person", "face", "person"])
+        let face = try #require(await host.face)
+        #expect(BodyFrame(face: face)?.chin == 5, "the face reaches the warp, in the crop's rows")
+        let redrawn = try #require(await host.patchMasks.last)
+        #expect(await host.patchMasks.count == 2, "the reshape and the redraw")
+        #expect((0...5).allSatisfy { y in (0..<40).allSatisfy { redrawn[$0, y] == 0 } }, "nothing at or above the chin")
+        #expect(redrawn[20, 20] > 200, "the body is")
     }
 
     /// A big fish held against a man's chest was bent by the warp and smeared by the redraw. What the plan says to
@@ -238,7 +290,7 @@ struct StyleTests {
         ]))
         // The redraw found again 4% slimmer at the waist: a believable change, so it is placed.
         let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(fish, "fish")],
-                                                 [Self.segment(Self.person(waist: 23))]])
+                                                 [Self.segment(Self.face, "face")], [Self.segment(Self.person(waist: 23))]])
         let host = KeepingHost()
         let agent = EditAgent(planner: planner, segmenter: segmenter, generator: StyleGenerator(), host: host)
         for try await _ in agent.run("Make him look gym-built") {}
@@ -367,9 +419,12 @@ private actor ReshapingHost: EditHost {
     func apply(_ layer: Layer, assets: AssetStore) async throws {}
     func remove(_ layer: Layer.ID) async throws {}
     private(set) var kept: MaskData?
-    func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData?, shoulders: Double, waist: Double) async throws -> Reshaped? {
+    private(set) var face: MaskData?
+    func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData?, keep: MaskData?, shoulders: Double,
+                  waist: Double) async throws -> Reshaped? {
         asked = [shoulders, waist]
         kept = keep
+        self.face = face
         return Reshaped(image: image, changed: mask)
     }
 }
@@ -452,8 +507,11 @@ private actor KeepingHost: EditHost {
         if case .patch(_, let mask, _) = layer.content, case .mask(let data) = await assets.get(mask) { patchMasks.append(data) }
     }
     func remove(_ layer: Layer.ID) async throws {}
-    func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData?, shoulders: Double, waist: Double) async throws -> Reshaped? {
+    private(set) var face: MaskData?
+    func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData?, keep: MaskData?, shoulders: Double,
+                  waist: Double) async throws -> Reshaped? {
         kept = keep
+        self.face = face
         return Reshaped(image: image, changed: mask)
     }
 }

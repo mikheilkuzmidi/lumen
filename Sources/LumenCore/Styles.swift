@@ -110,13 +110,13 @@ public struct PersonStyle: Equatable, Sendable {
                     change: "Make this person clearly more athletic, as after a few months of training: shoulders about 10% "
                         + "broader and waist about 10% narrower for a visible V-shaped torso, a firmer chest and more "
                         + "defined arms, their clothes fitting the new shape.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0.02, most: 0.15, measures: "shoulders and waist"),
+                    adultsOnly: true, limits: ShapeLimits(least: 0.02, most: 0.15, measures: "shoulders and waist", widestWaist: 0.02),
                     reshape: Reshape(shoulders: 0.1, waist: -0.1), redraws: false,
                     example: "Make the person's body athletic, a realistic V-taper"),
         PersonStyle(id: "muscular", title: "Gym-built", part: .body,
                     change: "Show this same person after a year of strength training: noticeably broader shoulders and "
                         + "thicker, defined arms, a stronger build filling out their clothes.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0.03, most: 0.2, measures: "shoulders and waist"),
+                    adultsOnly: true, limits: ShapeLimits(least: 0.03, most: 0.2, measures: "shoulders and waist", widestWaist: 0.08),
                     reshape: Reshape(shoulders: 0.15, waist: -0.05),
                     example: "Make the person look gym-built but believable"),
     ]
@@ -157,11 +157,15 @@ public struct ShapeLimits: Equatable, Sendable {
     public var most: Double
     /// What is measured, in words.
     public var measures: String
+    /// How much wider a body's waist may come out, whatever the largest change: a muscle redraw widened a slim man's
+    /// waist by a fifth, within "up to 20%", and it read as heavier, not gym-built.
+    public var widestWaist: Double?
 
-    public init(least: Double, most: Double, measures: String) {
+    public init(least: Double, most: Double, measures: String, widestWaist: Double? = nil) {
         self.least = least
         self.most = most
         self.measures = measures
+        self.widestWaist = widestWaist
     }
 }
 
@@ -222,10 +226,57 @@ public struct StyleStep: Codable, Equatable, Sendable {
     }
 }
 
+/// Where a person's shoulders and waist are, measured down from their chin in face heights, so it holds whether they
+/// stand or sit, and whether the photo shows all of them or cuts them off at the thighs. Shares of the outline's
+/// height took a man's hair for his shoulders, in a half-length photo where his friends' arms covered them, and the
+/// warp widened his head.
+public struct BodyFrame: Equatable, Sendable {
+    /// The face's lowest row.
+    public var chin: Int
+    /// The face's height, forehead to chin, in rows.
+    public var face: Double
+
+    /// The frame of the face in `face`, in the same rows as the body it belongs to; nil for a face too small to measure.
+    public init?(face mask: MaskData) {
+        let width = mask.size.width
+        let covered = (0..<mask.size.height).filter { y in (0..<width).contains { mask.coverage[y * width + $0] >= 128 } }
+        guard let top = covered.first, let bottom = covered.last, bottom - top >= 3 else { return nil }
+        chin = bottom
+        face = Double(bottom - top + 1)
+    }
+
+    public init(chin: Int, face: Double) {
+        self.chin = chin
+        self.face = face
+    }
+
+    /// Where the shoulders' widest row is: a third of a face to a face and a half below the chin.
+    public var shoulders: ClosedRange<Int> { (chin + Int(face * 0.3))...(chin + Int(face * 1.6)) }
+    /// The waist's row, 2.3 faces below the chin: about two head heights, as on an adult figure.
+    public var waist: Int { chin + Int(face * 2.3) }
+    /// How much of a row below the chin a change may reach: none at the chin, all of it a third of a face below.
+    public func reach(_ row: Int) -> Double {
+        let t = min(1, max(0, Double(row - chin) / (face * 0.3)))
+        return t * t * (3 - 2 * t)
+    }
+}
+
 /// Widths across a person's outline, to tell how much a redraw reshaped them.
 public enum ShapeMeasure {
-    /// A body's shoulders (its widest row 15–35% of the way down) and waist (its narrowest 45–70% down), in pixels.
-    public static func body(_ mask: MaskData) -> (shoulders: Double, waist: Double)? {
+    /// A body's shoulders and waist, in pixels: with its `frame`, the widest row where the shoulders are and the narrowest
+    /// within half a face of the waist; without, its widest row 15–35% of the way down and its narrowest 45–70% down.
+    public static func body(_ mask: MaskData, frame: BodyFrame? = nil) -> (shoulders: Double, waist: Double)? {
+        if let frame {
+            let width = mask.size.width, height = mask.size.height
+            func count(_ y: Int) -> Int { (0..<width).reduce(0) { $0 + (mask.coverage[y * width + $1] >= 128 ? 1 : 0) } }
+            let reach = Int(frame.face * 0.5)
+            let shoulders = frame.shoulders.clamped(to: 0...(height - 1)).map(count).max()
+            let waist = ((frame.waist - reach)...(frame.waist + reach)).clamped(to: 0...(height - 1)).map(count).filter { $0 > 0 }.min()
+            guard let shoulders, let waist, shoulders > 0, frame.shoulders.lowerBound < height, frame.waist - reach < height else {
+                return nil
+            }
+            return (Double(shoulders), Double(waist))
+        }
         guard let rows = rows(mask) else { return nil }
         let shoulders = band(rows, 0.15, 0.35).max(), waist = band(rows, 0.45, 0.70).filter { $0 > 0 }.min()
         guard let shoulders, let waist, shoulders > 0 else { return nil }
@@ -240,10 +291,11 @@ public enum ShapeMeasure {
     }
 
     /// How much `after` changed against `before` on what `part` measures, each as a share: +0.06 is 6% wider.
-    public static func change(_ part: PersonStyle.Part, before: MaskData, after: MaskData) -> [(name: String, change: Double)]? {
+    public static func change(_ part: PersonStyle.Part, before: MaskData, after: MaskData,
+                              frame: BodyFrame? = nil) -> [(name: String, change: Double)]? {
         switch part {
         case .body:
-            guard let was = body(before), let now = body(after), was.waist > 0 else { return nil }
+            guard let was = body(before, frame: frame), let now = body(after, frame: frame), was.waist > 0 else { return nil }
             return [("shoulders", now.shoulders / was.shoulders - 1), ("waist", now.waist / was.waist - 1)]
         case .face, .head:
             guard let was = face(before), let now = face(after), was > 0 else { return nil }

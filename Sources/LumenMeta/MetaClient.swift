@@ -227,7 +227,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     be visible and believable: nothing outside the person changed, and where their outline moved, the background
     continues with no warped lines, doubled limbs or smeared hands. A Shape note gives how far their outline moved
     and the believable range: outside it, or with a visible flaw, give the same style step again; its effect is
-    already on, so give effect none. For a face the jaw number is rough: judge the face itself in the close-up.
+    already on, so give effect none. A body reshaped moves its outline and keeps its colours, so its measured
+    change stays under 3 however much it moved: judge a body style by the Shape note and the outline in the
+    close-up, not by that change, and a Shape note within its range with a broader or narrower outline in the
+    close-up has met it. For a face the jaw number is rough: judge the face itself in the close-up.
     A style's own effect, labelled "part of" it (the Gigachad meme's dramatic black and white), was asked for with
     the style: keep it.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is

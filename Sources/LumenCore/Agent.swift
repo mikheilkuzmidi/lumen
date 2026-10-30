@@ -705,17 +705,22 @@ public actor EditAgent {
         let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
             let part = try await part(style.part, of: person, events: events)
+            // Where a body's shoulders and waist are, and what of it stays as it was: the warp, once, widened the head of
+            // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair.
+            let face = style.part == .body ? try await face(of: person, events: events) : nil
             let label = "\(title(person.info.id)): \(style.title)"
             var notes: [String] = []
             var reshaped = false
             if let amount = style.reshape,
-               let shaped = try await reshape(part, by: amount, keeping: held, style: style, label: label, redraws: &redraws, events: events) {
+               let shaped = try await reshape(part, by: amount, face: face, keeping: held, style: style, label: label,
+                                              redraws: &redraws, events: events) {
                 notes += shaped
                 reshaped = true
             }
             if style.redraws || !reshaped {
                 do {
-                    notes += try await redraw(part, as: style, label: label, keeping: held, optional: reshaped, redraws: &redraws, events: events)
+                    notes += try await redraw(part, as: style, label: label, face: face, keeping: held, optional: reshaped,
+                                              redraws: &redraws, events: events)
                 } catch {
                     // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
                     // gym-built redraw of a man beside his wife, twice.
@@ -774,6 +779,29 @@ public actor EditAgent {
         return region
     }
 
+    /// The face of a person whose body is restyled; nil when SAM finds none on them, as with their back to the camera.
+    private func face(of person: Region, events: Events) async throws -> MaskData? {
+        do {
+            return try await part(.face, of: person, events: events).mask
+        } catch {
+            let error = cancellationError(error)
+            if error as? LumenError == .cancelled { throw error }
+            return nil
+        }
+    }
+
+    /// `mask` with nothing at or above the chin of `frame`, fading in below it.
+    static func below(_ frame: BodyFrame, _ mask: MaskData) -> MaskData {
+        var out = mask
+        let width = mask.size.width
+        for y in 0..<mask.size.height {
+            let reach = frame.reach(y)
+            guard reach < 1 else { continue }
+            for x in 0..<width { out.coverage[y * width + x] = UInt8((Double(mask.coverage[y * width + x]) * reach).rounded()) }
+        }
+        return out
+    }
+
     /// Redraws a person's face, head or body in a style. Unlike a recolour, its outline may change (a squarer jaw, a
     /// slimmer waist), so the redraw shows through the part's mask grown well past it and softened, as a removal's is,
     /// not held to the old edge. How far the outline moved is measured: a change too slight to see or too far to believe
@@ -781,8 +809,9 @@ public actor EditAgent {
     /// An `optional` redraw, on a body already reshaped, is left out when it isn't believable: past the style's limits,
     /// off where the person is, or smeared. Over loose clothes Muse Image's muscles came back with shoulders 21% wider
     /// or a waist 17% wider, and soft, where the reshape alone was clean.
-    private func redraw(_ region: Region, as style: PersonStyle, label: String, keeping held: MaskData? = nil, optional: Bool = false,
-                        redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+    /// A body with its `face` known is redrawn only below the chin, and measured from it.
+    private func redraw(_ region: Region, as style: PersonStyle, label: String, face: MaskData? = nil, keeping held: MaskData? = nil,
+                        optional: Bool = false, redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
         // Room around the part for its outline to grow into: broader shoulders, a wider jaw.
@@ -802,7 +831,9 @@ public actor EditAgent {
         // a head the redraw drew a little to one side showed twice through the soft edge, as a pale arc.
         // What the person holds stays as it was: the redraw doesn't show over it.
         let grown = original.grown(by: max(2, Int((short * (style.part == .body ? 0.08 : 0.05)).rounded())))
-        let mask = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
+        let frame = face.flatMap { BodyFrame(face: $0.cropped(to: rect).resized(to: image.size)) }
+        let kept = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
+        let mask = frame.map { Self.below($0, kept) } ?? kept
         let position = Self.place(of: box, in: rect)
         func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
             let request = GenerateRequest(image: image, mask: mask, prompt: style.prompt(person: "person", place: position, firmer: firmness))
@@ -828,7 +859,7 @@ public actor EditAgent {
             if let next = retry.attempt, (next.overlap ?? 0) > overlap { best = next }
         }
         func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
-            attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0) }
+            attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0, frame: frame) }
         }
         if let limits = style.limits {
             if let changes = measured(best), Self.miss(changes, limits) > 0 {
@@ -876,14 +907,15 @@ public actor EditAgent {
             notes.append("The \(region.info.id) was found well off where it was after the restyle (overlap \(value)).")
         }
         // Softened past the part, like a removal's, so the new outline and the background beside it blend in.
-        return try await place(best.image, mask: mask.blurred(by: short * (style.part == .body ? 0.015 : 0.01)), rect: rect, label: label,
+        let soft = mask.blurred(by: short * (style.part == .body ? 0.015 : 0.01))
+        return try await place(best.image, mask: frame.map { Self.below($0, soft) } ?? soft, rect: rect, label: label,
                                region: region.info.id, kind: .style, notes: notes, redraws: &redraws, events: events)
     }
 
     /// Reshapes a body by moving its pixels (`EditHost.reshaped`), by exactly the style's amount; nil when the host can't,
     /// for the image model to try instead. Only the pixels the warp moved are placed.
-    private func reshape(_ region: Region, by amount: PersonStyle.Reshape, keeping held: MaskData? = nil, style: PersonStyle,
-                         label: String, redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
+    private func reshape(_ region: Region, by amount: PersonStyle.Reshape, face: MaskData? = nil, keeping held: MaskData? = nil,
+                         style: PersonStyle, label: String, redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
         // Its own layer, apart from a redraw of the same person, so one never replaces the other.
         let key = "\(region.info.id)-shape"
         try await replaceRedraw(of: key, redraws: &redraws, events: events)
@@ -896,7 +928,9 @@ public actor EditAgent {
         let started = Date()
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         let kept = held.map { $0.cropped(to: rect).resized(to: image.size) }
-        guard let shaped = try await host.reshaped(image, mask: original, keep: kept, shoulders: amount.shoulders, waist: amount.waist) else {
+        let face = face.map { $0.cropped(to: rect).resized(to: image.size) }
+        guard let shaped = try await host.reshaped(image, mask: original, face: face, keep: kept, shoulders: amount.shoulders,
+                                                   waist: amount.waist) else {
             return nil
         }
         try checkCancellation()
@@ -929,7 +963,8 @@ public actor EditAgent {
     /// How far the largest change of an outline falls outside a style's limits; zero within them.
     static func miss(_ changes: [(name: String, change: Double)], _ limits: ShapeLimits) -> Double {
         let largest = changes.map { abs($0.change) }.max() ?? 0
-        return max(0, limits.least - largest) + max(0, largest - limits.most)
+        let waist = changes.first { $0.name == "waist" }?.change ?? 0
+        return max(0, limits.least - largest) + max(0, largest - limits.most) + max(0, waist - (limits.widestWaist ?? .infinity))
     }
 
     /// The outline's change in words, for the critic: "Shape: shoulders +6%, waist −5% (a believable change is 2% to 12%)."
@@ -940,7 +975,8 @@ public actor EditAgent {
         }
         let measured = changes.map { "\($0.name) \(percent($0.change))" }.joined(separator: ", ")
         let least = Int((limits.least * 100).rounded()), most = Int((limits.most * 100).rounded())
-        return "Shape: \(measured) (a believable change is \(least > 0 ? "\(least)% to " : "up to ")\(most)%)."
+        let waist = limits.widestWaist.map { ", the waist at most \(percent($0)) wider" } ?? ""
+        return "Shape: \(measured) (a believable change is \(least > 0 ? "\(least)% to " : "up to ")\(most)%\(waist))."
     }
 
     /// SAM looks for a removed thing again where it was. Still found there, it gets one more try, and the attempt

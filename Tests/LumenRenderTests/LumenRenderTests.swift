@@ -305,6 +305,38 @@ struct PhotoPixelTests {
         #expect(shoulders >= 106, "the real shoulders widened: \(shoulders)")
     }
 
+    /// In a half-length photo, a man's friends' arms covered his shoulders, and his hair was the widest part of him
+    /// where shoulders usually are: the warp widened his head. With his face, the shoulders are found below the chin,
+    /// the head stays exactly as it was, and the torso is reshaped.
+    @Test
+    func aHeadWiderThanItsCoveredShouldersStaysAsItWas() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // Hair 100 wide (rows 20–79) round a face (rows 30–79), a neck, shoulders 40 wide where arms cover them, a torso 90.
+        func width(_ y: Int) -> Int { y < 20 ? 0 : y < 80 ? 100 : y < 95 ? 30 : y < 115 ? 40 : 90 }
+        func inside(_ x: Int, _ y: Int) -> Bool { abs(Double(x) + 0.5 - 100) < Double(width(y)) / 2 }
+        func face(_ x: Int, _ y: Int) -> Bool { (30..<80).contains(y) && abs(Double(x) + 0.5 - 100) < 30 }
+        let url = try folder.photo(width: 200, height: 300) { x, y in
+            face(x, y) ? RGB(220, 170, 140) : inside(x, y) ? RGB(200, 30, 30) : (x / 5) % 2 == 0 ? RGB(120, 120, 120) : RGB(160, 160, 160)
+        }
+        let image = EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 200, height: 300))
+        let original = try Pixels(data: image.data)
+        let body = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { inside($0 % 200, $0 / 200) ? 255 : 0 })
+        let faceMask = MaskData(size: PixelSize(width: 200, height: 300), coverage: (0..<60000).map { face($0 % 200, $0 / 200) ? 255 : 0 })
+        let shaped = try #require(try EditSupport.reshaped(image, mask: body, face: faceMask, shoulders: 0.1, waist: -0.1))
+        let after = try Pixels(data: shaped.image.data)
+        for y in 0..<80 { for x in 0..<200 where after[x, y].distance(to: original[x, y]) > 1.0 / 255 {
+            Issue.record("row \(y) moved at \(x)")
+            return
+        } }
+        func red(_ y: Int) -> Int { (0..<200).filter { after[$0, y].red > 0.6 && after[$0, y].green < 0.3 }.count }
+        let torso = (115..<170).map(red).max() ?? 0
+        #expect(torso >= 96 && torso <= 102, "the torso widened: \(torso), asked 99")
+        // The waist, 2.3 faces below the chin (row 194), narrowed by about a tenth of 90.
+        let waist = (185..<205).map(red).min() ?? 0
+        #expect(waist >= 79 && waist <= 84, "waist \(waist), asked 81")
+    }
+
     /// The warp blended two pixels at a time, which softened the twigs beside a man's waist enough for the critic to
     /// call it a smear (81% of the twigs' contrast kept). Fine texture beside the body keeps at least 90% of its contrast.
     @Test

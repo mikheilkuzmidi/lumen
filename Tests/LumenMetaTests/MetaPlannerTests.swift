@@ -192,4 +192,5 @@ import Testing
     #expect(MetaPlanner.planPrompt.contains("select it too and give its region as keep"))
     #expect(MetaPlanner.critiquePrompt.contains("must still be clearly the same person"))
     #expect(MetaPlanner.critiquePrompt.contains("its effect is\nalready on, so give effect none"))
+    #expect(MetaPlanner.critiquePrompt.contains("judge a body style by the Shape note and the outline"))
 }

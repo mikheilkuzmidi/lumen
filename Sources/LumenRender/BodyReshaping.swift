@@ -11,7 +11,10 @@ enum BodyReshaping {
     /// of a shoulder width past the outline, so only the background next to the body bends.
     /// What `keep` covers, something the person holds in front of them, stays where it is: the warp fades out around
     /// it over a tenth of a shoulder width, so a big fish held against a chest isn't bent with the body.
-    static func reshaped(_ image: EncodedImage, mask: MaskData, keep: MaskData? = nil, shoulders: Double, waist: Double) throws -> Reshaped? {
+    /// With the person's `face`, the shoulders and waist are found down from the chin instead (`BodyFrame`), and no row
+    /// at or above the chin moves.
+    static func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData? = nil, keep: MaskData? = nil, shoulders: Double,
+                         waist: Double) throws -> Reshaped? {
         let input = try RGBAPixels(image)
         let width = input.width, height = input.height
         guard width > 8, height > 8 else { return nil }
@@ -21,7 +24,8 @@ enum BodyReshaping {
         let held = keep.map { $0.resized(to: PixelSize(width: width, height: height)) }
         let body = held.map { mask.resized(to: PixelSize(width: width, height: height)).multiplied(by: $0.inverted()) }
             ?? mask.resized(to: PixelSize(width: width, height: height))
-        guard let shape = Shape(body), shape.shoulderWidth >= 8 else { return nil }
+        let frame = face.flatMap { BodyFrame(face: $0.resized(to: PixelSize(width: width, height: height))) }
+        guard let shape = Shape(body, frame: frame), shape.shoulderWidth >= 8 else { return nil }
         // How much each pixel may move: none on what is kept, all of it a little way from it.
         let reach = max(2, Int((shape.shoulderWidth * 0.1).rounded()))
         let still = held.map { $0.grown(by: reach).blurred(by: Double(reach) / 2) }
@@ -71,10 +75,11 @@ enum BodyReshaping {
         var shoulders: Int
         var waist: Int
         var shoulderWidth: Double
+        var frame: BodyFrame?
         /// How far past the outline the warp fades out.
         var falloff: Double { shoulderWidth * 0.25 }
 
-        init?(_ mask: MaskData) {
+        init?(_ mask: MaskData, frame: BodyFrame? = nil) {
             let width = mask.size.width, height = mask.size.height
             var spans: [(left: Int, right: Int)?] = Array(repeating: nil, count: height)
             for y in 0..<height {
@@ -93,24 +98,27 @@ enum BodyReshaping {
             }
             let halves = smoothed { Double($1 - $0 + 1) / 2 }
             let span = Double(bottom - top)
-            let band = (top + Int(span * 0.1))...max(top + Int(span * 0.1), top + Int(span * 0.4))
+            var band = (top + Int(span * 0.1))...max(top + Int(span * 0.1), top + Int(span * 0.4))
+            if let frame, frame.shoulders.overlaps(top...bottom) { band = frame.shoulders.clamped(to: top...bottom) }
             guard let widest = band.max(by: { (halves[$0] ?? 0) < (halves[$1] ?? 0) }), let shoulderHalf = halves[widest] else { return nil }
             centre = smoothed { Double($0 + $1) / 2 }
             half = halves
             shoulders = widest
             shoulderWidth = shoulderHalf * 2
-            waist = min(bottom, widest + Int(shoulderWidth.rounded()))
+            // Below the frame, as on a photo cut off at the chest, the waist narrows only the rows above it a little.
+            waist = frame?.waist ?? min(bottom, widest + Int(shoulderWidth.rounded()))
+            self.frame = frame
         }
 
         /// How much row `y` widens: full at the shoulders and the waist, falling off around each, and quickly above the
-        /// shoulders so the neck and head stay as they are.
+        /// shoulders so the neck and head stay as they are; with a frame, not at all at or above the chin.
         func gain(at y: Int, shoulders amount: Double, waist narrowing: Double) -> Double {
             let fromShoulders = Double(y - shoulders), fromWaist = Double(y - waist)
             let above = shoulderWidth * 0.12, below = shoulderWidth * 0.3, aroundWaist = shoulderWidth * 0.3
             let spread = fromShoulders < 0 ? above : below
             let atShoulders: Double = exp(-0.5 * (fromShoulders / spread) * (fromShoulders / spread))
             let atWaist: Double = exp(-0.5 * (fromWaist / aroundWaist) * (fromWaist / aroundWaist))
-            return amount * atShoulders + narrowing * atWaist
+            return (amount * atShoulders + narrowing * atWaist) * (frame?.reach(y) ?? 1)
         }
     }
 }

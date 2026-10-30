@@ -81,6 +81,29 @@ struct PhotoMeasurementsTests {
         #expect(try PhotoStatistics(photo: photo { _ in }, context: CIContext(), capturedAt: nil).facts.verticalLean == nil)
     }
 
+    /// A shot taken upward with more upright lines on one side (a café's door and window frames on its right) still
+    /// reads the roll at the photo's middle, not the lean of the crowded side.
+    @Test func convergingLinesCrowdedOnOneSideStillReadTheRollAtTheMiddle() throws {
+        func photo(roll: Double) -> CIImage {
+            let context = CGContext(data: nil, width: 600, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.setFillColor(CGColor(red: 0.8, green: 0.85, blue: 0.9, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 600, height: 400))
+            context.translateBy(x: 300, y: 200); context.rotate(by: roll * .pi / 180); context.translateBy(x: -300, y: -200)
+            context.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+            for x in Array(stride(from: 60.0, through: 540, by: 60)) + [390, 410, 450, 470, 510] {
+                let top = 300 + (x - 300) * 0.92, width = 6.0
+                context.move(to: CGPoint(x: x, y: 40)); context.addLine(to: CGPoint(x: x + width, y: 40))
+                context.addLine(to: CGPoint(x: top + width, y: 360)); context.addLine(to: CGPoint(x: top, y: 360))
+                context.closePath(); context.fillPath()
+            }
+            return CIImage(cgImage: context.makeImage()!)
+        }
+        for roll in [0.0, 2.0, -2.0] {
+            let lean = try #require(try PhotoStatistics(photo: photo(roll: roll), context: CIContext(), capturedAt: nil).facts.verticalLean)
+            #expect(abs(lean - roll) < 0.6, "rolled \(roll)°, lean \(lean)")
+        }
+    }
+
     @Test func measuresBlackAndClippedPhotosWithoutARenderer() throws {
         let folder = try LibraryFolder()
         defer { folder.remove() }

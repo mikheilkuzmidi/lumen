@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "LumenSAMMask", targets: ["LumenSAMMask"]),
         .library(name: "LumenRender", targets: ["LumenRender"]),
         .library(name: "LumenOpen", targets: ["LumenOpen"]),
+        .library(name: "LumenVoice", targets: ["LumenVoice"]),
         .executable(name: "lumen", targets: ["lumen"]),
         .executable(name: "LumenStudio", targets: ["LumenStudio"]),
     ],
@@ -27,16 +28,19 @@ let package = Package(
         .target(name: "LumenRender", dependencies: ["LumenCore"]),
         // Open-weight planners: Muse Spark Open on a hosting provider, Muse Glimmer on this Mac.
         .target(name: "LumenOpen", dependencies: ["LumenCore", "LumenMeta"]),
+        // Spoken instructions: the Mac's microphone, and Muse Voice Transcribe writing down what was said.
+        .target(name: "LumenVoice", dependencies: ["LumenCore", "LumenMeta"]),
         .executableTarget(name: "lumen", dependencies: [
-            "LumenCore", "LumenMeta", "LumenRender", "LumenOpen",
+            "LumenCore", "LumenMeta", "LumenRender", "LumenOpen", "LumenVoice",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
-        .executableTarget(name: "LumenStudio", dependencies: ["LumenCore", "LumenMeta", "LumenRender", "LumenOpen"]),
+        .executableTarget(name: "LumenStudio", dependencies: ["LumenCore", "LumenMeta", "LumenRender", "LumenOpen", "LumenVoice"]),
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),
         .testTarget(name: "LumenMetaTests", dependencies: ["LumenMeta"], resources: [.copy("Recorded")]),
         .testTarget(name: "LumenSAMMaskTests", dependencies: ["LumenSAMMask"]),
         .testTarget(name: "LumenRenderTests", dependencies: ["LumenRender"]),
         .testTarget(name: "LumenOpenTests", dependencies: ["LumenOpen"]),
+        .testTarget(name: "LumenVoiceTests", dependencies: ["LumenVoice"]),
         .testTarget(name: "LumenCLITests", dependencies: ["lumen"]),
         .testTarget(name: "LumenStudioTests", dependencies: ["LumenStudio"]),
         // A paid end-to-end edit with the Meta models; skipped unless LUMEN_LIVE=1.

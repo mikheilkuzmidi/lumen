@@ -32,6 +32,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIconFile</key><string>LumenStudio</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Lumen Studio listens while you speak an instruction, and Muse Voice Transcribe writes it down.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>
@@ -40,10 +41,12 @@ PLIST
 swift "$ROOT/scripts/make-studio-icon.swift" "$APP/Contents/Resources/LumenStudio.icns"
 plutil -lint "$APP/Contents/Info.plist"
 
+# The microphone, for spoken instructions: a hardened runtime refuses it without this entitlement.
+ENTITLEMENTS="$ROOT/scripts/LumenStudio.entitlements"
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
-    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+    codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$APP"
 else
-    codesign --force --sign - "$APP"
+    codesign --force --entitlements "$ENTITLEMENTS" --sign - "$APP"
 fi
 codesign --verify --strict "$APP"
 printf 'Built %s\n' "$APP"

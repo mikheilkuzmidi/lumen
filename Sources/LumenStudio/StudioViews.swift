@@ -265,12 +265,13 @@ struct PromptBar: View {
                 .help("Lumen looks only here. Clear the area (Esc)")
                 .accessibilityLabel("Clear area")
             }
-            TextField("Describe what you want to change", text: $model.prompt)
+            TextField(model.voice.isRecording ? "Listening…" : "Describe what you want to change", text: $model.prompt)
                 .textFieldStyle(.plain)
                 .font(StudioStyle.title)
-                .disabled(model.isRunning)
+                .disabled(model.isRunning || model.voice.isRecording)
                 .onSubmit(model.run)
                 .accessibilityLabel("Edit instruction")
+            StudioMicButton(voice: model.voice, disabled: model.isRunning, heard: model.hear) { model.issue = $0 }
             if model.modelCalls > 0 {
                 Text("\(model.modelCalls) \(model.modelCalls == 1 ? "call" : "calls") · \(studioDollars(model.totalCost))")
                     .font(StudioStyle.label).monospacedDigit().foregroundStyle(StudioStyle.textSecondary)
@@ -279,8 +280,9 @@ struct PromptBar: View {
             if model.isRunning {
                 sendButton(symbol: "stop.fill", help: model.phase == .stopping ? "Stopping" : "Stop", enabled: model.phase != .stopping,
                            action: model.stop)
-            } else {
-                sendButton(symbol: "arrow.up", help: "Run instruction (Return)", enabled: model.canRun, action: model.run)
+            } else if !model.voice.isRecording {
+                sendButton(symbol: "arrow.up", help: "Run instruction (Return)", enabled: model.canRun && !model.voice.isTranscribing,
+                           action: model.run)
                     .keyboardShortcut(.defaultAction)
             }
         }

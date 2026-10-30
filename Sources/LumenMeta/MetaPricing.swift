@@ -9,14 +9,16 @@ public enum MetaPricing {
     public enum Price: Equatable, Sendable {
         case tokens(input: Double, cachedInput: Double, output: Double)
         case image(Double)
+        case audio(perHour: Double)
     }
 
-    /// Token prices are per million tokens; image prices are per returned or segmented image.
+    /// Token prices are per million tokens; image prices are per returned or segmented image; audio is per hour heard.
     public static let prices: [String: Price] = [
         "muse-spark-1.3": .tokens(input: 1.25, cachedInput: 0.15, output: 4.25),
         "muse-wonder-1.0": .tokens(input: 4, cachedInput: 0.20, output: 20),
         "muse-image-1.0": .image(0.01),
         "sam-3.1": .image(2.50 / 1_000),
+        "muse-voice-transcribe-1.0": .audio(perHour: 0.18),
     ]
 
     public static func cost(model: String, inputTokens: Int, cachedInputTokens: Int = 0, outputTokens: Int) -> Double? {
@@ -30,6 +32,12 @@ public enum MetaPricing {
     public static func cost(model: String, images: Int) -> Double? {
         guard case .image(let price) = prices[model] else { return nil }
         return Double(max(0, images)) * price
+    }
+
+    /// Audio is billed by its whole seconds, rounded down.
+    public static func cost(model: String, audioSeconds: Int) -> Double? {
+        guard case .audio(let perHour) = prices[model] else { return nil }
+        return Double(max(0, audioSeconds)) * perHour / 3_600
     }
 
     /// Two Spark calls, two SAM images and one redraw, without cached input.

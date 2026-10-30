@@ -21,6 +21,8 @@ The header shows the photo's name and pixel size, plus Open, Settings and Export
 
 The instruction field below the canvas sends your request with Run. Stop cancels the edit. Selection masks reveal on the canvas while the edit runs.
 
+To say the instruction, click the microphone beside the field and speak; click it again, or press Return, when you are done, and Escape throws the recording away. Muse Voice Transcribe writes down what you said, in the language you said it, after anything already typed; nothing runs until you press Run. The first time, macOS asks whether Lumen Studio may use the microphone. The library's instruction field has the same microphone.
+
 The Steps tab on the right follows the current step and scrolls through longer plans. Expand Details for model timings and trace text. Hover truncated labels to read them in full. The Layers tab shows each applied change, newest first, with visibility and opacity controls. Undo and Redo restore layer changes. Export writes the full-size edited JPEG or PNG; the original stays untouched.
 
 ## Choose the planner
@@ -57,6 +59,8 @@ The script uses the same edit code as Run. Set `backend` to `meta`, `glimmer` or
   "window": {"width": 1440, "height": 900}
 }
 ```
+
+In place of `instruction`, `"voice": "said.m4a"` gives a recording of it, relative to the script: Muse Voice Transcribe writes it into the field as if it had been said, and the run goes on from there.
 
 Photo paths can be absolute, start with `~`, or be relative to the script file. Set `area` to `null` or omit it to use the whole photo. Area coordinates are fractions from the photo's top-left corner and must stay inside it. Window dimensions are in points, at least 980 × 680 and at most 8192 × 8192.
 

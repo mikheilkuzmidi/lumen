@@ -8,17 +8,20 @@ public struct MetaConfiguration: Sendable {
     public var planningModel: String
     public var segmentationModel: String
     public var imageModel: String
+    public var transcriptionModel: String
     public var timeout: TimeInterval
     /// False for compatible providers whose bills are outside Lumen. Token usage is still reported.
     public var recordsCost: Bool
 
     public init(apiKey: String, baseURL: URL = URL(string: "https://api.meta.ai/v1")!, planningModel: String = "muse-spark-1.3",
-                segmentationModel: String = "sam-3.1", imageModel: String = "muse-image-1.0", timeout: TimeInterval = 180, recordsCost: Bool = true) {
+                segmentationModel: String = "sam-3.1", imageModel: String = "muse-image-1.0", timeout: TimeInterval = 180, recordsCost: Bool = true,
+                transcriptionModel: String = "muse-voice-transcribe-1.0") {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.planningModel = planningModel
         self.segmentationModel = segmentationModel
         self.imageModel = imageModel
+        self.transcriptionModel = transcriptionModel
         self.timeout = timeout
         self.recordsCost = recordsCost
     }

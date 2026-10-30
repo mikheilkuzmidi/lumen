@@ -19,6 +19,21 @@ struct ArgumentsTests {
         #expect(command.traceURL == nil)
     }
 
+    /// A spoken instruction stands in for the words, never beside them, and its recording must be there.
+    @Test func editTakesTheInstructionInWordsOrAsARecording() throws {
+        let recording = FileManager.default.temporaryDirectory.appendingPathComponent("said-\(UUID().uuidString).wav")
+        try Data("RIFF".utf8).write(to: recording)
+        defer { try? FileManager.default.removeItem(at: recording) }
+        let spoken = try #require(Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "--voice", recording.path]) as? Edit)
+        #expect(spoken.instruction == nil)
+        #expect(spoken.voice == recording.path)
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "Make it warmer", "--voice", recording.path]) }
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["edit", "/tmp/portrait.heic", "--voice", "/nonexistent/said.wav"]) }
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["edit", "/tmp/portrait.heic"]) }
+        #expect(throws: (any Error).self) { try Lumen.parseAsRoot(["transcribe", "/nonexistent/said.wav"]) }
+        #expect(try Lumen.parseAsRoot(["transcribe", recording.path]) is Transcribe)
+    }
+
     @Test func editOptions() throws {
         let command = try #require(Lumen.parseAsRoot([
             "edit", "photo.jpg", "Change the coat", "--area", "0.1,0.2,0.3,0.4", "--backend", "spark-open",

@@ -9,6 +9,13 @@ lumen edit photos/coat.jpg "Turn his coat navy" \
   --area 0.2,0.1,0.5,0.8 --out navy.png --trace navy.trace.json
 ```
 
+Say the instruction instead of typing it: `--voice` takes a recording (any audio file macOS reads: a voice memo, an M4A, a WAV), which Muse Voice Transcribe writes down in the language it was said before the edit plans. The command prints what it heard. `lumen transcribe said.m4a` only writes it down, on standard output, with the seconds of audio and their cost on standard error.
+
+```sh
+lumen edit photos/coat.jpg --voice said.m4a
+lumen transcribe said.m4a
+```
+
 The default result is `coat-lumen.jpg` beside the original. Output extensions select the encoding: `.jpg` and `.jpeg` write JPEG, `.png` writes PNG. The original stays untouched, and using it as the output or trace is rejected. The destination directory must already exist for an edit.
 
 | Option | Default | Meaning |

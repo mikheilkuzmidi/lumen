@@ -2,6 +2,7 @@ import AppKit
 import LumenCore
 import LumenMeta
 import LumenRender
+import LumenVoice
 import Observation
 import UniformTypeIdentifiers
 
@@ -87,6 +88,8 @@ final class StudioModel {
     var sidebar = StudioSidebarTab.steps
     var snapshotDate: Date?
     var issue: String?
+    /// The microphone beside the instruction.
+    let voice: VoiceInstruction
     private(set) var phase = StudioPhase.idle
     private(set) var photoURL: URL?
     private(set) var photoSize = PixelSize(width: 0, height: 0)
@@ -119,11 +122,15 @@ final class StudioModel {
     @ObservationIgnored private var photoVersion = UUID()
     @ObservationIgnored var photoDidChange: (() -> Void)?
 
-    init(backends: StudioBackends = StudioBackends(),
+    init(backends: StudioBackends = StudioBackends(), voice: VoiceInstruction = StudioVoice.instruction(),
          makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
         self.backends = backends
+        self.voice = voice
         self.makePhoto = makePhoto
     }
+
+    /// Puts what was said after the instruction already typed, to read and run.
+    func hear(_ words: String) { prompt = StudioVoice.adding(words, to: prompt) }
 
     var isBusy: Bool { phase != .idle }
     var isRunning: Bool { phase == .running || phase == .stopping }

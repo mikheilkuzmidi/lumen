@@ -68,6 +68,7 @@ Results are written to a separate folder with a sidecar per photo, a summary of 
 | Plan an instruction across a library | Muse Wonder (`muse-wonder-1.0`) | Meta Model API |
 | Find regions | SAM 3.1 (`sam-3.1`) | Meta Model API |
 | Redraw a region | Muse Image (`muse-image-1.0`) | Meta Model API |
+| Write down a spoken instruction | Muse Voice Transcribe (`muse-voice-transcribe-1.0`) | Meta Model API |
 | Plan and judge with open weights | Muse Spark Open | A hosting provider (Baseten or Modal) |
 | Plan and judge on this Mac | Muse Glimmer | Locally through llama.cpp; measured on an M4 Max with 36 GB: about 33 s to load, 70–90 s per plan or check |
 
@@ -125,6 +126,7 @@ swift test
 
 - **Lumen Studio:** `scripts/build-studio.sh`, then open `.build/studio/Lumen Studio.app`. See [docs/studio.md](docs/studio.md), including how to open a build that isn't notarized.
 - **The command:** `swift build -c release`, then `.build/release/lumen edit photo.jpg "Make the sky moodier"`, or `lumen batch` for a folder. See [docs/cli.md](docs/cli.md).
+- **Say it:** the microphone beside Studio's instruction field writes down what you say, in any language you speak, with Muse Voice Transcribe; you read it, correct it if you like, and press Run. From a recording: `lumen edit photo.jpg --voice said.m4a`, or `lumen transcribe said.m4a`. A sentence costs a fraction of a cent ($0.18 an hour of audio).
 - **Open weights:** see [docs/open-weights.md](docs/open-weights.md).
 
 ![Selecting the jacket: SAM 3.1's box drawn on the photo while the plan waits](docs/images/studio-selecting.jpg)
@@ -132,7 +134,8 @@ swift test
 ## Layout
 
 - **`LumenCore`:** the edit plan, layers, the agent loop and the model protocols (`Planner`, `Segmenter`, `Generator`, `EditHost`). No networking and no pixels.
-- **`LumenMeta`:** Muse Spark, SAM 3.1 and Muse Image through the Meta Model API.
+- **`LumenMeta`:** Muse Spark, SAM 3.1, Muse Image and Muse Voice Transcribe through the Meta Model API.
+- **`LumenVoice`:** the microphone, and a spoken instruction written down in the language it was said.
 - **`LumenSAMMask`:** decodes SAM 3.1's masks (SAM License).
 - **`LumenRender`:** applies layers to a photo with Core Image (`PhotoDocument`).
 - **`LumenOpen`:** open-weight planners.

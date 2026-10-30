@@ -1,6 +1,7 @@
 import AppKit
 import LumenCore
 import LumenRender
+import LumenVoice
 import Observation
 
 enum LibraryBadge: String, CaseIterable {
@@ -34,6 +35,8 @@ final class StudioLibraryModel {
     var compare = false
     var output: URL?
     var issue: String?
+    /// The microphone beside the library's instruction.
+    let voice = StudioVoice.instruction()
     var selectedGroup: String?
     private(set) var folder: URL?
     private(set) var photos: [PhotoID] = []

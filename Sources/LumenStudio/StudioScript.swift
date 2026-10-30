@@ -16,8 +16,22 @@ struct StudioScript: Decodable, Sendable {
     let photo: String
     let area: NormalizedRect?
     let instruction: String
+    /// A recording of the instruction, spoken: Muse Voice Transcribe writes it into the field in place of `instruction`.
+    let voice: String?
     let backend: Backend
     let window: Window
+
+    private enum CodingKeys: String, CodingKey { case photo, area, instruction, voice, backend, window }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        photo = try values.decode(String.self, forKey: .photo)
+        area = try values.decodeIfPresent(NormalizedRect.self, forKey: .area)
+        instruction = try values.decodeIfPresent(String.self, forKey: .instruction) ?? ""
+        voice = try values.decodeIfPresent(String.self, forKey: .voice)
+        backend = try values.decode(Backend.self, forKey: .backend)
+        window = try values.decode(Window.self, forKey: .window)
+    }
 
     static func parse(_ data: Data) throws -> StudioScript {
         let script: StudioScript
@@ -26,8 +40,8 @@ struct StudioScript: Decodable, Sendable {
         guard !script.photo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw StudioScriptError.message("The script needs a photo path.")
         }
-        guard !script.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw StudioScriptError.message("The script needs an instruction.")
+        guard !script.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || script.voice != nil else {
+            throw StudioScriptError.message("The script needs an instruction, or a voice recording of one.")
         }
         guard script.window.width.isFinite, script.window.height.isFinite,
               (980...8192).contains(script.window.width), (680...8192).contains(script.window.height) else {
@@ -43,8 +57,12 @@ struct StudioScript: Decodable, Sendable {
         return script
     }
 
-    func photoURL(relativeTo scriptURL: URL) -> URL {
-        URL(fileURLWithPath: (photo as NSString).expandingTildeInPath,
+    func photoURL(relativeTo scriptURL: URL) -> URL { Self.url(photo, relativeTo: scriptURL) }
+
+    func voiceURL(relativeTo scriptURL: URL) -> URL? { voice.map { Self.url($0, relativeTo: scriptURL) } }
+
+    private static func url(_ path: String, relativeTo scriptURL: URL) -> URL {
+        URL(fileURLWithPath: (path as NSString).expandingTildeInPath,
             relativeTo: scriptURL.deletingLastPathComponent()).standardizedFileURL
     }
 }
@@ -146,7 +164,14 @@ struct StudioScriptRunner {
         do {
             model.backends.choose(script.backend, remembering: false)
             try await model.openPhoto(script.photoURL(relativeTo: scriptURL))
-            model.prompt = script.instruction
+            if let voice = script.voiceURL(relativeTo: scriptURL) {
+                model.prompt = ""
+                model.voice.transcribe(file: voice, heard: model.hear)
+                while model.voice.isTranscribing { try await Task.sleep(for: .milliseconds(50)) }
+                if let failure = model.voice.failure { throw StudioScriptError.message(failure) }
+            } else {
+                model.prompt = script.instruction
+            }
             try await capture(.opened)
             model.area = script.area
             if script.area != nil { try await capture(.area) }

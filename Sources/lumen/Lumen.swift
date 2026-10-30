@@ -2,12 +2,14 @@ import ArgumentParser
 import Darwin
 import Foundation
 import LumenCore
+import LumenMeta
+import LumenVoice
 
 @main
 struct Lumen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Edit a photo by describing the change.",
-        subcommands: [Edit.self, Evaluate.self, Batch.self, Styles.self]
+        subcommands: [Edit.self, Evaluate.self, Batch.self, Styles.self, Transcribe.self]
     )
 }
 
@@ -17,8 +19,11 @@ struct Edit: AsyncParsableCommand {
     @Argument(help: "The photo to edit.")
     var photo: String
 
-    @Argument(help: "What to change, in plain words.")
-    var instruction: String
+    @Argument(help: "What to change, in plain words. Leave it out with --voice.")
+    var instruction: String?
+
+    @Option(help: "A recording of the instruction, spoken in any language; Muse Voice Transcribe writes it down.")
+    var voice: String?
 
     @OptionGroup var options: EditOptions
 
@@ -37,7 +42,9 @@ struct Edit: AsyncParsableCommand {
     var photoURL: URL { URL(fileURLWithPath: photo) }
 
     /// The instruction, with the style and effect asked for by name, which the planner takes as its style step.
-    var styledInstruction: String {
+    var styledInstruction: String { styled(instruction ?? "") }
+
+    func styled(_ instruction: String) -> String {
         let named = [style.map { "style \($0)" }, effect.map { "effect \($0)" }].compactMap { $0 }
         guard !named.isEmpty else { return instruction }
         return instruction + " Use a style step with " + named.joined(separator: " and ") + "."
@@ -51,8 +58,11 @@ struct Edit: AsyncParsableCommand {
 
     mutating func validate() throws {
         try options.validate()
-        guard !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ValidationError("The instruction must not be empty.")
+        switch (instruction?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, voice) {
+        case (true, nil): break
+        case (false, let voice?): try Transcribe.check(voice)
+        case (true, _?): throw ValidationError("Give the instruction in words or as --voice, not both.")
+        case (false, nil): throw ValidationError("The instruction must not be empty.")
         }
         _ = try PhotoOutput.format(for: outputURL)
         try PhotoOutput.validate(photo: photoURL, output: outputURL, trace: traceURL)
@@ -67,9 +77,16 @@ struct Edit: AsyncParsableCommand {
     func run() async throws {
         let models = try options.backend.models()
         let output = ConsoleOutput()
+        var said = styledInstruction
+        if let voice {
+            let transcript = try await Transcribe.transcribe(voice)
+            output.write("Heard (Muse Voice Transcribe, \(transcript.seconds) s): \(transcript.text)")
+            said = styled(transcript.text)
+        }
+        let instruction = said
         let result = try await withInterruptCancellation {
             try await options.backend.withLocalModel(line: output.write) {
-                try await EditRunner.run(photo: photoURL, instruction: styledInstruction, options: options,
+                try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
                                          models: models, output: outputURL, trace: traceURL, line: output.write)
             }
         }
@@ -132,6 +149,32 @@ func withInterruptCancellation<Value: Sendable>(
         do { return try await task.value }
         catch is CancellationError { throw LumenError.cancelled }
     } onCancel: { task.cancel() }
+}
+
+struct Transcribe: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Write down a spoken instruction with Muse Voice Transcribe, in the language it was said.")
+
+    @Argument(help: "A recording: any audio file macOS reads (WAV, AIFF, M4A, a voice memo).")
+    var audio: String
+
+    mutating func validate() throws { try Self.check(audio) }
+
+    func run() async throws {
+        let transcript = try await Self.transcribe(audio)
+        print(transcript.text)
+        let cost = MetaPricing.cost(model: "muse-voice-transcribe-1.0", audioSeconds: transcript.seconds) ?? 0
+        FileHandle.standardError.write(Data("\(transcript.seconds) s of audio, \(String(format: "$%.5f", locale: Locale(identifier: "en_US_POSIX"), cost))\n".utf8))
+    }
+
+    static func check(_ path: String) throws {
+        guard FileManager.default.isReadableFile(atPath: path) else { throw ValidationError("Can't read the recording at \(path).") }
+    }
+
+    static func transcribe(_ path: String) async throws -> Transcript {
+        let wav = try SpokenAudio.wav(contentsOf: URL(fileURLWithPath: path))
+        return try await MetaTranscriber(configuration: MetaConfiguration.fromEnvironment()).transcribe(wav: wav)
+    }
 }
 
 struct Styles: ParsableCommand {

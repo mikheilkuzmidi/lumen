@@ -37,7 +37,7 @@ final class StudioScriptApplication {
     }
 
     private func run() async {
-        let model = StudioModel()
+        let model = StudioModel(voice: StudioVoice.instruction(allowKeychainInteraction: false))
         do {
             try removePreviousOutput()
             let runner = StudioScriptRunner(model: model, script: script, scriptURL: arguments.script, output: arguments.output)

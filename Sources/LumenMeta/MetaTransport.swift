@@ -146,14 +146,48 @@ public struct RetryingMetaTransport: MetaTransport {
 enum MetaHTTP {
     static func request(baseURL: URL, path: String, key: String, timeout: TimeInterval,
                         headers: [String: String] = [:], body: [String: Any]) throws -> URLRequest {
+        var request = try post(baseURL: baseURL, path: path, key: key, timeout: timeout, headers: headers)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        return request
+    }
+
+    /// A form of named parts: each a JSON object, or a file with its name and type.
+    enum Part {
+        case json(name: String, [String: Any])
+        case file(name: String, filename: String, type: String, Data)
+    }
+
+    static func multipart(baseURL: URL, path: String, key: String, timeout: TimeInterval,
+                          headers: [String: String] = [:], parts: [Part], boundary: String = "lumen-" + UUID().uuidString) throws -> URLRequest {
+        var request = try post(baseURL: baseURL, path: path, key: key, timeout: timeout, headers: headers)
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        for part in parts {
+            body.append(Data("--\(boundary)\r\n".utf8))
+            switch part {
+            case .json(let name, let object):
+                body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\nContent-Type: application/json\r\n\r\n".utf8))
+                body.append(try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+            case .file(let name, let filename, let type, let data):
+                body.append(Data("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\nContent-Type: \(type)\r\n\r\n".utf8))
+                body.append(data)
+            }
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        return request
+    }
+
+    private static func post(baseURL: URL, path: String, key: String, timeout: TimeInterval,
+                             headers: [String: String]) throws -> URLRequest {
         try Task.checkCancellation()
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LumenError.missingKey }
         var request = URLRequest(url: baseURL.appendingPathComponent(path), timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return request
     }
 

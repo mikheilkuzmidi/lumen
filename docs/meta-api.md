@@ -52,6 +52,14 @@ Source: [SAM 3 text format](https://github.com/meta-models/meta-sam/blob/main/pr
 
 Source: [edit image](https://dev.meta.ai/docs/api-reference/images/edit-image).
 
+## Muse Voice Transcribe: a spoken instruction
+
+`POST /v1/asr/transcribe`, a multipart form: a `request` part with the settings as JSON (`{"model": "muse-voice-transcribe-1.0", "mode": "PUSH_TO_TALK", "audioEncoding": "WAV"}`) and an `audio` part with the recording, a WAV of mono 16-bit samples at 16 or 24 kHz, at most ten minutes and 32 MB. The answer is JSON with `transcript` and `audioDurationMs`. Lumen records at 16 kHz mono, converts any other audio file to that, and puts the words into the instruction field for the person to read; nothing runs until they do. It is billed at $0.18 an hour of audio, by its whole seconds.
+
+Measured on October 30, 2026, with `say` reading the sentence:
+- A 1.8 s English sentence and a 2.2 s Russian one came back in about 1.5 s each, word for word. Russian isn't among the 25 languages Meta lists, and came back exactly.
+- Short sentences sometimes end in ",." or "..", which Lumen tidies to "."; once in four, a word came back doubled ("make his jacket jacket bright yellow"), which is why the words wait in the field to be read.
+
 ## Errors
 
 - HTTP 402: the account has no credit.

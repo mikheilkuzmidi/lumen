@@ -15,6 +15,25 @@ struct StudioScriptTests {
         #expect(script.photoURL(relativeTo: URL(fileURLWithPath: "/tmp/edit/run.json")).path == "/tmp/edit/photos/jacket.jpg")
     }
 
+    /// A spoken instruction, as a recording beside the script, in place of the words.
+    @Test func takesTheInstructionAsARecording() throws {
+        let json = Self.json.replacingOccurrences(of: "\"instruction\": \"Make the jacket yellow\"", with: "\"voice\": \"said/yellow.wav\"")
+        let script = try StudioScript.parse(Data(json.utf8))
+        #expect(script.instruction.isEmpty)
+        #expect(script.voiceURL(relativeTo: URL(fileURLWithPath: "/tmp/edit/run.json"))?.path == "/tmp/edit/said/yellow.wav")
+        let neither = Self.json.replacingOccurrences(of: "\"instruction\": \"Make the jacket yellow\",", with: "")
+        #expect(throws: (any Error).self) { try StudioScript.parse(Data(neither.utf8)) }
+    }
+
+    @MainActor @Test func whatWasSaidFollowsWhatWasTyped() {
+        #expect(StudioVoice.adding("make it warmer.", to: "") == "make it warmer.")
+        #expect(StudioVoice.adding("and brighter.", to: "Make it warmer ") == "Make it warmer and brighter.")
+        let model = StudioModel()
+        model.prompt = "Make the jacket yellow."
+        model.hear("Сделай небо синим.")
+        #expect(model.prompt == "Make the jacket yellow. Сделай небо синим.")
+    }
+
     @Test func acceptsNullAndMissingAreas() throws {
         for area in ["\"area\": null,", ""] {
             let script = try StudioScript.parse(Data(Self.json.replacingOccurrences(of: Self.area, with: area).utf8))

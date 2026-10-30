@@ -115,10 +115,18 @@ struct StudioLibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Edit the library").font(.system(size: 15, weight: .semibold))
-                    TextField("Describe a change, or run the base pass", text: $model.instruction, axis: .vertical)
+                    TextField(model.voice.isRecording ? "Listening…" : "Describe a change, or run the base pass",
+                              text: $model.instruction, axis: .vertical)
                         .textFieldStyle(.plain).font(StudioStyle.title).lineLimit(3...6)
-                        .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.promptRadius))
+                        .disabled(model.voice.isRecording)
+                        .padding(12).padding(.trailing, StudioStyle.control)
+                        .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.promptRadius))
                         .overlay { RoundedRectangle(cornerRadius: StudioStyle.promptRadius).strokeBorder(StudioStyle.line) }
+                        .overlay(alignment: .bottomTrailing) {
+                            StudioMicButton(voice: model.voice, disabled: model.isRunning,
+                                            heard: { model.instruction = StudioVoice.adding($0, to: model.instruction) }) { model.issue = $0 }
+                                .padding(6)
+                        }
                     Picker("Mode", selection: $model.mode) {
                         Text("Autonomous").tag(BatchMode.autonomous)
                         Text("Ask me").tag(BatchMode.askWhenUnsure)

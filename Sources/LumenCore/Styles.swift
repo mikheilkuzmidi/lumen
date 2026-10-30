@@ -144,6 +144,8 @@ public struct PersonStyle: Equatable, Sendable {
                     adultsOnly: true, pieces: [.neck, .skin],
                     skinChange: "Make the skin of this person's hands and arms about 30 years older, to match an older "
                         + "face: thinner, slightly creased skin, a few age spots and more visible veins.",
+                    gentler: "Show this person as they could look in their later years: greying, thinner hair, laugh lines "
+                        + "at the eyes and mouth, a lined forehead and a neck to match, the same face and features.",
                     example: "Make the person look 30 years older"),
         PersonStyle(id: "smile", title: "Big smile", part: .face,
                     change: "Change this person's expression to a natural, wide smile that reaches the eyes, showing the teeth.",

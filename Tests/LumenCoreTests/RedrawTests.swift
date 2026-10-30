@@ -49,6 +49,28 @@ struct RedrawTests {
         #expect(EditAgent.isSky("the sky") && EditAgent.isSky("Sky") && !EditAgent.isSky("skyline") && !EditAgent.isSky(nil))
     }
 
+    /// "shirts" found nothing in a photo of three women's tops, where "shirt" finds each: a plural that finds nothing is
+    /// looked for once more in the singular.
+    @Test func aPluralThatFindsNothingIsLookedForInTheSingular() async throws {
+        #expect(EditAgent.singular("shirts") == "shirt")
+        #expect(EditAgent.singular("red t-shirts") == "red t-shirt")
+        #expect(EditAgent.singular("hoodies") == "hoodie" || EditAgent.singular("hoodies") == "hoody")
+        #expect(EditAgent.singular("dresses") == nil || EditAgent.singular("dresses") == "dresse")
+        #expect(EditAgent.singular("benches") == "bench")
+        #expect(EditAgent.singular("bus") == nil && EditAgent.singular("glass") == nil && EditAgent.singular("sunglasses") == nil)
+        #expect(EditAgent.singular("cactus") == nil && EditAgent.singular("sky") == nil)
+        let segmenter = PluralSegmenter()
+        let planner = RedrawPlanner(plan: EditPlan(summary: "Blue tops", steps: [
+            .select(Selection(id: "tops", concept: "shirts")),
+            .regenerate(Regeneration(region: "tops", prompt: "Royal blue shirts")),
+            .finish(Finish(reason: "Ready.")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: RedrawGenerator(), host: RedrawHost())
+        let events = try await redrawEvents(agent.run("Make the shirts blue"))
+        #expect(await segmenter.concepts.prefix(2) == ["shirts", "shirt"])
+        #expect(!events.redrawLayers.isEmpty, "the shirts were found in the singular and redrawn")
+    }
+
     @Test(arguments: [false, true]) func poorFirstAttemptKeepsTheBetterRedraw(secondIsBetter: Bool) async throws {
         let smaller = RedrawPhoto.mask(x: 22..<30, y: 22..<30)
         let larger = RedrawPhoto.mask(x: 18..<34, y: 18..<34)
@@ -383,6 +405,16 @@ private actor RedrawSegmenter: Segmenter {
         requests.append(request)
         if requests.count == 1 { return [RedrawPhoto.segment(RedrawPhoto.original)] }
         return try checks.isEmpty ? [RedrawPhoto.segment(RedrawPhoto.mask(x: 6..<46, y: 6..<46))] : checks.removeFirst().get()
+    }
+}
+
+/// SAM, which knows a shirt but not "shirts".
+private actor PluralSegmenter: Segmenter {
+    let modelID = "sam-3.1"
+    private(set) var concepts: [String?] = []
+    func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        concepts.append(request.concept)
+        return request.concept == "shirts" ? [] : [RedrawPhoto.segment(RedrawPhoto.original)]
     }
 }
 

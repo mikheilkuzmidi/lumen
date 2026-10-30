@@ -137,7 +137,9 @@ public struct MetaBatchPlanner: BatchPlanner {
     Quality is how good the photo is as it stands: 0 is unusable, 1 needs nothing.
     Describe what the photo shows in a few words, including subjects and relevant clothing or objects.
     Group is a short key shared by photos of the same scene or subjects.
-    matchesInstruction says whether the instruction applies to this photo; false when there is no instruction.
+    matchesInstruction says whether the instruction applies to this photo; false when there is no instruction. An
+    instruction about what people wear doesn't apply to people seen only as dark silhouettes against the light: no
+    colour of their clothes shows to change.
     levelLine names the line in the photo that should be level, whatever its angle now: horizon where sky meets land or
     sea, water for the surface or shoreline of a lake, river or sea, building for a wall, roof, window or door edge,
     or none when there are only people, trees, hills, objects or slanted surfaces.

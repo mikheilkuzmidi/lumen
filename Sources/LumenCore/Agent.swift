@@ -436,6 +436,14 @@ public actor EditAgent {
                                       detail: "Find \(every ? "every " : "")\(selection.concept ?? selection.id)", events: events) {
             try await self.segmenter.segment(request)
         }
+        // SAM answers a thing's name in the singular, and finds every one of them by it: "shirts" found nothing in a
+        // photo of three women's tops, where "shirt" finds each.
+        if segments.isEmpty, let concept = selection.concept, let singular = Self.singular(concept) {
+            let again = SegmentRequest(image: request.image, concept: singular, box: request.box, points: request.points)
+            segments = try await call(.select, model: segmenter.modelID, detail: "Find \(singular)", events: events) {
+                try await self.segmenter.segment(again)
+            }
+        }
         if every {
             segments = try await coloured(segments, as: selection, in: image, events: events)
             guard !segments.isEmpty else {
@@ -1196,6 +1204,21 @@ public actor EditAgent {
 
     /// The longest edge a crop to warp is rendered at.
     static let warpLongEdge = 4096
+
+    /// A plural name in the singular ("shirts" as "shirt", "red t-shirts" as "red t-shirt"); nil for a name that isn't
+    /// a plural it can tell.
+    static func singular(_ concept: String) -> String? {
+        let trimmed = concept.trimmingCharacters(in: .whitespaces)
+        guard let last = trimmed.split(separator: " ").last.map(String.init), last.count > 3 else { return nil }
+        let lower = last.lowercased()
+        let single: String
+        if lower.hasSuffix("ies") { single = String(last.dropLast(3)) + "y" }
+        else if lower.hasSuffix("ches") || lower.hasSuffix("shes") || lower.hasSuffix("xes") { single = String(last.dropLast(2)) }
+        else if lower.hasSuffix("s"), !lower.hasSuffix("ss"), !lower.hasSuffix("us"), !lower.hasSuffix("is"), !lower.hasSuffix("glasses") {
+            single = String(last.dropLast())
+        } else { return nil }
+        return String(trimmed.dropLast(last.count)) + single
+    }
 
     static func isSky(_ concept: String?) -> Bool {
         concept.map { $0.lowercased().split { !$0.isLetter }.contains("sky") } ?? false

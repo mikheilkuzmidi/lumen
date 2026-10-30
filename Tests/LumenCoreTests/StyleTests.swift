@@ -459,7 +459,7 @@ struct StyleTests {
         #expect(skull.prompts.dropFirst().first?.contains("festive Day of the Dead face paint") == true)
 
         // Reshaping a face was filtered for the owner between two friends: those styles have milder words too.
-        #expect(["chad", "gigachad", "zombie", "skull"].allSatisfy { PersonStyle.named($0)?.gentler != nil })
+        #expect(["chad", "gigachad", "older", "zombie", "skull"].allSatisfy { PersonStyle.named($0)?.gentler != nil })
 
         let tiger = try await run("tiger")
         #expect(tiger.patches == 0, "no milder words to ask with")

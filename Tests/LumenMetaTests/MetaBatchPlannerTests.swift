@@ -43,7 +43,7 @@ import Testing
     #expect(fields["misfireReason"]?["type"] as? [String] == ["string", "null"])
     for rule in ["frame no one would keep", "black or almost black", "ground or a pocket", "closed eyes or motion blur",
                  "when a better one exists", "low sharpness alone is never a misfire", "0 is unusable, 1 needs nothing",
-                 "same scene or subjects", "false when there is no instruction"] {
+                 "same scene or subjects", "false when there is no instruction", "seen only as dark silhouettes against the light"] {
         #expect(MetaBatchPlanner.reviewPrompt.contains(rule))
     }
 }

@@ -57,14 +57,16 @@ struct StudioRegion: Identifiable {
         self.name = name
         self.segment = segment
         self.colorIndex = colorIndex
-        let data = Data(segment.mask.coverage)
+        // White, as opaque as the selection covers each pixel: an alpha mask, which every way the canvas is drawn
+        // honours. A grey image read through luminanceToAlpha tinted the whole photo in a window capture.
+        let data = Data(segment.mask.coverage.flatMap { [$0, $0, $0, $0] })
         let size = segment.mask.size
         if size.width > 0, size.height > 0,
            let provider = CGDataProvider(data: data as CFData),
            let image = CGImage(width: size.width, height: size.height, bitsPerComponent: 8,
-                               bitsPerPixel: 8, bytesPerRow: size.width,
-                               space: CGColorSpaceCreateDeviceGray(),
-                               bitmapInfo: CGBitmapInfo(rawValue: 0), provider: provider,
+                               bitsPerPixel: 32, bytesPerRow: size.width * 4,
+                               space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue), provider: provider,
                                decode: nil, shouldInterpolate: true, intent: .defaultIntent) {
             mask = NSImage(cgImage: image, size: NSSize(width: size.width, height: size.height))
         } else {

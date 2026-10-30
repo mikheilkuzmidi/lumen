@@ -18,6 +18,8 @@ struct StudioCanvas: View {
                             PhotoSurface(model: model, image: image)
                                 .frame(width: size.width, height: size.height)
                                 .shadow(color: .black.opacity(0.3), radius: 18, y: 6)
+                                // The photo sits above the prompt floating over the canvas's bottom, not under it.
+                                .padding(.bottom, Self.promptReserve)
                                 .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
                         }
                         .scrollIndicators(.hidden)
@@ -26,9 +28,9 @@ struct StudioCanvas: View {
                         .overlay(alignment: .topLeading) {
                             if model.showsOriginal {
                                 Text("Original")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .font(StudioStyle.label.weight(.medium))
+                                    .padding(.horizontal, 10).frame(height: StudioStyle.control)
+                                    .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
                                     .padding(20)
                                     .allowsHitTesting(false)
                             }
@@ -42,24 +44,26 @@ struct StudioCanvas: View {
                 }
             }
             .clipped()
-            canvasControls
         }
         .background(StudioStyle.canvas)
     }
+
+    /// Room kept under the photo for the prompt that floats over the canvas.
+    static let promptReserve: CGFloat = 64
 
     private func fittedSize(in viewport: CGSize) -> CGSize {
         guard let image = model.showsOriginal ? model.original : model.preview,
               image.size.width > 0, image.size.height > 0 else { return viewport }
         let scale = min(max(1, viewport.width - 64) / image.size.width,
-                        max(1, viewport.height - 64) / image.size.height) * model.zoom
+                        max(1, viewport.height - 64 - Self.promptReserve) / image.size.height) * model.zoom
         return CGSize(width: image.size.width * scale, height: image.size.height * scale)
     }
 
     private var emptyCanvas: some View {
         VStack(spacing: 0) {
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(StudioStyle.line, lineWidth: 1)
+                RoundedRectangle(cornerRadius: StudioStyle.promptRadius)
+                    .fill(StudioStyle.raised)
                     .frame(width: 76, height: 76)
                 Image(systemName: "viewfinder")
                     .font(.system(size: 33, weight: .ultraLight))
@@ -68,60 +72,28 @@ struct StudioCanvas: View {
             }
             .padding(.bottom, 30)
             Text("A little light.\nA different perspective.")
-                .font(.system(size: 34, weight: .regular, design: .serif))
-                .tracking(-0.6).multilineTextAlignment(.center).lineSpacing(3)
+                .font(.system(size: 26, weight: .semibold))
+                .multilineTextAlignment(.center).lineSpacing(3)
             Text("Open a photo. Describe a change.\nKeep every step as a layer.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+                .font(StudioStyle.title.weight(.regular)).foregroundStyle(StudioStyle.textSecondary)
                 .multilineTextAlignment(.center).lineSpacing(6)
                 .padding(.top, 18).padding(.bottom, 28)
             if model.phase == .opening {
                 ProgressView("Opening photo…").controlSize(.small)
             } else {
-                Button(action: model.choosePhoto) {
-                    HStack(spacing: 14) {
-                        Text("Open Photo")
-                        Text("⌘O").foregroundStyle(.secondary)
+                StudioChip(action: model.choosePhoto) {
+                    HStack(spacing: 10) {
+                        Text("Open Photo").foregroundStyle(StudioStyle.textPrimary)
+                        Text("⌘O").foregroundStyle(StudioStyle.textTertiary)
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 6)
                 }
-                .buttonStyle(.bordered).disabled(model.isBusy)
+                .disabled(model.isBusy)
                 Text("or drop a photo here")
-                    .font(.system(size: 11)).foregroundStyle(.tertiary).padding(.top, 12)
+                    .font(StudioStyle.label).foregroundStyle(StudioStyle.textTertiary).padding(.top, 12)
             }
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var canvasControls: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "rectangle.dashed").font(.system(size: 11))
-            Text(model.area == nil ? "Drag on the photo to choose an area" : "Drag to move · Corners to resize · Esc to clear")
-                .font(.system(size: 10))
-                .lineLimit(1)
-            Spacer(minLength: 12)
-            Button { model.zoom = max(0.5, model.zoom / 1.25) } label: { Image(systemName: "minus") }
-                .accessibilityLabel("Zoom out")
-            Button { model.zoom = 1 } label: {
-                Text(model.zoom == 1 ? "Fit" : String(format: "%.0f%%", model.zoom * 100))
-                    .font(.system(size: 10, design: .monospaced)).frame(width: 38)
-            }
-            .help("Fit photo to canvas. Percentages are relative to fit.")
-            Button { model.zoom = min(4, model.zoom * 1.25) } label: { Image(systemName: "plus") }
-                .accessibilityLabel("Zoom in")
-            Rectangle().fill(StudioStyle.line).frame(width: 1, height: 14)
-            Button { model.compare.toggle() } label: {
-                Label("Compare", systemImage: "square.on.square")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(model.showsOriginal ? StudioStyle.accent : Color.secondary)
-            }
-            .help("Show the original, or hold Space while not typing")
-            .accessibilityValue(model.showsOriginal ? "Original" : "Edited")
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 24).frame(height: 38)
-        .disabled(model.preview == nil)
     }
 }
 
@@ -226,14 +198,14 @@ private struct RegionOverlay: View {
                 ZStack(alignment: .topLeading) {
                     if let mask = region.mask {
                         color.opacity(frame.tint)
-                            .mask { Image(nsImage: mask).resizable().interpolation(.high).luminanceToAlpha() }
+                            .mask { Image(nsImage: mask).resizable().interpolation(.high) }
                         if !reduceMotion, frame.shimmer < 1.3 {
                             LinearGradient(colors: [.clear, color.opacity(0.32), .white.opacity(0.35), .clear],
                                            startPoint: .leading, endPoint: .trailing)
                                 .frame(width: geometry.size.width * 0.4, height: geometry.size.height)
                                 .offset(x: frame.shimmer * geometry.size.width)
                                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
-                                .mask { Image(nsImage: mask).resizable().interpolation(.high).luminanceToAlpha() }
+                                .mask { Image(nsImage: mask).resizable().interpolation(.high) }
                         }
                     }
                     Rectangle().trim(from: 0, to: frame.drawn)

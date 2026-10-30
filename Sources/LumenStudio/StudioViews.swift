@@ -1,12 +1,92 @@
 import SwiftUI
 import LumenCore
 
+/// Photoeditor's design tokens, so Lumen Studio and the app read as one product: black, graphite greys and white, so
+/// the chrome never biases how a photo's colour reads, and the orange-red accent kept for Lumen's own actions and the
+/// few marks that must catch the eye. Standard controls are tinted grey, not the accent.
 enum StudioStyle {
-    static let accent = Color(red: 0.80, green: 0.91, blue: 0.66)
-    static let canvas = Color(red: 0.055, green: 0.060, blue: 0.067)
-    static let panel = Color(red: 0.085, green: 0.092, blue: 0.100)
-    static let line = Color.white.opacity(0.08)
-    static let regionColors: [Color] = [accent, .cyan, .orange, .pink, .mint, .yellow]
+    static let canvas = Color(hex: 0x0E0E0F)
+    static let panel = Color(hex: 0x161617)
+    static let raised = Color(hex: 0x1D1D1F)
+    static let hover = Color(hex: 0x242426)
+    static let line = Color(hex: 0x2A2A2D)
+    static let textPrimary = Color(hex: 0xE8E8EA)
+    static let textSecondary = Color(hex: 0x9A9AA0)
+    static let textTertiary = Color(hex: 0x5E5E64)
+    static let accent = Color(hex: 0xF2552A)
+    static let accentSoft = Color(hex: 0xF2552A).opacity(0.16)
+    static let danger = Color(hex: 0xEC4868)
+    static let success = Color(hex: 0x5ED39A)
+    static let tint = Color(hex: 0x8C8C92)
+    static let regionColors: [Color] = [accent, .cyan, .mint, .pink, .yellow, .purple]
+
+    static let radius: CGFloat = 6
+    static let promptRadius: CGFloat = 14
+    static let topBarHeight: CGFloat = 44
+    static let bottomBarHeight: CGFloat = 36
+    static let control: CGFloat = 24
+    static let gutter: CGFloat = 16
+    static let barSpacing: CGFloat = 8
+    static let barInset: CGFloat = 14
+
+    static let body = Font.system(size: 12)
+    static let label = Font.system(size: 11)
+    static let section = Font.system(size: 11, weight: .semibold)
+    static let title = Font.system(size: 13, weight: .medium)
+    static let value = Font.system(size: 11).monospacedDigit()
+    static let caption = Font.system(size: 10)
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(.sRGB, red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255, opacity: 1)
+    }
+}
+
+/// A bar's icon button, as Photoeditor's: a control-high square, grey, raised on hover.
+struct StudioIconButton: View {
+    let symbol: String
+    let help: String
+    var isActive = false
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(!isEnabled ? StudioStyle.textTertiary : isActive ? StudioStyle.textPrimary : StudioStyle.textSecondary)
+                .frame(width: StudioStyle.control, height: StudioStyle.control)
+                .background(RoundedRectangle(cornerRadius: StudioStyle.radius)
+                    .fill(isActive ? StudioStyle.hover : hovering ? StudioStyle.raised : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// A small raised pill, as Photoeditor's chips and segmented buttons; selected, it is lifted and in full white.
+struct StudioChip<Label: View>: View {
+    var isSelected = false
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .font(StudioStyle.label.weight(.medium))
+                .foregroundStyle(isSelected ? StudioStyle.textPrimary : StudioStyle.textSecondary)
+                .padding(.horizontal, 10).frame(height: StudioStyle.control)
+                .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(isSelected ? StudioStyle.hover : StudioStyle.raised))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 struct StudioView: View {
@@ -24,18 +104,27 @@ struct StudioView: View {
                     ZStack {
                         StudioCanvas(model: model)
                         if dropTarget {
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(StudioStyle.accent.opacity(0.08))
+                            RoundedRectangle(cornerRadius: StudioStyle.promptRadius)
+                                .fill(StudioStyle.accentSoft)
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: 16)
+                                    RoundedRectangle(cornerRadius: StudioStyle.promptRadius)
                                         .strokeBorder(StudioStyle.accent, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                                 }
                                 .padding(14)
                                 .allowsHitTesting(false)
                         }
                     }
-                    if let issue = model.issue ?? model.backends.issue { issueBanner(issue) }
-                    PromptBar(model: model)
+                    // The prompt floats over the bottom of the canvas, as Photoeditor's does.
+                    .overlay(alignment: .bottom) {
+                        VStack(spacing: 8) {
+                            if let issue = model.issue ?? model.backends.issue { issueBanner(issue) }
+                            PromptBar(model: model)
+                        }
+                        .frame(maxWidth: 780)
+                        .padding(.horizontal, StudioStyle.gutter).padding(.bottom, 14)
+                    }
+                    Rectangle().fill(StudioStyle.line).frame(height: 1)
+                    StudioBottomBar(model: model)
                 }
                 Rectangle().fill(StudioStyle.line).frame(width: 1)
                 StudioSidebar(model: model)
@@ -43,7 +132,9 @@ struct StudioView: View {
             }
         }
         .background(StudioStyle.panel)
+        .foregroundStyle(StudioStyle.textPrimary)
         .preferredColorScheme(.dark)
+        .tint(StudioStyle.tint)
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first, url.isFileURL else { return false }
             if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
@@ -66,142 +157,129 @@ struct StudioView: View {
         .onDisappear { if activatesBackend { Task { await model.close() } } }
     }
 
+    /// Photoeditor's top bar: the photo's name, state and size in a pill in the middle, the bar's actions at the right.
     private var header: some View {
-        HStack(spacing: 18) {
-            Text("LUMEN")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .tracking(3.5)
-                .foregroundStyle(StudioStyle.accent)
-            Rectangle().fill(StudioStyle.line).frame(width: 1, height: 18)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.photoURL?.lastPathComponent ?? "Studio")
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1).truncationMode(.middle)
-                if model.photoSize.width > 0 {
-                    Text("\(model.photoSize.width) × \(model.photoSize.height)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+        ZStack {
+            HStack(spacing: StudioStyle.barSpacing) {
+                Text("Lumen").font(StudioStyle.title).foregroundStyle(StudioStyle.textSecondary)
+                Spacer(minLength: 12)
+                StudioIconButton(symbol: "folder", help: "Open Photo (⌘O)", action: model.choosePhoto)
+                    .disabled(model.isBusy)
+                SettingsLink {
+                    Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(StudioStyle.textSecondary)
+                        .frame(width: StudioStyle.control, height: StudioStyle.control)
                 }
+                .buttonStyle(.plain).help("Settings").accessibilityLabel("Settings")
+                StudioIconButton(symbol: "square.and.arrow.up", help: "Export full-size JPEG or PNG (⌘E)", action: model.chooseExport)
+                    .disabled(!model.canExport)
             }
-            Spacer(minLength: 12)
-            Button(action: model.choosePhoto) { Image(systemName: "folder") }
-                .help("Open Photo (⌘O)")
-                .accessibilityLabel("Open photo")
-                .disabled(model.isBusy)
-            SettingsLink { Image(systemName: "gearshape") }
-                .help("Settings")
-                .accessibilityLabel("Settings")
-            Button(action: model.chooseExport) { Label("Export", systemImage: "square.and.arrow.up") }
-                .disabled(!model.canExport)
-                .help("Export full-size JPEG or PNG (⌘E)")
+            if model.photoURL != nil {
+                HStack(spacing: 8) {
+                    Text(model.photoURL?.lastPathComponent ?? "").font(StudioStyle.title)
+                        .lineLimit(1).truncationMode(.middle)
+                    Text(model.layers.isEmpty ? "Original" : "Edited").font(StudioStyle.label).foregroundStyle(StudioStyle.textTertiary)
+                    if model.photoSize.width > 0 {
+                        Text("\(model.photoSize.width.formatted()) × \(model.photoSize.height.formatted())")
+                            .font(StudioStyle.value).foregroundStyle(StudioStyle.textSecondary)
+                    }
+                }
+                .padding(.horizontal, 12).frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))
+                .frame(maxWidth: 520)
+            }
         }
-        .buttonStyle(.borderless)
-        .padding(.leading, 88)
-        .padding(.trailing, 22)
-        .frame(height: 60)
+        .padding(.leading, 84).padding(.trailing, StudioStyle.barInset)
+        .frame(height: StudioStyle.topBarHeight)
+        .background(StudioStyle.panel)
     }
 
     private func issueBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
-            Text(message).font(.callout).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            Button { model.issue = nil; model.backends.issue = nil } label: { Image(systemName: "xmark").font(.caption) }
-                .buttonStyle(.plain).accessibilityLabel("Dismiss error")
+            Image(systemName: "exclamationmark.circle").foregroundStyle(StudioStyle.danger)
+            Text(message).font(StudioStyle.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            StudioIconButton(symbol: "xmark", help: "Dismiss error") { model.issue = nil; model.backends.issue = nil }
         }
-        .padding(14)
-        .background(Color.orange.opacity(0.07))
-        .overlay(alignment: .top) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))
+        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.danger.opacity(0.5)) }
         .accessibilityElement(children: .contain)
     }
 }
 
+/// Photoeditor's prompt bar: a raised, rounded bar over the canvas, with the model, the styles, any marked area, the
+/// instruction, what the edit has cost and the orange send button.
 struct PromptBar: View {
     @Bindable var model: StudioModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                backend
-                Spacer()
-                if model.area != nil {
-                    HStack(spacing: 6) {
+        HStack(spacing: StudioStyle.barSpacing) {
+            backend
+            // Lumen's person styles and effects, each filling in an instruction that asks for it.
+            Menu {
+                Section("Person styles") {
+                    ForEach(PersonStyle.all, id: \.id) { style in Button(style.title) { model.prompt = style.example } }
+                }
+                Section("Effects") {
+                    ForEach(StyleEffect.all, id: \.id) { effect in Button(effect.title) { model.prompt = effect.example } }
+                }
+            } label: {
+                Image(systemName: "theatermasks").font(.system(size: 13)).foregroundStyle(StudioStyle.textSecondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(model.isRunning)
+            .accessibilityLabel("Styles")
+            .help("Restyle a person, or grade the photo")
+            if model.area != nil {
+                StudioChip(isSelected: true, action: { model.area = nil }) {
+                    HStack(spacing: 5) {
                         Image(systemName: "viewfinder")
-                        Text("Lumen looks here")
-                        Button { model.area = nil } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Clear area")
-                        .help("Clear area (Esc)")
+                        Text("Area")
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
                     }
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(StudioStyle.accent)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(StudioStyle.accent.opacity(0.08), in: Capsule())
                 }
+                .help("Lumen looks only here. Clear the area (Esc)")
+                .accessibilityLabel("Clear area")
             }
-            HStack(spacing: 14) {
-                Image(systemName: "sparkle").foregroundStyle(StudioStyle.accent)
-                    .font(.system(size: 18))
-                // Lumen's person styles and effects, each filling in an instruction that asks for it.
-                Menu {
-                    Section("Person styles") {
-                        ForEach(PersonStyle.all, id: \.id) { style in Button(style.title) { model.prompt = style.example } }
-                    }
-                    Section("Effects") {
-                        ForEach(StyleEffect.all, id: \.id) { effect in Button(effect.title) { model.prompt = effect.example } }
-                    }
-                } label: {
-                    Image(systemName: "theatermasks")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+            TextField("Describe what you want to change", text: $model.prompt)
+                .textFieldStyle(.plain)
+                .font(StudioStyle.title)
                 .disabled(model.isRunning)
-                .accessibilityLabel("Styles")
-                .help("Restyle a person, or grade the photo")
-                TextField("Describe what you want to change", text: $model.prompt)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 15))
-                    .disabled(model.isRunning)
-                    .onSubmit(model.run)
-                    .accessibilityLabel("Edit instruction")
-                if model.isRunning {
-                    Button(action: model.stop) {
-                        Label(model.phase == .stopping ? "Stopping" : "Stop", systemImage: "stop.fill")
-                    }
-                    .disabled(model.phase == .stopping)
-                    .buttonStyle(.bordered)
-                } else {
-                    Button(action: model.run) {
-                        HStack(spacing: 9) {
-                            Text("Run").fontWeight(.semibold)
-                            Image(systemName: "return").font(.caption)
-                        }
-                        .padding(.horizontal, 5).padding(.vertical, 3)
-                    }
-                    .buttonStyle(.borderedProminent)
+                .onSubmit(model.run)
+                .accessibilityLabel("Edit instruction")
+            if model.modelCalls > 0 {
+                Text("\(model.modelCalls) calls · \(studioDollars(model.totalCost))")
+                    .font(StudioStyle.label).monospacedDigit().foregroundStyle(StudioStyle.textSecondary)
+                    .fixedSize()
+            }
+            if model.isRunning {
+                sendButton(symbol: "stop.fill", help: model.phase == .stopping ? "Stopping" : "Stop", enabled: model.phase != .stopping,
+                           action: model.stop)
+            } else {
+                sendButton(symbol: "arrow.up", help: "Run instruction (Return)", enabled: model.canRun, action: model.run)
                     .keyboardShortcut(.defaultAction)
-                    .foregroundStyle(StudioStyle.canvas)
-                    .disabled(!model.canRun)
-                    .help("Run instruction (Return)")
-                }
             }
-            .padding(14)
-            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(StudioStyle.line) }
-            HStack(spacing: 7) {
-                if model.isBusy || model.backends.isLoading { ProgressView().controlSize(.mini) }
-                else { Circle().fill(StudioStyle.accent.opacity(0.7)).frame(width: 4, height: 4) }
-                Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
-                Spacer(minLength: 0)
-                Text("\(model.modelCalls) model calls · \(studioDollars(model.totalCost))").foregroundStyle(.tertiary)
-            }
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 18)
-        .background(StudioStyle.panel)
-        .overlay(alignment: .top) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
+        .padding(.leading, 12).padding(.trailing, 8)
+        .frame(height: 44)
+        .background(RoundedRectangle(cornerRadius: StudioStyle.promptRadius).fill(StudioStyle.raised))
+        .overlay { RoundedRectangle(cornerRadius: StudioStyle.promptRadius).strokeBorder(StudioStyle.line) }
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 4)
+    }
+
+    private func sendButton(symbol: String, help: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(enabled ? Color.white : StudioStyle.textTertiary)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(enabled ? StudioStyle.accent : StudioStyle.hover))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     private var backend: some View {
@@ -216,13 +294,13 @@ struct PromptBar: View {
                 .help(availability.help)
             }
         } label: {
-            HStack(spacing: 6) {
-                Circle().fill(StudioStyle.accent).frame(width: 5, height: 5)
+            HStack(spacing: 5) {
+                Image(systemName: "sparkle").foregroundStyle(StudioStyle.accent)
                 Text(model.backends.selection.title)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
+            .font(StudioStyle.label)
+            .foregroundStyle(StudioStyle.textSecondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -232,18 +310,56 @@ struct PromptBar: View {
     }
 }
 
+/// Photoeditor's bottom bar: what the edit is doing, then the canvas's own controls.
+struct StudioBottomBar: View {
+    @Bindable var model: StudioModel
+
+    var body: some View {
+        HStack(spacing: StudioStyle.barSpacing) {
+            if model.isBusy || model.backends.isLoading { ProgressView().controlSize(.mini) }
+            Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
+                .foregroundStyle(StudioStyle.textSecondary)
+            Spacer(minLength: 12)
+            Text(model.area == nil ? "Drag on the photo to choose an area" : "Drag to move · Corners to resize · Esc to clear")
+                .foregroundStyle(StudioStyle.textTertiary).lineLimit(1)
+            StudioIconButton(symbol: "minus", help: "Zoom out") { model.zoom = max(0.5, model.zoom / 1.25) }
+            StudioChip(action: { model.zoom = 1 }) {
+                Text(model.zoom == 1 ? "Fit" : String(format: "%.0f%%", model.zoom * 100)).monospacedDigit().frame(minWidth: 30)
+            }
+            .help("Fit photo to canvas. Percentages are relative to fit.")
+            StudioIconButton(symbol: "plus", help: "Zoom in") { model.zoom = min(4, model.zoom * 1.25) }
+            StudioChip(isSelected: model.showsOriginal, action: { model.compare.toggle() }) {
+                HStack(spacing: 5) { Image(systemName: "square.on.square"); Text("Before / After") }
+            }
+            .help("Show the original, or hold Space while not typing")
+            .accessibilityLabel("Compare")
+            .accessibilityValue(model.showsOriginal ? "Original" : "Edited")
+        }
+        .font(StudioStyle.caption)
+        .padding(.horizontal, StudioStyle.barInset)
+        .frame(height: StudioStyle.bottomBarHeight)
+        .background(StudioStyle.panel)
+        .disabled(model.preview == nil && !model.isBusy)
+    }
+}
+
 struct StudioSidebar: View {
     @Bindable var model: StudioModel
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Sidebar", selection: $model.sidebar) {
-                Text("Steps").tag(StudioSidebarTab.steps)
-                Text("Layers · \(model.layers.count + (model.batchStraightening == nil ? 0 : 1))").tag(StudioSidebarTab.layers)
+            // Photoeditor's panel title row, with its pill segments.
+            HStack(spacing: 4) {
+                Text(model.sidebar == .steps ? "Steps" : "Layers").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                StudioChip(isSelected: model.sidebar == .steps, action: { model.sidebar = .steps }) { Text("Steps") }
+                StudioChip(isSelected: model.sidebar == .layers, action: { model.sidebar = .layers }) {
+                    Text("Layers · \(model.layers.count + (model.batchStraightening == nil ? 0 : 1))")
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(18)
+            .padding(.horizontal, StudioStyle.gutter).frame(height: StudioStyle.topBarHeight + 8)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Sidebar")
             if model.sidebar == .steps { timeline }
             else { layerList }
             Spacer(minLength: 0)
@@ -251,8 +367,8 @@ struct StudioSidebar: View {
                 Image(systemName: "square.3.layers.3d")
                 Text("Your original stays untouched")
             }
-            .font(.system(size: 10)).foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity).padding(16)
+            .font(StudioStyle.caption).foregroundStyle(StudioStyle.textTertiary)
+            .frame(maxWidth: .infinity).frame(height: StudioStyle.bottomBarHeight)
             .overlay(alignment: .top) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
         }
         .background(StudioStyle.panel)
@@ -264,9 +380,12 @@ struct StudioSidebar: View {
                 VStack(alignment: .leading, spacing: 22) {
                     if !model.planSummary.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("THE PLAN").font(.system(size: 9, weight: .semibold)).tracking(1.8)
-                                .foregroundStyle(StudioStyle.accent)
-                            Text(model.planSummary).font(.system(size: 13)).lineSpacing(4)
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkle").foregroundStyle(StudioStyle.accent)
+                                Text("Plan")
+                            }
+                            .font(StudioStyle.section).foregroundStyle(StudioStyle.textSecondary)
+                            Text(model.planSummary).font(StudioStyle.title).lineSpacing(4)
                                 .lineLimit(4).help(model.planSummary)
                                 .textSelection(.enabled)
                         }
@@ -283,7 +402,7 @@ struct StudioSidebar: View {
                         }
                     }
                 }
-                .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 24)
+                .padding(.horizontal, StudioStyle.gutter).padding(.top, 4).padding(.bottom, 24)
             }
             .scrollBounceBehavior(.basedOnSize)
             .onChange(of: model.timelineFocus) {
@@ -301,49 +420,48 @@ struct StudioSidebar: View {
                     sidebarEmpty("Built one layer at a time", detail: "Applied edits appear here. Adjust their opacity, hide them, or undo a step.", symbol: "square.3.layers.3d")
                 } else {
                     HStack {
-                        Text("\(model.layers.count + (model.batchStraightening == nil ? 0 : 1)) layers").font(.caption).foregroundStyle(.secondary)
+                        Text("\(model.layers.count + (model.batchStraightening == nil ? 0 : 1)) layers").font(StudioStyle.section)
+                            .foregroundStyle(StudioStyle.textSecondary)
                         Spacer()
-                        Button(action: model.undo) { Image(systemName: "arrow.uturn.backward") }
-                            .disabled(!model.canUndo).help("Undo (⌘Z)")
-                            .accessibilityLabel("Undo layer change")
-                        Button(action: model.redo) { Image(systemName: "arrow.uturn.forward") }
-                            .disabled(!model.canRedo).help("Redo (⇧⌘Z)")
-                            .accessibilityLabel("Redo layer change")
+                        StudioIconButton(symbol: "arrow.uturn.backward", help: "Undo (⌘Z)", action: model.undo)
+                            .disabled(!model.canUndo)
+                        StudioIconButton(symbol: "arrow.uturn.forward", help: "Redo (⇧⌘Z)", action: model.redo)
+                            .disabled(!model.canRedo)
                     }
-                    .buttonStyle(.borderless)
                     ForEach(model.layers.reversed()) { layer in
                         LayerRow(model: model, layer: layer)
                     }
                     if let angle = model.batchStraightening {
                         Toggle(isOn: Binding(get: { model.straighteningAngle != 0 }, set: { _ in model.toggleStraightening() })) {
-                            Text("Straighten · \(angle.formatted())°").font(.system(size: 12, weight: .medium))
+                            Text("Straighten · \(angle.formatted())°").font(StudioStyle.body.weight(.medium))
                         }
                         .toggleStyle(.switch).controlSize(.mini).disabled(model.isBusy)
-                        .padding(14).background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(StudioStyle.line) }
+                        .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
+                        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
                     }
                 }
                 if model.photoURL != nil {
                     HStack(spacing: 10) {
-                        Image(systemName: "photo").foregroundStyle(.secondary)
-                        Text("Original").font(.system(size: 12, weight: .medium))
+                        Image(systemName: "photo").foregroundStyle(StudioStyle.textSecondary)
+                        Text("Original").font(StudioStyle.body.weight(.medium))
                         Spacer()
-                        Image(systemName: "lock").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "lock").font(StudioStyle.caption).foregroundStyle(StudioStyle.textTertiary)
                     }
-                    .padding(14)
-                    .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(12)
+                    .background(StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
+                    .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
                 }
             }
-            .padding(.horizontal, 18).padding(.bottom, 24)
+            .padding(.horizontal, StudioStyle.gutter).padding(.bottom, 24)
         }
     }
 
     private func sidebarEmpty(_ title: String, detail: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: symbol).font(.system(size: 23, weight: .light))
-                .foregroundStyle(.tertiary).padding(.bottom, 6)
-            Text(title).font(.system(size: 14, weight: .medium))
-            Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
+                .foregroundStyle(StudioStyle.textTertiary).padding(.bottom, 6)
+            Text(title).font(StudioStyle.title)
+            Text(detail).font(StudioStyle.body).foregroundStyle(StudioStyle.textSecondary).lineSpacing(5)
         }
         .padding(.top, 36).padding(.bottom, 30)
     }
@@ -359,27 +477,27 @@ struct TimelineRow: View {
             VStack(spacing: 6) {
                 Image(systemName: entry.symbol)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(statusColor)
-                    .frame(width: 28, height: 28)
-                    .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+                    .foregroundStyle(entry.status == .running ? StudioStyle.accent : StudioStyle.textSecondary)
+                    .frame(width: 26, height: 26)
+                    .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
                 if !isLast { Rectangle().fill(StudioStyle.line).frame(width: 1).frame(minHeight: 24) }
             }
             VStack(alignment: .leading, spacing: 7) {
-                Text(entry.title).font(.system(size: 12, weight: .medium)).lineSpacing(3)
+                Text(entry.title).font(StudioStyle.body.weight(.medium)).lineSpacing(3)
                     .lineLimit(2).truncationMode(.tail).help(entry.title)
                 HStack(spacing: 5) {
                     if entry.status == .running { ProgressView().controlSize(.mini) }
                     else if entry.status == .done { Image(systemName: "checkmark").font(.system(size: 8, weight: .semibold)) }
                     Text(entry.status.label)
                 }
-                .font(.system(size: 10)).foregroundStyle(statusColor)
+                .font(StudioStyle.caption).foregroundStyle(statusColor)
                 if let detail = entry.detail, !detail.isEmpty {
-                    Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(4)
+                    Text(detail).font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary).lineSpacing(4)
                         .lineLimit(2).truncationMode(.tail).help(detail)
                         .textSelection(.enabled)
                 }
                 if let message = entry.status.message {
-                    Text(message).font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(3)
+                    Text(message).font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary).lineSpacing(3)
                         .lineLimit(3).help(message)
                         .textSelection(.enabled)
                 }
@@ -387,11 +505,11 @@ struct TimelineRow: View {
                     DisclosureGroup("Details · \(entry.traces.count)", isExpanded: $showsTraces) {
                         traces
                     }
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .font(StudioStyle.caption)
+                    .foregroundStyle(StudioStyle.textSecondary)
                 }
             }
-            .padding(.top, 5).padding(.bottom, 18)
+            .padding(.top, 4).padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -403,10 +521,10 @@ struct TimelineRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let model = trace.studioModelName {
                     Text("\(model) · \(trace.duration.formatted(.number.precision(.fractionLength(1)))) s\(trace.cost.map { " · " + studioDollars($0) } ?? "")")
-                        .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
+                        .font(StudioStyle.caption.monospacedDigit()).foregroundStyle(StudioStyle.textTertiary)
                 }
                 if !trace.detail.isEmpty, trace.detail != entry.detail, trace.detail != entry.status.message {
-                    Text(trace.detail).font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text(trace.detail).font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)
                         .textSelection(.enabled)
                 }
             }
@@ -415,9 +533,10 @@ struct TimelineRow: View {
 
     private var statusColor: Color {
         switch entry.status {
-        case .running, .done: StudioStyle.accent
-        case .failed: .orange
-        case .waiting, .skipped: .secondary
+        case .running: StudioStyle.accent
+        case .done: StudioStyle.success
+        case .failed: StudioStyle.danger
+        case .waiting, .skipped: StudioStyle.textTertiary
         }
     }
 }
@@ -429,25 +548,25 @@ private struct LayerRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             Toggle(isOn: Binding(get: { layer.isEnabled }, set: { _ in model.toggleLayer(layer.id) })) {
-                Text(layer.label).font(.system(size: 12, weight: .medium))
+                Text(layer.label).font(StudioStyle.body.weight(.medium))
                     .lineLimit(2).truncationMode(.tail).help(layer.label)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch).controlSize(.mini)
             HStack(spacing: 10) {
-                Text("Opacity").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Opacity").font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)
                 Slider(value: Binding(get: { layer.opacity }, set: { model.setOpacity($0, for: layer.id) }),
                        in: 0...1, onEditingChanged: { if !$0 { model.commitLayerChanges() } })
                     .controlSize(.mini)
                     .accessibilityLabel("Opacity for \(layer.label)")
                 Text(layer.opacity.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-                    .frame(width: 30, alignment: .trailing)
+                    .font(StudioStyle.value).foregroundStyle(StudioStyle.textSecondary)
+                    .frame(width: 34, alignment: .trailing)
             }
         }
-        .padding(14)
-        .background(Color.white.opacity(layer.isEnabled ? 0.045 : 0.02), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(StudioStyle.line) }
+        .padding(12)
+        .background(layer.isEnabled ? StudioStyle.raised : StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
+        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
         .disabled(model.isBusy)
     }
 }

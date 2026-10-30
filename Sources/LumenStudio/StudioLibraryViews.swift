@@ -21,26 +21,34 @@ struct StudioLibraryView: View {
                     else if let decision = model.recentDecision { decisionCard(decision) }
                     if let plan = model.plan, let calls = model.estimatedModelCalls { planPanel(plan, calls: calls) }
                     grid
-                    HStack(spacing: 8) {
+                    // Not animated: a capture of a finished library showed the bar still catching up.
+                    ProgressView(value: Double(model.done), total: Double(max(1, model.total)))
+                        .tint(StudioStyle.accent).progressViewStyle(.linear)
+                        .animation(nil, value: model.done)
+                    Rectangle().fill(StudioStyle.line).frame(height: 1)
+                    HStack(spacing: StudioStyle.barSpacing) {
                         if model.isRunning { ProgressView().controlSize(.mini) }
                         Text(model.backends.isLoading ? model.backends.status ?? model.status : model.status).lineLimit(1)
                         Spacer()
                         Text("\(model.done)/\(model.total) · \(model.modelCalls) model calls · \(studioDollars(model.totalCost))")
                             .monospacedDigit()
                     }
-                    .font(.system(size: 10)).foregroundStyle(.secondary).padding(18)
-                    // Not animated: a capture of a finished library showed the bar still catching up.
-                    ProgressView(value: Double(model.done), total: Double(max(1, model.total)))
-                        .tint(StudioStyle.accent).progressViewStyle(.linear)
-                        .animation(nil, value: model.done)
+                    .font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)
+                    .padding(.horizontal, StudioStyle.barInset).frame(height: StudioStyle.bottomBarHeight)
                 }
                 Rectangle().fill(StudioStyle.line).frame(width: 1)
                 sidebar.frame(width: 300)
             }
         }
         .background(StudioStyle.panel)
-        .preferredColorScheme(.dark).tint(StudioStyle.accent)
-        .overlay { if dropTarget { RoundedRectangle(cornerRadius: 16).strokeBorder(StudioStyle.accent, lineWidth: 2).padding(8).allowsHitTesting(false) } }
+        .foregroundStyle(StudioStyle.textPrimary)
+        .preferredColorScheme(.dark).tint(StudioStyle.tint)
+        .overlay {
+            if dropTarget {
+                RoundedRectangle(cornerRadius: StudioStyle.promptRadius).strokeBorder(StudioStyle.accent, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                    .padding(8).allowsHitTesting(false)
+            }
+        }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first, url.isFileURL,
                   (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return false }
@@ -56,23 +64,33 @@ struct StudioLibraryView: View {
         }
     }
 
+    /// Photoeditor's top bar: the library's name and size in a pill in the middle, its actions at the right.
     private var header: some View {
-        HStack(spacing: 18) {
-            Text("LUMEN").font(.system(size: 12, weight: .semibold, design: .rounded))
-                .tracking(3.5).foregroundStyle(StudioStyle.accent)
-            Rectangle().fill(StudioStyle.line).frame(width: 1, height: 18)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.folder?.lastPathComponent ?? "Library").font(.system(size: 12, weight: .medium))
-                Text("\(model.photos.count) photos").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+        ZStack {
+            HStack(spacing: StudioStyle.barSpacing) {
+                Text("Lumen").font(StudioStyle.title).foregroundStyle(StudioStyle.textSecondary)
+                Spacer(minLength: 12)
+                StudioChip(isSelected: model.compare, action: { model.compare.toggle() }) {
+                    HStack(spacing: 5) { Image(systemName: "square.on.square"); Text("Before / After") }
+                }
+                .help("Show the original photos").accessibilityLabel("Before")
+                StudioIconButton(symbol: "folder", help: "Reveal the output folder", action: model.revealOutput)
+                    .disabled(model.output == nil)
+                SettingsLink {
+                    Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(StudioStyle.textSecondary)
+                        .frame(width: StudioStyle.control, height: StudioStyle.control)
+                }
+                .buttonStyle(.plain).help("Settings").accessibilityLabel("Settings")
             }
-            Spacer()
-            Toggle("Before", isOn: $model.compare).toggleStyle(.button).font(.system(size: 11))
-                .help("Show the original photos")
-            Button(action: model.revealOutput) { Label("Results", systemImage: "folder") }
-                .help("Reveal the output folder").disabled(model.output == nil)
-            SettingsLink { Image(systemName: "gearshape") }.accessibilityLabel("Settings")
+            HStack(spacing: 8) {
+                Text(model.folder?.lastPathComponent ?? "Library").font(StudioStyle.title).lineLimit(1)
+                Text("\(model.photos.count) photos").font(StudioStyle.value).foregroundStyle(StudioStyle.textSecondary)
+            }
+            .padding(.horizontal, 12).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))
         }
-        .buttonStyle(.borderless).padding(.leading, 88).padding(.trailing, 22).frame(height: 60)
+        .padding(.leading, 84).padding(.trailing, StudioStyle.barInset)
+        .frame(height: StudioStyle.topBarHeight)
     }
 
     private var grid: some View {
@@ -89,7 +107,7 @@ struct StudioLibraryView: View {
         .background(StudioStyle.canvas)
         .overlay {
             if model.isOpening { ProgressView("Opening library…") }
-            else if model.photos.isEmpty { Text("No photos in this folder").font(.system(size: 14)).foregroundStyle(.secondary) }
+            else if model.photos.isEmpty { Text("No photos in this folder").font(StudioStyle.title).foregroundStyle(StudioStyle.textSecondary) }
         }
     }
 
@@ -97,10 +115,11 @@ struct StudioLibraryView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("EDIT THE LIBRARY").font(.system(size: 9, weight: .semibold)).tracking(1.8).foregroundStyle(StudioStyle.accent)
+                    Text("Edit the library").font(.system(size: 15, weight: .semibold))
                     TextField("Describe a change, or run the base pass", text: $model.instruction, axis: .vertical)
-                        .textFieldStyle(.plain).font(.system(size: 13)).lineLimit(3...6)
-                        .padding(14).background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                        .textFieldStyle(.plain).font(StudioStyle.title).lineLimit(3...6)
+                        .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.promptRadius))
+                        .overlay { RoundedRectangle(cornerRadius: StudioStyle.promptRadius).strokeBorder(StudioStyle.line) }
                     Picker("Mode", selection: $model.mode) {
                         Text("Autonomous").tag(BatchMode.autonomous)
                         Text("Ask me").tag(BatchMode.askWhenUnsure)
@@ -115,29 +134,34 @@ struct StudioLibraryView: View {
                         HStack { Text("Quality threshold"); Spacer(); Text(model.qualityThreshold.formatted(.number.precision(.fractionLength(2)))).monospacedDigit() }
                         Slider(value: $model.qualityThreshold, in: 0...1).controlSize(.mini)
                             .accessibilityLabel("Quality threshold")
-                        Text("Photos below this get a closer look.").font(.system(size: 10)).foregroundStyle(.tertiary)
+                        Text("Photos below this get a closer look.").font(StudioStyle.caption).foregroundStyle(StudioStyle.textTertiary)
                     }
                     backend
                     VStack(alignment: .leading, spacing: 7) {
-                        Text("RESULTS").font(.system(size: 9, weight: .semibold)).tracking(1.8).foregroundStyle(.secondary)
-                        Text(model.output?.path ?? "").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2).help(model.output?.path ?? "")
+                        Text("Results").font(StudioStyle.section).foregroundStyle(StudioStyle.textSecondary)
+                        Text(model.output?.path ?? "").font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary).lineLimit(2).help(model.output?.path ?? "")
                         Button("Change folder…", action: model.chooseOutput)
                     }
                 }
-                .font(.system(size: 12)).toggleStyle(.switch).controlSize(.small)
+                .font(StudioStyle.body).toggleStyle(.switch).controlSize(.small)
                 .disabled(model.isRunning || !model.canRun)
-                .padding(20)
+                .padding(StudioStyle.gutter)
             }
             .frame(maxHeight: 480)
-            HStack {
-                Button(action: model.run) { Label("Run", systemImage: "play.fill").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent).foregroundStyle(StudioStyle.canvas).disabled(!model.canRun)
-                Button(action: model.stop) { Label("Stop", systemImage: "stop.fill") }
+            HStack(spacing: StudioStyle.barSpacing) {
+                Button(action: model.run) {
+                    Label("Run", systemImage: "play.fill").font(StudioStyle.body.weight(.semibold))
+                        .foregroundStyle(model.canRun ? Color.white : StudioStyle.textTertiary)
+                        .frame(maxWidth: .infinity).frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(model.canRun ? StudioStyle.accent : StudioStyle.hover))
+                }
+                .buttonStyle(.plain).disabled(!model.canRun)
+                StudioChip(action: model.stop) { Label("Stop", systemImage: "stop.fill") }
                     .disabled(!model.isRunning || model.isStopping)
             }
-            .padding(.horizontal, 20).padding(.bottom, 16)
+            .padding(.horizontal, StudioStyle.gutter).padding(.bottom, StudioStyle.gutter)
             if let issue = model.issue ?? model.backends.issue {
-                Text(issue).font(.system(size: 11)).foregroundStyle(.orange).textSelection(.enabled).padding(16)
+                Text(issue).font(StudioStyle.label).foregroundStyle(StudioStyle.danger).textSelection(.enabled).padding(StudioStyle.gutter)
             }
             Rectangle().fill(StudioStyle.line).frame(height: 1)
             ScrollViewReader { scroll in
@@ -150,13 +174,13 @@ struct StudioLibraryView: View {
                             DisclosureGroup("Decisions · \(model.decisions.count)") {
                                 ForEach(Array(model.decisions.enumerated()), id: \.offset) { _, answer in
                                     VStack(alignment: .leading, spacing: 5) {
-                                        Text(answer.question.question).foregroundStyle(.secondary)
-                                        Text("Decided: \(answer.answer)").foregroundStyle(StudioStyle.accent)
-                                    }.font(.system(size: 11)).padding(.vertical, 8)
+                                        Text(answer.question.question).foregroundStyle(StudioStyle.textSecondary)
+                                        Text("Decided: \(answer.answer)").foregroundStyle(StudioStyle.textPrimary)
+                                    }.font(StudioStyle.label).padding(.vertical, 8)
                                 }
-                            }.font(.system(size: 11))
+                            }.font(StudioStyle.label)
                         }
-                    }.padding(20)
+                    }.padding(StudioStyle.gutter)
                 }
                 .onChange(of: model.events.last?.id) {
                     if let id = model.events.last?.id { scroll.scrollTo(id, anchor: .bottom) }
@@ -176,70 +200,85 @@ struct StudioLibraryView: View {
                 .disabled(!availability.isEnabled).help(availability.help)
             }
         } label: {
-            Label(model.backends.selection.title, systemImage: "circle.fill").font(.system(size: 11, weight: .medium))
+            HStack(spacing: 5) {
+                Image(systemName: "sparkle").foregroundStyle(StudioStyle.accent)
+                Text(model.backends.selection.title)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
+            }
+            .font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)
         }
-        .menuStyle(.borderlessButton).foregroundStyle(.secondary)
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .accessibilityLabel("Planner")
         .simultaneousGesture(TapGesture().onEnded { Task { await model.backends.refreshAvailability() } })
     }
 
     private func questionCard(_ question: BatchQuestion) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(question.question).font(.system(size: 14, weight: .medium))
+            Text(question.question).font(StudioStyle.title)
             ViewThatFits(in: .horizontal) {
                 HStack { options(question) }
                 VStack(alignment: .leading) { options(question) }
             }
         }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioStyle.accent.opacity(0.06))
+        .padding(StudioStyle.gutter).frame(maxWidth: .infinity, alignment: .leading)
+        .background(StudioStyle.raised)
+        .overlay(alignment: .bottom) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
     }
 
     private func options(_ question: BatchQuestion) -> some View {
         ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-            Button { Task { await model.answer(option) } } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(option).font(.system(size: 12))
-                    if index == question.recommended { Text("Recommended").font(.system(size: 9)).foregroundStyle(StudioStyle.accent) }
+            StudioChip(isSelected: index == question.recommended, action: { Task { await model.answer(option) } }) {
+                HStack(spacing: 6) {
+                    Text(option).font(StudioStyle.body)
+                    if index == question.recommended { Text("Recommended").font(StudioStyle.caption).foregroundStyle(StudioStyle.accent) }
                 }
             }
-            .buttonStyle(.bordered).disabled(model.isStopping)
+            .disabled(model.isStopping)
         }
     }
 
     private func decisionCard(_ answer: BatchAnswer) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Decided: \(answer.answer)").font(.system(size: 14, weight: .medium))
-            Text(answer.question.question).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("Decided: \(answer.answer)").font(StudioStyle.title)
+            Text(answer.question.question).font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)
         }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioStyle.accent.opacity(0.06))
+        .padding(StudioStyle.gutter).frame(maxWidth: .infinity, alignment: .leading)
+        .background(StudioStyle.raised)
+        .overlay(alignment: .bottom) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
     }
 
     private func planPanel(_ plan: BatchPlan, calls: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(plan.summary).font(.system(size: 14, weight: .medium))
+            Text(plan.summary).font(StudioStyle.title)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(plan.groups) { group in
                         Button { model.selectedGroup = group.id } label: {
                             VStack(alignment: .leading, spacing: 5) {
-                                Text("\(group.title) · \(group.photos.count) \(group.photos.count == 1 ? "photo" : "photos")").font(.system(size: 12, weight: .medium))
-                                Text(group.instruction ?? "Base pass").font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text("\(group.title) · \(group.photos.count) \(group.photos.count == 1 ? "photo" : "photos")").font(StudioStyle.body.weight(.medium))
+                                Text(group.instruction ?? "Base pass").font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                            .background(StudioStyle.accent.opacity(model.selectedGroup == group.id ? 0.12 : 0.035), in: RoundedRectangle(cornerRadius: 12))
+                            .background(model.selectedGroup == group.id ? StudioStyle.hover : StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
+                            .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(model.selectedGroup == group.id ? StudioStyle.accent : StudioStyle.line) }
                         }.buttonStyle(.plain)
                     }
                 }
             }.frame(maxHeight: 180)
             HStack {
-                Text("About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? "")).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? "")).font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)
                 Spacer()
-                Button("Cancel", action: model.stop)
-                Button("Go ahead") { Task { await model.approve() } }.buttonStyle(.borderedProminent).foregroundStyle(StudioStyle.canvas)
+                StudioChip(action: model.stop) { Text("Cancel") }
+                Button { Task { await model.approve() } } label: {
+                    Text("Go ahead").font(StudioStyle.body.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).frame(height: StudioStyle.control)
+                        .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.accent))
+                }
+                .buttonStyle(.plain)
             }.disabled(model.isStopping)
-        }.padding(20)
+        }
+        .padding(StudioStyle.gutter)
+        .overlay(alignment: .bottom) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
     }
 }
 
@@ -258,13 +297,13 @@ private struct LibraryPhotoCell: View {
         Button(action: open) {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.035))
+                    RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised)
                     if let image { Image(nsImage: image).resizable().scaledToFit() }
-                    else { Image(systemName: issue == nil ? "photo" : "exclamationmark.triangle").foregroundStyle(.tertiary) }
+                    else { Image(systemName: issue == nil ? "photo" : "exclamationmark.triangle").foregroundStyle(StudioStyle.textTertiary) }
                 }
-                .frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(highlighted ? StudioStyle.accent : StudioStyle.line, lineWidth: highlighted ? 2 : 1) }
-                Text(photo.rawValue).font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                .frame(height: 140).clipShape(RoundedRectangle(cornerRadius: StudioStyle.radius))
+                .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(highlighted ? StudioStyle.accent : StudioStyle.line, lineWidth: highlighted ? 2 : 1) }
+                Text(photo.rawValue).font(StudioStyle.label.weight(.medium)).lineLimit(1).truncationMode(.middle)
                 badges.frame(minHeight: 72, alignment: .topLeading)
             }
             .contentShape(Rectangle())
@@ -292,9 +331,9 @@ private struct LibraryPhotoCell: View {
             ForEach(LibraryBadge.allCases.filter { model.states[photo]?.badges.contains($0) == true }, id: \.self) { badge in
                 Text(badge.rawValue).font(.system(size: 9, weight: .medium))
                     .lineLimit(1).minimumScaleFactor(0.85)
-                    .foregroundStyle(badge == .failed || badge == .attention || badge == .misfire ? Color.orange : StudioStyle.accent)
-                    .padding(.horizontal, 5).padding(.vertical, 3)
-                    .background(Color.white.opacity(0.04), in: Capsule())
+                    .foregroundStyle(badge == .failed || badge == .attention || badge == .misfire ? StudioStyle.danger : StudioStyle.success)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: 4))
             }
         }
     }

@@ -116,6 +116,10 @@ public actor PhotoDocument: EditHost {
         try EditSupport.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    public func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) async throws -> Pockets? {
+        try EditSupport.pockets(generated, over: original, outside: mask, reach: reach)
+    }
+
     public func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
         try EditSupport.shaded(generated, onto: original, within: mask)
     }

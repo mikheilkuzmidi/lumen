@@ -274,6 +274,41 @@ struct PhotoPixelTests {
         #expect(drawn[50, 30] == 0 && drawn[80, 22] == 0, "not the wall beside it, nor what changed further off")
     }
 
+    /// A new sunset stopped at a bridge's main cable: SAM's sky left out the sky between the hangers with the bridge, and
+    /// the pale old sky showed there. What the redraw made the new sky in the old sky's colours, close to the mask, is a
+    /// pocket of it; the cable and deck it kept are not, nor the water below, which runs to the crop's lower edge.
+    @Test
+    func theSkyBetweenABridgesCablesIsTakenInWithTheSky() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // 40 × 30: sky above; a bridge from x 4 to 35 whose cable (y 10), towers (x 4 and 35) and deck (y 18) enclose
+        // sky (x 5..<35, y 11..<18); water below the deck, a blue close to the sky's, to the bottom.
+        func bridge(_ x: Int, _ y: Int) -> Bool { (4...35).contains(x) && (y == 10 || y == 18 || ((10...18).contains(y) && (x == 4 || x == 35))) }
+        let sky = RGB(110, 160, 230), water = RGB(100, 150, 215), steel = RGB(35, 35, 38), sunset = RGB(245, 150, 70)
+        let before = try folder.photo(width: 40, height: 30) { x, y in bridge(x, y) ? steel : y > 18 ? water : sky }
+        // The redraw drew its own hanger at x 20, where the photo has sky.
+        let after = try folder.photo(width: 40, height: 30) { x, y in bridge(x, y) || (x == 20 && (11..<18).contains(y)) ? steel : sunset }
+        func encoded(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 40, height: 30))
+        }
+        // SAM's sky: everything above the deck but the bridge's outline, cable to deck.
+        let mask = MaskData(size: PixelSize(width: 40, height: 30), coverage: (0..<1200).map { index in
+            let x = index % 40, y = index / 40
+            return y < 10 || (y < 19 && !(4...35).contains(x)) ? 255 : 0
+        })
+        let found = try #require(try EditSupport.pockets(try encoded(after), over: try encoded(before), outside: mask, reach: 3))
+        let pockets = found.mask
+        #expect(pockets[6, 12] == 255 && pockets[20, 14] == 255 && pockets[33, 17] == 255, "the sky between the hangers")
+        #expect(pockets[20, 10] == 0 && pockets[20, 18] == 0 && pockets[4, 14] == 0, "not the cable, the deck or a tower")
+        #expect(pockets[20, 25] == 0 && pockets[2, 29] == 0, "not the water")
+        // Its own hanger is filled from the new sky beside it; the photo's cable and towers are left to the photo.
+        let shown = try RGBAPixels(found.image)
+        let at = (14 * 40 + 20) * 4
+        #expect(abs(Int(shown.bytes[at]) - 245) <= 3 && abs(Int(shown.bytes[at + 2]) - 70) <= 3, "the redraw's own hanger is gone")
+        // With nothing changed there, there are no pockets.
+        #expect(try EditSupport.pockets(try encoded(before), over: try encoded(before), outside: mask, reach: 3) == nil)
+    }
+
     /// A build redrawn by Muse Image moved a T-shirt's logo, drew grass inside the waist and a hand in a gap. Laid on as
     /// light and shade only, its fuller chest shows; the logo stays where the photo had it, and where it changed the
     /// colour (the grass) nothing is laid on.

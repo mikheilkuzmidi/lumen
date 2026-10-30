@@ -86,6 +86,10 @@ actor StudioPhotoHost: EditHost {
         try await photo.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) async throws -> Pockets? {
+        try await photo.pockets(generated, over: original, outside: mask, reach: reach)
+    }
+
     func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
         try await photo.shaded(generated, onto: original, within: mask)
     }

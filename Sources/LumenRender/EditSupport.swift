@@ -68,6 +68,11 @@ public enum EditSupport {
         try DrawnArea.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    /// The pockets of a region outside `mask` that `generated` turned into its new look (`EditHost.pockets`).
+    public static func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) throws -> Pockets? {
+        try DrawnArea.pockets(generated, over: original, outside: mask, reach: reach)
+    }
+
     /// `original` with the broad light and shade of `generated` laid over it under `mask` (`ShadeTransfer`).
     public static func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) throws -> EncodedImage? {
         try ShadeTransfer.shaded(generated, onto: original, within: mask)

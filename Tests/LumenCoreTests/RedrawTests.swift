@@ -31,6 +31,24 @@ struct RedrawTests {
         })
     }
 
+    /// A new sunset stopped at a bridge's main cable, which SAM's sky had left out with the bridge: a sky's redraw shows
+    /// through the pockets of new sky the host finds too; a cup's doesn't ask for any.
+    @Test(arguments: ["sky", "cup"]) func aSkysRedrawTakesInThePocketsOfNewSky(concept: String) async throws {
+        let pocket = RedrawPhoto.mask(x: 0..<3, y: 0..<3)
+        let host = RedrawHost(pockets: pocket)
+        let planner = RedrawPlanner(plan: EditPlan(summary: "New sky", steps: [
+            .select(Selection(id: "region", concept: concept)),
+            .regenerate(Regeneration(region: "region", prompt: "A dramatic sunset")),
+            .finish(Finish(reason: "Ready.")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: RedrawSegmenter(), generator: RedrawGenerator(), host: host)
+        let events = try await redrawEvents(agent.run("Replace the \(concept) with a sunset"))
+        let patch = try await redrawPatch(#require(events.redrawLayers.last), agent: agent)
+        #expect(await host.pocketCalls == (concept == "sky" ? 1 : 0))
+        #expect((patch.mask[1, 1] == 255) == (concept == "sky"))
+        #expect(EditAgent.isSky("the sky") && EditAgent.isSky("Sky") && !EditAgent.isSky("skyline") && !EditAgent.isSky(nil))
+    }
+
     @Test(arguments: [false, true]) func poorFirstAttemptKeepsTheBetterRedraw(secondIsBetter: Bool) async throws {
         let smaller = RedrawPhoto.mask(x: 22..<30, y: 22..<30)
         let larger = RedrawPhoto.mask(x: 18..<34, y: 18..<34)
@@ -392,10 +410,17 @@ private actor RedrawHost: EditHost {
     private(set) var closeUpLayers: [[Layer.ID]] = []
     private let failAdjustment: Bool
     private let failRemoval: Bool
+    private let foundPockets: MaskData?
+    private(set) var pocketCalls = 0
 
-    init(failAdjustment: Bool = false, failRemoval: Bool = false) {
+    init(failAdjustment: Bool = false, failRemoval: Bool = false, pockets: MaskData? = nil) {
         self.failAdjustment = failAdjustment
         self.failRemoval = failRemoval
+        foundPockets = pockets
+    }
+    func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) async throws -> Pockets? {
+        pocketCalls += 1
+        return foundPockets.map { Pockets(mask: $0, image: generated) }
     }
     func size() async -> PixelSize { RedrawPhoto.original.size }
     func render(maxLongEdge: Int) async throws -> EncodedImage { RedrawPhoto.preview(layers: layers) }

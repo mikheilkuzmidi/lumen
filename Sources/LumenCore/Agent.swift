@@ -742,6 +742,14 @@ public actor EditAgent {
                 notes.append("The redraw moved or resized the \(region.info.id) (overlap \(value)).")
             }
         }
+        // A sky's mask leaves out the sky seen through what crosses it: a new sunset stopped at a bridge's main cable,
+        // and the pale old sky showed between its hangers and over the skyline under its deck. What the redraw made
+        // the new sky there, in the old sky's colours and close to it, is taken in.
+        if Self.isSky(region.info.concept),
+           let pockets = try await host.pockets(attempt.image, over: image, outside: mask, reach: max(2, Int((short * 0.03).rounded()))) {
+            mask = mask.union(pockets.mask)
+            attempt.image = pockets.image
+        }
         return try await place(attempt.image, mask: mask, rect: rect, label: label, region: region.info.id,
                                kind: kind, notes: notes, redraws: &redraws, events: events)
     }
@@ -1188,6 +1196,10 @@ public actor EditAgent {
 
     /// The longest edge a crop to warp is rendered at.
     static let warpLongEdge = 4096
+
+    static func isSky(_ concept: String?) -> Bool {
+        concept.map { $0.lowercased().split { !$0.isLetter }.contains("sky") } ?? false
+    }
 
     /// Whether Meta's content filter turned the request down, which milder words can get past.
     static func filtered(_ error: any Error) -> Bool {

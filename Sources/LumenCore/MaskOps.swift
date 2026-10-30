@@ -210,7 +210,7 @@ extension MaskData {
 
     /// The covered pixels (over half covered) of each separate figure, 8-connected, ignoring specks under a thousandth
     /// of what is covered.
-    func components() -> [[Int]] {
+    public func components() -> [[Int]] {
         let width = size.width, height = size.height
         var seen = [Bool](repeating: false, count: coverage.count)
         var figures: [[Int]] = []

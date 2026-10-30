@@ -51,6 +51,33 @@ actor StudioPhotoHost: EditHost {
         try await photo.remove(layer)
     }
 
+    // What the document works out from its pixels, passed on: without them Studio's recolours had no edge fitting,
+    // its critic no colour numbers, and an athletic build was asked of Muse Image, which changed the shoulders by 1%.
+    func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        try await photo.fitted(mask, region: region)
+    }
+
+    func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
+        try await photo.extended(mask, region: region)
+    }
+
+    func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
+        try await photo.measure(image, mask: mask)
+    }
+
+    func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] {
+        try await photo.lostDetail(before: before, after: after)
+    }
+
+    func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData?, keep: MaskData?, shoulders: Double,
+                  waist: Double) async throws -> Reshaped? {
+        try await photo.reshaped(image, mask: mask, face: face, keep: keep, shoulders: shoulders, waist: waist)
+    }
+
+    func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? {
+        try await photo.toneMatched(generated, to: original, under: mask)
+    }
+
     func layers() async -> [Layer] { await photo.layers }
 
     func straightening() async -> Double {

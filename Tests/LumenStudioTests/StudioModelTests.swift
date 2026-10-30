@@ -318,3 +318,40 @@ private actor StudioTestPhoto: StudioPhoto {
         #expect(CGImageDestinationFinalize(destination))
     }
 }
+
+/// Studio's host passed on only rendering and layers: a recolour got no edge fitting, the critic no colour numbers,
+/// and an athletic build went to Muse Image, which changed the shoulders by 1%. Every question about the pixels
+/// reaches the document.
+@Test func studiosHostPassesThePixelQuestionsToTheDocument() async throws {
+    let photo = AnsweringPhoto()
+    let host = StudioPhotoHost(photo: photo)
+    let mask = MaskData(size: PixelSize(width: 4, height: 4), filledWith: 255)
+    let image = EncodedImage(data: Data([1]), format: .png, size: PixelSize(width: 4, height: 4))
+    #expect(try await host.fitted(MaskData(size: mask.size, filledWith: 0), region: .whole) == mask)
+    #expect(try await host.extended(MaskData(size: mask.size, filledWith: 0), region: .whole) == mask)
+    #expect(try await host.measure(image, mask: mask)?.lightness == 42)
+    #expect(try await host.lostDetail(before: image, after: image).count == 1)
+    #expect(try await host.reshaped(image, mask: mask, face: nil, keep: nil, shoulders: 0.1, waist: -0.1)?.changed == mask)
+    #expect(try await host.toneMatched(image, to: image, under: mask)?.data == Data([9]))
+}
+
+private actor AnsweringPhoto: StudioPhoto {
+    var layers: [Layer] { [] }
+    func size() async -> PixelSize { PixelSize(width: 4, height: 4) }
+    func render(maxLongEdge: Int) async throws -> EncodedImage { EncodedImage(data: Data([0]), format: .png, size: await size()) }
+    func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage { try await render(maxLongEdge: maxLongEdge) }
+    func apply(_ layer: Layer, assets: AssetStore) async throws {}
+    func remove(_ layer: Layer.ID) async throws {}
+    func export(to url: URL, format: EncodedImage.Format) async throws {}
+    func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { MaskData(size: mask.size, filledWith: 255) }
+    func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { MaskData(size: mask.size, filledWith: 255) }
+    func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { ColourMeasurement(lightness: 42, a: 0, b: 0) }
+    func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] {
+        [LostDetail(rect: .whole, kept: 0.2)]
+    }
+    func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData?, keep: MaskData?, shoulders: Double,
+                  waist: Double) async throws -> Reshaped? { Reshaped(image: image, changed: mask) }
+    func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? {
+        EncodedImage(data: Data([9]), format: .png, size: generated.size)
+    }
+}

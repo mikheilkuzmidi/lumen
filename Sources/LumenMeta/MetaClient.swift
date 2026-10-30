@@ -153,6 +153,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     better prompt, because Lumen replaces the earlier redraw from this run; if the colour did not change,
     name the new colour more strongly and the old one it replaces. Do not select the object again for that. Remove is only for taking something out of
     the photo, never for changing how it looks.
+    No step rotates a single photo. Asked to straighten it, level its horizon or rotate it, finish without
+    judging how level it is, with the reason "A single photo isn't straightened here: a library edit (lumen
+    batch, or Studio's Library) measures each photo's tilt and levels the tilted ones."; still plan anything
+    else the instruction asks for.
     """ + styleRules + """
 
     Return only the JSON described by the supplied schema.

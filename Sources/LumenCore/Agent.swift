@@ -116,6 +116,9 @@ public actor EditAgent {
     private var closeUpsBefore: [(region: String, rect: NormalizedRect, image: EncodedImage)] = []
     /// The people in this run's photo, found once a shadow needs them: `.some(nil)` when there are none.
     private var standingPeople: MaskData??
+    /// Things this run found standing on no ground in the photo, so with no shadow to select: their shadow's steps are
+    /// left out on purpose, not failed.
+    private var shadowless: Set<String> = []
 
     public init(planner: any Planner, segmenter: any Segmenter, generator: any Generator, host: any EditHost,
                 configuration: AgentConfiguration = AgentConfiguration()) {
@@ -211,6 +214,7 @@ public actor EditAgent {
             var redraws: [String: Layer.ID] = [:]
             closeUpsBefore = []
             standingPeople = nil
+            shadowless = []
             guard configuration.maxSteps > 0 else {
                 finish("Step limit reached.", events: events)
                 return
@@ -318,6 +322,12 @@ public actor EditAgent {
             if step.type != "select" { run.changes += 1 }
             events.yield(.stepStarted(index: index, step: step))
             if let region = step.region, run.missing.contains(region) {
+                // A golden hour's shadow of a bench that runs off the photo was left out on purpose; reported as a
+                // failure, it made a satisfied edit exit with an error.
+                if shadowless.contains(region) {
+                    note(TraceEvent.Kind(rawValue: step.type) ?? .select, "Left out \(step.type) for \(region): it has no shadow in the photo.", events: events)
+                    continue
+                }
                 note(.failure, "Skipped \(step.type): nothing was found for \(region).", events: events)
                 troubled = true
                 continue
@@ -491,6 +501,7 @@ public actor EditAgent {
             if let box = mask.boundingBox, box.y + box.height >= 0.985 {
                 note(.select, "No shadow for \(selection.id): it runs off the bottom of the photo, so there is no ground for its shadow.",
                      events: events)
+                shadowless.insert(selection.id)
                 return nil
             }
             let caster = mask

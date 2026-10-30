@@ -176,7 +176,8 @@ struct CastShadowTests {
     }
 
     /// A bench running off the bottom of the photo stands on no ground in it: its shadow, laid from the frame's edge,
-    /// fell on the legs and hands of the man sitting on it. It casts none, and says why.
+    /// fell on the legs and hands of the man sitting on it. It casts none, and says why; the shadow's darkening is left
+    /// out on purpose, not failed: counted as a failure, it made a satisfied golden hour exit with an error.
     @Test func aThingCutOffAtTheBottomCastsNoShadow() async throws {
         let planner = MeasuredPlanner(plan: EditPlan(summary: "The bench's long shadow", steps: [
             .select(Selection(id: "shadow", concept: "cup", shadowTip: NormalizedPoint(x: 0.05, y: 0.9))),
@@ -185,12 +186,18 @@ struct CastShadowTests {
         let agent = EditAgent(planner: planner, segmenter: MeasuredSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
         var masks: [MaskData] = []
         var notes: [String] = []
+        var failures: [String] = []
         for try await event in agent.run("Golden hour") {
             if case .selected(_, let segment) = event { masks.append(segment.mask) }
-            if case .trace(let trace) = event { notes.append(trace.detail) }
+            if case .trace(let trace) = event {
+                notes.append(trace.detail)
+                if trace.kind == .failure { failures.append(trace.detail) }
+            }
         }
         #expect(masks.isEmpty)
         #expect(notes.contains { $0.contains("runs off the bottom of the photo, so there is no ground for its shadow") })
+        #expect(notes.contains("Left out adjust for shadow: it has no shadow in the photo."))
+        #expect(failures.isEmpty, "\(failures)")
     }
 }
 

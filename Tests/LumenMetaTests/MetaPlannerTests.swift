@@ -195,3 +195,9 @@ import Testing
     #expect(MetaPlanner.critiquePrompt.contains("judge a body style by the Shape note and the outline"))
     #expect(MetaPlanner.critiquePrompt.contains("Look at every finger and thumb in the close-ups"))
 }
+
+/// Asked to straighten a tilted lake, the planner, which has no step to rotate a photo, said it was already level.
+@Test func aSinglePhotoIsNotSaidToBeLevelWhenItCannotBeStraightened() {
+    #expect(MetaPlanner.planPrompt.contains("No step rotates a single photo."))
+    #expect(MetaPlanner.planPrompt.contains("finish without\njudging how level it is"))
+}

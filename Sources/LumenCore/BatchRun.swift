@@ -226,6 +226,10 @@ actor BatchRun {
         let reason: String?
         if facts.sharpness < 0.05 {
             reason = "Almost no fine detail was measured."
+        } else if let peak = facts.peakSharpness, peak.isFinite, peak < 0.06 {
+            // A shaken frame keeps enough fine detail as a whole (0.08) but is sharp nowhere, as a reviewer's blur
+            // flag is confirmed.
+            reason = "No part of the photo is sharp."
         } else if facts.exposure < 0.03 {
             reason = "The photo is almost black."
         } else if facts.exposure > 0.97 {

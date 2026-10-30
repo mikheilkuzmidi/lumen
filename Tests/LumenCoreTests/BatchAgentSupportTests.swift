@@ -8,10 +8,10 @@ let batchTestImage = EncodedImage(
 
 /// A photo's facts; unless its lines are given, its upright lines lean with its horizon, as a rolled camera's do.
 func batchTestFacts(sharpness: Double = 0.9, exposure: Double = 0.5, tilt: Double? = nil, verticalLean: Double? = nil,
-                    levelTilt: Double? = nil, noLines: Bool = false) -> PhotoFacts {
+                    levelTilt: Double? = nil, noLines: Bool = false, peakSharpness: Double? = nil) -> PhotoFacts {
     let rolled = verticalLean == nil && levelTilt == nil && !noLines
     return PhotoFacts(size: batchTestImage.size, sharpness: sharpness, exposure: exposure, tilt: tilt,
-                      verticalLean: rolled ? tilt : verticalLean, levelTilt: levelTilt)
+                      verticalLean: rolled ? tilt : verticalLean, levelTilt: levelTilt, peakSharpness: peakSharpness)
 }
 
 func batchTestReview(_ photo: PhotoID, quality: Double = 0.9, misfire: Bool = false, matches: Bool = true,

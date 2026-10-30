@@ -51,12 +51,14 @@ struct BatchAgentLifecycleTests {
     }
 
     @Test func aFailedReviewLeavesItsPhotosJudgedByMeasurement() async throws {
-        let library = BatchTestLibrary([batchTestFacts(), batchTestFacts(sharpness: 0.01)])
+        // The third is a shaken frame: fine detail enough as a whole, sharp nowhere.
+        let library = BatchTestLibrary([batchTestFacts(), batchTestFacts(sharpness: 0.01), batchTestFacts(sharpness: 0.08, peakSharpness: 0.03)])
         let reviewer = BatchTestReviewer(reviewError: LumenError.timedOut)
         let events = try await batchTestCollect(await batchTestAgent(library, reviewer: reviewer).run(BatchOptions(straighten: false)))
         let summary = try batchTestSummary(events)
-        #expect(summary.photos.map(\.failed) == [false, false])
+        #expect(summary.photos.map(\.failed) == [false, false, false])
         #expect(summary.photos[1].flagged == "Almost no fine detail was measured.")
+        #expect(summary.photos[2].flagged == "No part of the photo is sharp.")
         #expect(await library.autos == [PhotoID("photo-0")])
         #expect(await library.saved == [PhotoID("photo-0")])
         #expect(summary.photos.allSatisfy { ($0.outcome ?? "").contains("The library review failed") })

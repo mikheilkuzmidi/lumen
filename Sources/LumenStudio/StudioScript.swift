@@ -97,7 +97,7 @@ enum StudioScriptError: LocalizedError {
 
 /// Stable filenames for the first occurrence of each edit milestone.
 enum StudioSnapshot: Int, CaseIterable, Sendable {
-    case opened = 1, area, planned, selected, redrawn, finished, compare, layers
+    case opened = 1, area, planned, selected, redrawn, finished, compare, layers, failed
 
     var filename: String {
         let name: String = switch self {
@@ -109,6 +109,7 @@ enum StudioSnapshot: Int, CaseIterable, Sendable {
         case .finished: "finished"
         case .compare: "compare"
         case .layers: "layers"
+        case .failed: "failed"
         }
         return "\(rawValue)-\(name).png"
     }
@@ -178,6 +179,8 @@ struct StudioScriptRunner {
             await model.backends.shutdown()
             model.issue = error.localizedDescription
             try? writeTimeline()
+            // The window as it shows the failure, which the script stopped at.
+            try? await capture(.failed)
             throw error
         }
     }

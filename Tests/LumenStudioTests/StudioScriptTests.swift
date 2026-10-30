@@ -74,7 +74,7 @@ struct StudioScriptTests {
     @Test func snapshotNamesStayStableAndOrdered() {
         #expect(StudioSnapshot.allCases.map(\.filename) == [
             "1-opened.png", "2-area.png", "3-planned.png", "4-selected.png",
-            "5-redrawn.png", "6-finished.png", "7-compare.png", "8-layers.png",
+            "5-redrawn.png", "6-finished.png", "7-compare.png", "8-layers.png", "9-failed.png",
         ])
     }
 

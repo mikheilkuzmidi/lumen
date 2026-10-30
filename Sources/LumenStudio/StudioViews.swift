@@ -249,7 +249,7 @@ struct PromptBar: View {
                 .onSubmit(model.run)
                 .accessibilityLabel("Edit instruction")
             if model.modelCalls > 0 {
-                Text("\(model.modelCalls) calls · \(studioDollars(model.totalCost))")
+                Text("\(model.modelCalls) \(model.modelCalls == 1 ? "call" : "calls") · \(studioDollars(model.totalCost))")
                     .font(StudioStyle.label).monospacedDigit().foregroundStyle(StudioStyle.textSecondary)
                     .fixedSize()
             }

@@ -30,7 +30,7 @@ struct StudioLibraryView: View {
                         if model.isRunning { ProgressView().controlSize(.mini) }
                         Text(model.backends.isLoading ? model.backends.status ?? model.status : model.status).lineLimit(1)
                         Spacer()
-                        Text("\(model.done)/\(model.total) · \(model.modelCalls) model calls · \(studioDollars(model.totalCost))")
+                        Text("\(model.done)/\(model.total) · \(model.modelCalls) model \(model.modelCalls == 1 ? "call" : "calls") · \(studioDollars(model.totalCost))")
                             .monospacedDigit()
                     }
                     .font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)

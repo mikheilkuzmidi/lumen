@@ -94,7 +94,8 @@ enum DrawnArea {
             let x = min(before.width - 1, (index % size.width) * before.width / size.width)
             let y = min(before.height - 1, (index / size.width) * before.height / size.height)
             let at = (y * before.width + x) * 4
-            return 0.299 * Double(before.bytes[at]) + 0.587 * Double(before.bytes[at + 1]) + 0.114 * Double(before.bytes[at + 2])
+            let red = Double(before.bytes[at]), green = Double(before.bytes[at + 1]), blue = Double(before.bytes[at + 2])
+            return 0.299 * red + 0.587 * green + 0.114 * blue
         }
         let pocketLight = coverage.indices.filter { coverage[$0] == 255 }.map { lightness[$0] }.sorted()
         if !pocketLight.isEmpty {
@@ -112,8 +113,10 @@ enum DrawnArea {
         // shape, not colour: a sunset's darker clouds have a hanger's colours.
         let width = after.width, height = after.height
         let inPockets = found.size == PixelSize(width: width, height: height) ? found : found.resized(to: PixelSize(width: width, height: height))
-        let light = (0..<(width * height)).map { index in
-            0.299 * Double(after.bytes[index * 4]) + 0.587 * Double(after.bytes[index * 4 + 1]) + 0.114 * Double(after.bytes[index * 4 + 2])
+        let light = (0..<(width * height)).map { index -> Double in
+            let red = Double(after.bytes[index * 4]), green = Double(after.bytes[index * 4 + 1])
+            let blue = Double(after.bytes[index * 4 + 2])
+            return 0.299 * red + 0.587 * green + 0.114 * blue
         }
         let radius = max(2, min(4, width / 500))
         func filtered(_ values: [Double], _ pick: (Double, Double) -> Double) -> [Double] {

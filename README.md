@@ -12,7 +12,7 @@ Every step is a separate, non-destructive layer. You can turn any of them off, a
 
 Lumen is a Swift package with a command-line tool (`lumen`) and a small Mac app (Lumen Studio).
 
-![Lumen Studio after "Make his jacket bright yellow and the buildings behind him a little warmer": the plan, each step with its model and time, and the result Muse Spark checked](docs/images/studio-finished.jpg)
+![Lumen Studio after "Make his jacket bright yellow": the plan, each step with its model and time, and the result Muse Spark checked](docs/images/studio-finished.jpg)
 
 ## What existed before, and what is new
 

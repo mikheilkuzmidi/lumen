@@ -89,6 +89,27 @@ struct StudioChip<Label: View>: View {
     }
 }
 
+/// A determinate bar drawn from its value as it changes. AppKit's bar redraws a burst of updates up to a second late:
+/// a finished library showed 3 of 16 filled beside "16/16".
+struct StudioProgressBar: View {
+    let value: Double
+    let total: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.1))
+                Capsule().fill(StudioStyle.accent)
+                    .frame(width: geometry.size.width * (total > 0 ? min(1, max(0, value / total)) : 0))
+            }
+        }
+        .frame(height: 8)
+        .accessibilityElement()
+        .accessibilityLabel("Progress")
+        .accessibilityValue("\(Int(value)) of \(Int(total))")
+    }
+}
+
 struct StudioView: View {
     @Bindable var model: StudioModel
     var activatesBackend = true

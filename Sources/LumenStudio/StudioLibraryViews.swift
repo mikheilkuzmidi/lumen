@@ -21,10 +21,8 @@ struct StudioLibraryView: View {
                     else if let decision = model.recentDecision { decisionCard(decision) }
                     if let plan = model.plan, let calls = model.estimatedModelCalls { planPanel(plan, calls: calls) }
                     grid
-                    // Not animated: a capture of a finished library showed the bar still catching up.
-                    ProgressView(value: Double(model.done), total: Double(max(1, model.total)))
-                        .tint(StudioStyle.accent).progressViewStyle(.linear)
-                        .animation(nil, value: model.done)
+                    StudioProgressBar(value: Double(model.done), total: Double(max(1, model.total)))
+                        .padding(.vertical, 6)
                     Rectangle().fill(StudioStyle.line).frame(height: 1)
                     HStack(spacing: StudioStyle.barSpacing) {
                         if model.isRunning { ProgressView().controlSize(.mini) }

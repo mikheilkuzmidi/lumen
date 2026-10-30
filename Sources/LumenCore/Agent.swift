@@ -704,7 +704,7 @@ public actor EditAgent {
         let style = step.style.flatMap(PersonStyle.named)
         let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
-            let part = try await part(style.part, of: person, events: events)
+            let part = try await part(style.part, of: person, withFace: style.ages, events: events)
             // Where a body's shoulders and waist are, and what of it stays as it was: the warp, once, widened the head of
             // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair.
             let face = style.part == .body ? try await face(of: person, events: events) : nil
@@ -759,8 +759,9 @@ public actor EditAgent {
     }
 
     /// What a style redraws of a person: the person for a body; otherwise their face or head, the largest one SAM finds
-    /// that lies mostly on them, so in a group it is never the face beside theirs.
-    private func part(_ part: PersonStyle.Part, of person: Region, events: Events) async throws -> Region {
+    /// that lies mostly on them, so in a group it is never the face beside theirs. A head `withFace` is their face as
+    /// well: SAM's "head" was sometimes only the hair, and a face asked to grow 30 years older stayed as young as it was.
+    private func part(_ part: PersonStyle.Part, of person: Region, withFace: Bool = false, events: Events) async throws -> Region {
         if part == .body || person.info.concept?.lowercased().contains(part.concept) == true { return person }
         let id = "\(person.info.id)-\(part.rawValue)"
         let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
@@ -771,7 +772,9 @@ public actor EditAgent {
         let theirs = found.map { $0.mask.resized(to: person.mask.size) }
             .filter { Self.share(of: $0, inside: person.mask) >= 0.5 }
             .max { $0.area < $1.area }
-        guard let theirs, let region = try await region(Selection(id: id, concept: part.concept), mask: theirs,
+        let face = part == .head && withFace ? try await face(of: person, events: events) : nil
+        guard let theirs, let region = try await region(Selection(id: id, concept: part.concept),
+                                                        mask: face.map { theirs.union($0.resized(to: theirs.size)) } ?? theirs,
                                                         label: part.concept, events: events) else {
             throw LumenError.invalidResponse("No \(part.rawValue) was found on the \(person.info.id).")
         }

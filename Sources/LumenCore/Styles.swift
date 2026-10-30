@@ -64,9 +64,11 @@ public struct PersonStyle: Equatable, Sendable {
 
     public static let all: [PersonStyle] = [
         PersonStyle(id: "chad", title: "Chad face", part: .face,
-                    change: "Give this person a chiselled \"Chad\" look: a visibly stronger, squarer jawline and chin, "
-                        + "defined cheekbones, a focused, confident gaze and light stubble.",
-                    adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.2, measures: "jaw"),
+                    change: "Give this person a clearly visible, chiselled \"Chad\" look: a stronger, squarer jaw about 10% "
+                        + "wider at its corners, a firmer, more prominent chin, defined cheekbones with a slight hollow "
+                        + "below them, a focused, confident gaze under slightly lowered brows, and short, even stubble along "
+                        + "the jaw, chin and upper lip.",
+                    adultsOnly: true, limits: ShapeLimits(least: 0.05, most: 0.2, measures: "jaw"),
                     example: "Give the person a chad face"),
         PersonStyle(id: "gigachad", title: "Gigachad", part: .face,
                     change: "Turn this person into the \"Gigachad\" meme: a very strong, wide, square jaw and chin, sharply "
@@ -74,17 +76,20 @@ public struct PersonStyle: Equatable, Sendable {
                     adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.3, measures: "jaw"), effect: "monoDrama",
                     example: "Make the person a gigachad"),
         PersonStyle(id: "hollywood", title: "Hollywood glow-up", part: .face,
-                    change: "Give this person a red-carpet polish: even, healthy skin that keeps its real texture and pores, "
-                        + "groomed brows, bright eyes and soft, natural contouring.",
-                    adultsOnly: true,
+                    change: "Give this person a clearly visible red-carpet glow-up, as a film's make-up artist and retoucher "
+                        + "would before a premiere: luminous, even skin with a healthy glow, redness and blemishes gone but "
+                        + "its texture and pores kept, neatly groomed fuller brows, bright clear eyes, white teeth if they "
+                        + "show, and soft contouring under the cheekbones.",
+                    adultsOnly: true, effect: "redCarpet",
                     example: "Give the person a Hollywood glow-up"),
         PersonStyle(id: "beard", title: "Full beard", part: .face,
                     change: "Give this person a full, well-groomed beard and moustache in the colour of their own hair.",
                     adultsOnly: true,
                     example: "Give the man a full beard"),
         PersonStyle(id: "older", title: "30 years older", part: .head,
-                    change: "Show this person about 30 years older: natural wrinkles, softer skin, thinner greying hair, "
-                        + "the same face grown older.",
+                    change: "Show this person clearly about 30 years older, the same face and features grown older: crow's "
+                        + "feet at the eyes, slightly heavier eyelids, deeper lines from the nose to the corners of the mouth, "
+                        + "forehead lines, softer, less firm skin along the jaw and neck, and thinner, greying hair.",
                     adultsOnly: true,
                     example: "Make the person look 30 years older"),
         PersonStyle(id: "smile", title: "Big smile", part: .face,
@@ -137,9 +142,11 @@ public struct PersonStyle: Equatable, Sendable {
         case .stronger: text += " Make the change clearly visible: it was too slight to see."
         case .sameTone: text += " Keep the skin exactly the photo's own tone, light and colour cast: the last try came out a different tone, which shows as a seam."
         }
+        // Told to keep exactly the photo's skin tone, a face asked to age greyed its hair and kept its young skin.
         let stays = self.part == .body
             ? "Keep their face, pose and clothes and the background the same."
-            : "Keep the same person, clearly recognisable, with exactly the photo's skin tone, colours and light."
+            : keepsTone ? "Keep the same person, clearly recognisable, with exactly the photo's skin tone, colours and light."
+            : "Keep the same person, clearly recognisable, in the photo's own light."
         return "Edit this photo. \(text) Change only the \(part) of the \(person) \(place) of this picture; keep everything "
             + "else exactly as it is. \(stays) Where the outline moves in, continue the background behind it. Photorealistic."
     }
@@ -148,6 +155,9 @@ public struct PersonStyle: Equatable, Sendable {
 
     /// Whether the part keeps the photo's own colour: all but those that recolour it (make-up, dyed or greying hair).
     public var keepsTone: Bool { !["zombie", "platinum", "older"].contains(id) }
+
+    /// Whether it ages the face under the hair, which a head's mask must then cover.
+    public var ages: Bool { id == "older" }
 }
 
 /// How much a style may change the outline it measures, as a share of its width: at least `least` to be seen, at most
@@ -204,6 +214,12 @@ public struct StyleEffect: Equatable, Sendable {
         ]),
         StyleEffect(id: "neonNight", title: "Neon night", example: "Give it a neon night look", parts: [
             Part(target: .photo, values: [.tint: 25, .temperature: -20, .contrast: 20, .vibrance: 30, .shadows: -15]),
+        ]),
+        // Hollywood's own: Muse Image gave an already clear-skinned face back unchanged three times in three, so the
+        // glow-up is also a soft, warm light on the person, with what is behind them a little darker.
+        StyleEffect(id: "redCarpet", title: "Red carpet glow", example: "Give the person a red carpet glow", parts: [
+            Part(target: .person, values: [.exposure: 0.15, .clarity: -15, .highlightWarmth: 12, .vibrance: 10]),
+            Part(target: .background, values: [.exposure: -0.2, .saturation: -10]),
         ]),
     ]
 }

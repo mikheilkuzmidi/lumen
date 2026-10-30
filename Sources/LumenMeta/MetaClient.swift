@@ -174,9 +174,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         select it too and give its region as keep, so reshaping or redrawing them leaves it as it is; use null
         otherwise. A style marked adults only is never for someone who looks under 18: plan nothing for them and
         finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
-        alone (style none, and the person's region for main character): \(effects). "Black and white meme", "dramatic
-        mono" is monoDrama; "main character", "make them pop" is mainCharacter; "retro", "film", "old photo look" is
-        vintage; "neon", "cyberpunk", "night city" is neonNight. Use effect none otherwise.
+        alone (style none, and the person's region for main character and redCarpet): \(effects). "Black and white
+        meme", "dramatic mono" is monoDrama; "main character", "make them pop" is mainCharacter; "retro", "film", "old
+        photo look" is vintage; "neon", "cyberpunk", "night city" is neonNight; a "glamour glow" or "red carpet glow"
+        with no change to the face is redCarpet. Use effect none otherwise.
         """
     }()
 

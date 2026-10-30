@@ -179,9 +179,9 @@ struct StyleTests {
     /// Muse Image redrew a bluish phone photo's face warmer than the photo, which showed as a seam down the neck. A face
     /// whose colour drifted is drawn once more, told so, and the closer one is kept.
     @Test func aFaceRedrawnInAnotherToneIsDrawnAgainInThePhotosOwn() async throws {
-        let planner = StylePlanner(plan: EditPlan(summary: "Chad", steps: [
+        let planner = StylePlanner(plan: EditPlan(summary: "Smile", steps: [
             .select(Selection(id: "man", concept: "face", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
-            .style(StyleStep(region: "man", style: "chad")),
+            .style(StyleStep(region: "man", style: "smile")),
         ]))
         let face = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
             (10..<30).contains(i % 40) && (5..<35).contains(i / 40) ? 255 : 0
@@ -275,6 +275,27 @@ struct StyleTests {
         #expect(await host.patchMasks.count == 2, "the reshape and the redraw")
         #expect((0...5).allSatisfy { y in (0..<40).allSatisfy { redrawn[$0, y] == 0 } }, "nothing at or above the chin")
         #expect(redrawn[20, 20] > 200, "the body is")
+    }
+
+    /// SAM's "head" was only the hair: asked to look 30 years older, a man got grey hair on a face as young as it was.
+    /// A head to age takes in the face too.
+    @Test func aHeadToAgeIsItsFaceAsWellAsItsHair() async throws {
+        let planner = StylePlanner(plan: EditPlan(summary: "Older", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .style(StyleStep(region: "man", style: "older")),
+        ]))
+        let hair = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (15..<25).contains(i % 40) && (0..<2).contains(i / 40) ? 255 : 0
+        })
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(hair, "head")],
+                                                 [Self.segment(Self.face, "face")]])
+        let host = StyleHost()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: StyleGenerator(), host: host)
+        for try await _ in agent.run("Make him look 30 years older") {}
+        #expect(await segmenter.requests.prefix(3).map(\.concept) == ["person", "head", "face"])
+        let mask = try #require(await host.patchMasks.first)
+        // The crop is the head's box grown by 30% each way, clipped to the photo; the face's middle is in it.
+        #expect(mask.coverage.filter { $0 > 200 }.count > 2 * hair.coverage.filter { $0 > 0 }.count, "the face is redrawn with the hair")
     }
 
     /// A big fish held against a man's chest was bent by the warp and smeared by the redraw. What the plan says to

@@ -96,13 +96,14 @@ struct StudioLibraryView: View {
     private var grid: some View {
         let highlighted = model.highlightedPhotos
         return ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156, maximum: 240), spacing: 16)], spacing: 18) {
+            // Photoeditor's square grid: cells 6 pt apart, 14 pt from the edge.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156, maximum: 240), spacing: 6)], spacing: 6) {
                 ForEach(model.photos, id: \.self) { photo in
                     LibraryPhotoCell(model: model, photo: photo, thumbnails: thumbnails,
                                      highlighted: highlighted.contains(photo)) { openPhoto(photo) }
                 }
             }
-            .padding(24)
+            .padding(14)
         }
         .background(StudioStyle.canvas)
         .overlay {
@@ -293,19 +294,30 @@ private struct LibraryPhotoCell: View {
 
     private var revision: String { "\(model.folder?.path ?? ""):\(model.compare):\(model.states[photo]?.revision ?? 0)" }
 
+    /// As a cell of Photoeditor's square grid: the photo fitted on the raised colour, a status bar under it on the
+    /// panel colour with the name and the edit's badges, all one piece with 3 pt corners, and an accent border while it
+    /// belongs to the group in view.
     var body: some View {
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised)
+                    StudioStyle.raised
                     if let image { Image(nsImage: image).resizable().scaledToFit() }
                     else { Image(systemName: issue == nil ? "photo" : "exclamationmark.triangle").foregroundStyle(StudioStyle.textTertiary) }
                 }
-                .frame(height: 140).clipShape(RoundedRectangle(cornerRadius: StudioStyle.radius))
-                .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(highlighted ? StudioStyle.accent : StudioStyle.line, lineWidth: highlighted ? 2 : 1) }
-                Text(photo.rawValue).font(StudioStyle.label.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                badges.frame(minHeight: 72, alignment: .topLeading)
+                .frame(height: 140)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(photo.rawValue).font(StudioStyle.caption).foregroundStyle(StudioStyle.textSecondary)
+                        .lineLimit(1).truncationMode(.middle)
+                    badges
+                }
+                .padding(.horizontal, 7).padding(.vertical, 6)
+                // One height for every cell, room for two rows of badges, so a row's photos line up.
+                .frame(maxWidth: .infinity, minHeight: 62, maxHeight: 62, alignment: .topLeading)
+                .background(StudioStyle.panel)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .overlay { RoundedRectangle(cornerRadius: 3).strokeBorder(highlighted ? StudioStyle.accent : .clear, lineWidth: 3) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -327,13 +339,13 @@ private struct LibraryPhotoCell: View {
     }
 
     private var badges: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 70), spacing: 4, alignment: .leading)], alignment: .leading, spacing: 4) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 4, alignment: .leading)], alignment: .leading, spacing: 4) {
             ForEach(LibraryBadge.allCases.filter { model.states[photo]?.badges.contains($0) == true }, id: \.self) { badge in
                 Text(badge.rawValue).font(.system(size: 9, weight: .medium))
                     .lineLimit(1).minimumScaleFactor(0.85)
                     .foregroundStyle(badge == .failed || badge == .attention || badge == .misfire ? StudioStyle.danger : StudioStyle.success)
                     .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: 4))
+                    .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: 3))
             }
         }
     }

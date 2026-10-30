@@ -140,6 +140,8 @@ struct BatchAgentTests {
         for try await event in await agent.run(BatchOptions(mode: .askWhenUnsure, auto: false, qualityThreshold: 0)) {
             if case .question(let question) = event {
                 asked.append(question.question)
+                // The question names the photo it asks about, not the one whose tilt is too small to count.
+                #expect(question.photos == [PhotoID("photo-1")])
                 await agent.answer(question.id, with: "Leave them")
             }
             if case .awaitingApproval = event { await agent.approve() }

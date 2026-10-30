@@ -104,6 +104,16 @@ struct StudioLibraryTests {
         #expect(model.estimatedModelCalls == nil && model.summary == nil)
     }
 
+    @Test func aStraighteningQuestionHighlightsOnlyThePhotosItAsksAbout() async throws {
+        let fixture = try LibraryFixture()
+        defer { fixture.remove() }
+        let model = fixture.model()
+        try await model.openFolder(fixture.folder)
+        model.receive(.question(BatchQuestion(id: "straighten", question: "1 photo looks tilted, by 2.5°. Straighten it?",
+                                               options: ["Straighten them", "Leave them"], recommended: 0, photos: [fixture.photos[1]])))
+        #expect(model.highlightedPhotos == [fixture.photos[1]])
+    }
+
     @Test func selectingAPlanGroupHighlightsItsPhotosAfterAQuestion() async throws {
         let fixture = try LibraryFixture()
         defer { fixture.remove() }

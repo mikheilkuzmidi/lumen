@@ -192,13 +192,16 @@ public struct BatchQuestion: Codable, Equatable, Sendable, Identifiable {
     public var recommended: Int
     /// The groups the answer changes.
     public var groups: [String]
+    /// The photos it asks about when they aren't a plan's groups: the tilted ones, for straightening.
+    public var photos: [PhotoID]?
 
-    public init(id: String, question: String, options: [String], recommended: Int, groups: [String] = []) {
+    public init(id: String, question: String, options: [String], recommended: Int, groups: [String] = [], photos: [PhotoID]? = nil) {
         self.id = id
         self.question = question
         self.options = options
         self.recommended = recommended
         self.groups = groups
+        self.photos = photos
     }
 }
 

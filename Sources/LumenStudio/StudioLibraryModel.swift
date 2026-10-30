@@ -78,10 +78,10 @@ final class StudioLibraryModel {
         return []
     }
 
+    /// The photos a question names, else its groups' photos. Straightening once highlighted every photo with a measured
+    /// tilt: six beside "2 photos look tilted".
     func affectedPhotos(_ question: BatchQuestion) -> Set<PhotoID> {
-        if question.id == "straighten" {
-            return Set(photos.filter { abs(states[$0]?.facts?.tilt ?? 0) >= 0.5 })
-        }
+        if let photos = question.photos { return Set(photos) }
         return Set(plan?.groups.filter { question.groups.contains($0.id) }.flatMap(\.photos) ?? [])
     }
 

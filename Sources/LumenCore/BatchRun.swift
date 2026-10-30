@@ -324,7 +324,7 @@ actor BatchRun {
         let recommended = tilts.filter { $0 >= 1 }.count > tilts.count / 2 ? 0 : 1
         let question = BatchQuestion(id: "straighten", question: tilted.count == 1 ? "1 photo looks tilted, by \(maximum)°. Straighten it?"
                                          : "\(tilted.count) photos look tilted, by up to \(maximum)°. Straighten them?",
-                                     options: ["Straighten them", "Leave them"], recommended: recommended)
+                                     options: ["Straighten them", "Leave them"], recommended: recommended, photos: tilted)
         return try await choose(question) == "Straighten them"
     }
 

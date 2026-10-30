@@ -53,8 +53,6 @@ struct StyleTests {
         #expect(asked.contains("Keep their face, pose and clothes") && asked.contains("continue the background"))
         #expect(!asked.contains("slightly"), "said outright: asked for slightly broader shoulders, Muse Image changed nothing")
         #expect(athletic.prompt(person: "person", place: "on the left", firmer: .subtler).contains("subtler"))
-        #expect(athletic.built()!.prompt(person: "person", place: "on the left", firmer: .sameOutline)
-            .contains("Keep the body exactly as wide as it is at the shoulders and the waist"))
         #expect(PersonStyle.named("chad")!.prompt(person: "person", place: "on the left").contains("Change only the face of the person on the left"))
     }
 
@@ -174,6 +172,7 @@ struct StyleTests {
         #expect(await generator.prompts.isEmpty, "no redraw")
         #expect(await host.asked == [0.1, -0.1])
         #expect(applied.map(\.label) == ["Person: Athletic build"])
+        #expect(applied.first?.drawsNew == true, "moved pixels take none of the unmoved photo's detail back")
         let done = try #require(await planner.critiqued.first)
         #expect(done.contains("Shape: shoulders +10%, waist −10% (a believable change is 2% to 15%, the waist at most +2% wider)."), "\(done)")
     }
@@ -432,18 +431,17 @@ struct StyleTests {
     }
 
     /// Athletic on a man in a T-shirt only warped his outline. A body whose build shows (a fitted top, or none) is
-    /// redrawn with the new build, evenly, inside the outline the warp moved and told to keep it: asked for broader
-    /// shoulders again over the warp, Muse Image drew them back as they were. Under a jacket only the outline moves,
-    /// and so it does where the host doesn't say where the outline went.
+    /// redrawn with the new build, evenly, and placed only inside the outline the warp moved, a little in from its edge,
+    /// so the outline stays the warp's: asked for broader shoulders again over the warp, Muse Image drew them back as
+    /// they were, and measured by SAM a man between two friends came out anywhere from 9% narrower to 20% wider. Under
+    /// a jacket only the outline moves, and so it does where the host doesn't say where the outline went.
     @Test func aBodyInAFittedTopIsRedrawnWithItsNewBuild() async throws {
         for wears in ["fitted", "loose", "unsaid"] {
             let planner = StylePlanner(plan: EditPlan(summary: "Athletic", steps: [
                 .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
                 .style(StyleStep(region: "man", style: "athletic", wears: wears == "unsaid" ? "fitted" : wears)),
             ]))
-            // SAM's outline of the warped crop, to compare the build with, then the build found again 4% slimmer.
-            let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
-                                                     [Self.segment(Self.person())], [Self.segment(Self.person(waist: 23))]])
+            let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")]])
             let host = KeepingHost(outlines: wears != "unsaid")
             let generator = StyleGenerator()
             let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
@@ -455,16 +453,40 @@ struct StyleTests {
                 #expect(prompt.contains("They wear a fitted top") && prompt.contains("evenly on both sides"))
                 #expect(prompt.contains("keep its width, size and every edge exactly where they are") && !prompt.contains("10% broader"),
                         "the build inside the warped outline, not the outline asked for again")
+                #expect(await segmenter.requests.map(\.concept) == ["person", "face"], "nothing measured again by SAM")
+                let built = try #require(await host.patchMasks.last)
+                // The crop is the whole 40 × 40 photo; the waist runs from x 8 to 31.
+                #expect(built[20, 20] > 200 && built[8, 20] == 0 && built[4, 20] == 0, "inside the outline, clear of its edge")
                 let done = await planner.critiqued.first ?? []
                 #expect(done.contains("The man wears a fitted top, so their build was redrawn as well as their outline moved."))
-                #expect(await segmenter.requests.map(\.concept) == ["person", "face", "person", "person"],
-                        "the warped crop's own outline, then the build's")
-                #expect(done.contains("The build was redrawn on the reshaped body; against the warp's new outline it moved "
-                                      + "shoulders +0%, waist −4%, and up to 5% keeps it: the body's change is the warp's Shape note."))
+                #expect(done.contains { $0.hasPrefix("The build was redrawn inside the warp's new outline") })
             } else {
                 #expect(await host.patchMasks.count == 1 && prompts.isEmpty, "the warp alone")
             }
         }
+    }
+
+    /// Asked for a build on a man whose arms were hidden behind his friends, Muse Image drew him bare forearms crossed in
+    /// front of his T-shirt. Bare skin a build adds is looked for: drawn once more, told to keep the pose, and left out
+    /// when it still adds it, the warp staying.
+    /// An arm drawn at his side, across the outline's edge, showed half see-through: a build that draws clearly past the
+    /// outline is left out the same way.
+    @Test(arguments: [false, true])
+    func aBuildThatDrawsArmsThatArentThereIsLeftOut(past: Bool) async throws {
+        let planner = StylePlanner(plan: EditPlan(summary: "Gym-built", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
+            .style(StyleStep(region: "man", style: "muscular", wears: "fitted")),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")]])
+        let host = ArmsHost(past: past)
+        let generator = MarkingGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
+        for try await _ in agent.run("Make him gym-built") {}
+        let prompts = await generator.prompts
+        #expect(prompts.count == 2 && prompts[1].contains("the last try drew arms or hands that aren't in the photo"))
+        #expect(await host.patches == 1, "the warp alone")
+        let reason = past ? "drew past the reshaped outline" : "drew arms or hands that aren't in the photo"
+        #expect((await planner.critiqued.first ?? []).contains { $0.contains(reason) })
     }
 
     /// A bare chest is seen in the skin, whatever the planner said; otherwise the planner's word is taken.
@@ -598,6 +620,46 @@ private actor StyleGenerator: Generator {
     func generate(_ request: GenerateRequest) async throws -> EncodedImage {
         prompts.append(request.prompt)
         return request.image
+    }
+}
+
+/// An image model whose every redraw is marked, so a host can tell it from the photo.
+private actor MarkingGenerator: Generator {
+    let modelID = "muse-image-1.0"
+    private(set) var prompts: [String] = []
+    func generate(_ request: GenerateRequest) async throws -> EncodedImage {
+        prompts.append(request.prompt)
+        return EncodedImage(data: Data([7]), format: .png, size: request.image.size)
+    }
+}
+
+/// A host that warps and finds bare skin all over a redraw, as if it drew arms, and none on the photo; or, `past`, no
+/// skin but a redraw changed all over the crop, past the outline.
+private actor ArmsHost: EditHost {
+    private(set) var patches = 0
+    private let past: Bool
+    init(past: Bool) { self.past = past }
+    func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? {
+        past ? MaskData(size: mask.size, filledWith: 255) : mask
+    }
+    func size() async -> PixelSize { PixelSize(width: 40, height: 40) }
+    func render(maxLongEdge: Int) async throws -> EncodedImage {
+        EncodedImage(data: Data([0]), format: .png, size: PixelSize(width: 40, height: 40))
+    }
+    func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage {
+        EncodedImage(data: Data([0]), format: .png, size: PixelSize(width: max(1, Int((region.width * 40).rounded())),
+                                                                   height: max(1, Int((region.height * 40).rounded()))))
+    }
+    func apply(_ layer: Layer, assets: AssetStore) async throws {
+        if case .patch = layer.content { patches += 1 }
+    }
+    func remove(_ layer: Layer.ID) async throws {}
+    func reshaped(_ image: EncodedImage, mask: MaskData, face: MaskData?, keep: MaskData?, shoulders: Double,
+                  waist: Double) async throws -> Reshaped? {
+        Reshaped(image: image, changed: mask, outline: mask)
+    }
+    func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData? {
+        MaskData(size: image.size, filledWith: !past && image.data == Data([7]) ? 255 : 0)
     }
 }
 

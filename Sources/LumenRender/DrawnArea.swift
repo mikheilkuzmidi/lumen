@@ -9,33 +9,9 @@ enum DrawnArea {
     /// once the redraw's overall colour drift is taken out (measured beyond the reach): a colour difference over 18.
     /// Its new edge is where the two agree, so no seam shows there.
     static func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) throws -> MaskData? {
-        let before = try RGBAPixels(original), after = try RGBAPixels(generated)
         let size = mask.size
         guard size.width > 2, size.height > 2, reach > 0 else { return nil }
-        func sample(_ pixels: RGBAPixels, _ index: Int) -> (Double, Double, Double) {
-            let x = min(pixels.width - 1, (index % size.width) * pixels.width / size.width)
-            let y = min(pixels.height - 1, (index / size.width) * pixels.height / size.height)
-            let at = (y * pixels.width + x) * 4
-            return (Double(pixels.bytes[at]), Double(pixels.bytes[at + 1]), Double(pixels.bytes[at + 2]))
-        }
-        let count = size.width * size.height
-        // The redraw's drift over what it wasn't asked to change.
-        let far = mask.grown(by: reach)
-        var drift = (0.0, 0.0, 0.0), samples = 0.0
-        for index in stride(from: 0, to: count, by: 3) where far.coverage[index] < 128 {
-            let a = sample(before, index), b = sample(after, index)
-            drift = (drift.0 + b.0 - a.0, drift.1 + b.1 - a.1, drift.2 + b.2 - a.2)
-            samples += 1
-        }
-        if samples > 0 { drift = (drift.0 / samples, drift.1 / samples, drift.2 / samples) }
-        func changed(_ index: Int) -> Bool {
-            let a = sample(before, index), b = sample(after, index)
-            func byte(_ value: Double) -> UInt8 { UInt8(min(255, max(0, value.rounded()))) }
-            let was = ColourMeasuring.lab(red: byte(a.0), green: byte(a.1), blue: byte(a.2))
-            let now = ColourMeasuring.lab(red: byte(b.0 - drift.0), green: byte(b.1 - drift.1), blue: byte(b.2 - drift.2))
-            let dl = was.lightness - now.lightness, da = was.a - now.a, db = was.b - now.b
-            return (dl * dl + da * da + db * db).squareRoot() > 18
-        }
+        let test = try Comparison(generated, original, size: size, steady: mask.grown(by: reach).inverted())
         var coverage = mask.coverage.map { $0 >= 128 ? UInt8(255) : 0 }
         var frontier = coverage.indices.filter { coverage[$0] == 255 }
         var seen = coverage.map { $0 == 255 }
@@ -49,7 +25,7 @@ enum DrawnArea {
                     let near = ny * size.width + nx
                     guard !seen[near] else { continue }
                     seen[near] = true
-                    if changed(near) { coverage[near] = 255; next.append(near) }
+                    if test.changed(near) { coverage[near] = 255; next.append(near) }
                 }
             }
             frontier = next
@@ -59,5 +35,41 @@ enum DrawnArea {
         let grown = MaskData(size: size, coverage: coverage)
         let closed = grown.grown(by: gap).inverted().grown(by: gap).inverted()
         return closed.union(MaskData(size: size, coverage: mask.coverage))
+    }
+
+    /// Two crops compared pixel by pixel at one size, the second's drift over what was meant to stay (`steady`, or all
+    /// of it) taken out.
+    private struct Comparison {
+        let before: RGBAPixels, after: RGBAPixels, size: PixelSize
+        var drift = (0.0, 0.0, 0.0)
+
+        init(_ generated: EncodedImage, _ original: EncodedImage, size: PixelSize, steady: MaskData?) throws {
+            before = try RGBAPixels(original)
+            after = try RGBAPixels(generated)
+            self.size = size
+            var sum = (0.0, 0.0, 0.0), samples = 0.0
+            for index in stride(from: 0, to: size.width * size.height, by: 3) where (steady?.coverage[index] ?? 255) >= 128 {
+                let a = sample(before, index), b = sample(after, index)
+                sum = (sum.0 + b.0 - a.0, sum.1 + b.1 - a.1, sum.2 + b.2 - a.2)
+                samples += 1
+            }
+            if samples > 0 { drift = (sum.0 / samples, sum.1 / samples, sum.2 / samples) }
+        }
+
+        func sample(_ pixels: RGBAPixels, _ index: Int) -> (Double, Double, Double) {
+            let x = min(pixels.width - 1, (index % size.width) * pixels.width / size.width)
+            let y = min(pixels.height - 1, (index / size.width) * pixels.height / size.height)
+            let at = (y * pixels.width + x) * 4
+            return (Double(pixels.bytes[at]), Double(pixels.bytes[at + 1]), Double(pixels.bytes[at + 2]))
+        }
+
+        func changed(_ index: Int) -> Bool {
+            let a = sample(before, index), b = sample(after, index)
+            func byte(_ value: Double) -> UInt8 { UInt8(min(255, max(0, value.rounded()))) }
+            let was = ColourMeasuring.lab(red: byte(a.0), green: byte(a.1), blue: byte(a.2))
+            let now = ColourMeasuring.lab(red: byte(b.0 - drift.0), green: byte(b.1 - drift.1), blue: byte(b.2 - drift.2))
+            let dl = was.lightness - now.lightness, da = was.a - now.a, db = was.b - now.b
+            return (dl * dl + da * da + db * db).squareRoot() > 18
+        }
     }
 }

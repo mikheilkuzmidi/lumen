@@ -116,6 +116,10 @@ public actor PhotoDocument: EditHost {
         try EditSupport.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    public func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
+        try EditSupport.shaded(generated, onto: original, within: mask)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?

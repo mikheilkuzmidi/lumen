@@ -347,6 +347,10 @@ public protocol EditHost: Sendable {
     /// clearly changed, up to `reach` pixels past it: what the redraw drew beyond the mask's edge, such as a vampire's
     /// standing collar or the hem of his cape. Nil when the host can't tell.
     func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData?
+    /// `original`, a crop, with the light and shade of `generated`, a redraw of it, laid over it where `mask` (the crop's
+    /// size) covers it: only its broad lightness, never its edges, prints or colours, and nothing where it changed the
+    /// colour. Nil when the host can't.
+    func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage?
 }
 
 /// A crop with a person reshaped, and where its pixels changed.
@@ -381,4 +385,6 @@ public extension EditHost {
     func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData? { nil }
     /// A host that can't look at its pixels places a redraw through its mask as it is.
     func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? { nil }
+    /// A host that can't change its pixels places the redraw as it is.
+    func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? { nil }
 }

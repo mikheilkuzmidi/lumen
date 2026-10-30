@@ -274,6 +274,35 @@ struct PhotoPixelTests {
         #expect(drawn[50, 30] == 0 && drawn[80, 22] == 0, "not the wall beside it, nor what changed further off")
     }
 
+    /// A build redrawn by Muse Image moved a T-shirt's logo, drew grass inside the waist and a hand in a gap. Laid on as
+    /// light and shade only, its fuller chest shows; the logo stays where the photo had it, and where it changed the
+    /// colour (the grass) nothing is laid on.
+    @Test
+    func aBuildIsLaidOnAsLightAndShadeOnly() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A dark T-shirt (120 × 120) with a small white logo at x 30..<38, y 30..<34.
+        func logo(_ x: Int, _ y: Int, at left: Int) -> Bool { (left..<(left + 8)).contains(x) && (30..<34).contains(y) }
+        let shirt = try folder.photo(width: 120, height: 120) { x, y in logo(x, y, at: 30) ? RGB(240, 240, 240) : RGB(30, 30, 32) }
+        // The redraw: a lighter chest (x 50..<90, y 40..<80), the logo moved 10 px right, and grass at x 0..<14.
+        let redraw = try folder.photo(width: 120, height: 120) { x, y in
+            if x < 14 { return RGB(70, 150, 60) }
+            if logo(x, y, at: 40) { return RGB(240, 240, 240) }
+            return (50..<90).contains(x) && (40..<80).contains(y) ? RGB(60, 60, 64) : RGB(30, 30, 32)
+        }
+        func encoded(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 120, height: 120))
+        }
+        let body = MaskData(size: PixelSize(width: 120, height: 120), filledWith: 255)
+        let shaded = try #require(try EditSupport.shaded(try encoded(redraw), onto: try encoded(shirt), within: body))
+        let after = try Pixels(data: shaded.data)
+        #expect(after[70, 60].green > after[70, 100].green + 0.03, "the fuller chest shows as light")
+        // Light and shade at a muscle's scale may dim a print a little; it never moves it or draws a second one.
+        #expect(after[45, 32].green < 0.3, "no logo where the redraw moved it")
+        #expect(after[33, 32].green - after[33, 37].green > 0.4, "the photo's logo, crisp where it was")
+        #expect(after[5, 60].distance(to: RGB(30, 30, 32)) < 0.02, "no grass where the redraw changed the colour")
+    }
+
     /// The jacket's seams and grain showed through a vampire's cape drawn over it, dark on dark. A patch that draws
     /// something new takes none of the photo's detail back.
     @Test

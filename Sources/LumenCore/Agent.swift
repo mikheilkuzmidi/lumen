@@ -923,16 +923,13 @@ public actor EditAgent {
         let kept = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
         let mask = frame.map { Self.below($0, kept) } ?? kept
         let position = Self.place(of: box, in: rect)
-        // A build kept inside a warped outline is compared with SAM's own outline of the warped crop, as SAM finds the
-        // redraw: against the warp's outline, SAM's differences alone read as the redraw narrowing a man whose friends'
-        // arms lay across his shoulders by 5% to 9%, or widening him by 3%.
-        let compared = style.keepsOutline ? try await outline(of: style.part.concept, in: image, near: original, events: events) ?? original
-            : original
         func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
             let prompt = style.prompt(person: "person", place: position, firmer: firmness, pieces: pieces, wears: attire)
             let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
-            // A costume changes the head's outline (a hat on it) on purpose, so it isn't looked for again to compare.
-            return try await redrawAttempt(request, original: compared, concept: style.dressesUp ? nil : style.part.concept,
+            // A costume changes the head's outline (a hat on it) on purpose, and a build is placed inside an outline it
+            // can't move, so neither is looked for again to compare.
+            return try await redrawAttempt(request, original: original,
+                                           concept: style.dressesUp || style.keepsOutline ? nil : style.part.concept,
                                            region: region.info.id, kind: .style, events: events)
         }
         var best = try await attempt(.asked)
@@ -954,22 +951,19 @@ public actor EditAgent {
             if let next = retry.attempt, (next.overlap ?? 0) > overlap { best = next }
         }
         func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
-            attempt.object.flatMap { ShapeMeasure.change(style.part, before: compared, after: $0, frame: frame) }
+            attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0, frame: frame) }
         }
         if let limits = style.limits {
             if let changes = measured(best), Self.miss(changes, limits) > 0 {
                 let largest = changes.map { abs($0.change) }.max() ?? 0
-                // A build drawn inside a warped outline is asked to keep it, not to change less: it narrowed or widened it.
-                let retry = try await retried(style.keepsOutline ? .sameOutline : largest > limits.most ? .subtler : .stronger)
+                let retry = try await retried(largest > limits.most ? .subtler : .stronger)
                 if let note = retry.note { notes.append(note) }
                 if let next = retry.attempt, let nextChanges = measured(next),
                    Self.miss(nextChanges, limits) < Self.miss(changes, limits), (next.overlap ?? 0) >= Self.samePerson {
                     best = next
                 }
             }
-            if let changes = measured(best) {
-                notes.append(style.keepsOutline ? Self.keptNote(changes) : Self.shapeNote(changes, limits: limits))
-            }
+            if let changes = measured(best) { notes.append(Self.shapeNote(changes, limits: limits)) }
         }
         // A face redrawn warmer or cooler than the photo around it shows a seam where the redraw ends, down the neck:
         // Muse Image "corrected" a bluish phone photo's skin, and did again when told not to. The host gives the redraw
@@ -984,19 +978,56 @@ public actor EditAgent {
                 best = next
             }
         }
+        // Asked for a build on a man whose arms were hidden behind his friends, Muse Image drew him bare forearms crossed
+        // in front of his T-shirt, and an arm at his side across the outline's edge, which showed half see-through. A
+        // build that adds bare skin, or draws anything clearly past the outline, is drawn once more, told to keep the
+        // pose, and left out when it still does.
+        var buildFlaw: String?
+        if style.keepsOutline {
+            let faceCrop = face?.cropped(to: rect).resized(to: image.size)
+            func flaw(of attempt: RedrawAttempt) async throws -> (reason: String, amount: Double)? {
+                if let faceCrop, let added = try await addedSkin(before: image, after: attempt.image, face: faceCrop, within: mask),
+                   added > Self.addedSkinLimit {
+                    return ("it drew arms or hands that aren't in the photo", added)
+                }
+                if let past = try await drawnPast(original, before: image, after: attempt.image, short: short), past > Self.drawnPastLimit {
+                    return ("it drew past the reshaped outline", past)
+                }
+                if let moved = try await edgeMoved(original, before: image, after: attempt.image, short: short), moved > Self.edgeMovedLimit {
+                    return ("it moved the reshaped outline's edge", moved)
+                }
+                return nil
+            }
+            if let first = try await flaw(of: best) {
+                buildFlaw = first.reason
+                let retry = try await retried(.samePose)
+                if let note = retry.note { notes.append(note) }
+                if let next = retry.attempt {
+                    let second = try await flaw(of: next)
+                    if second == nil || second!.amount < first.amount {
+                        best = next
+                        buildFlaw = second?.reason
+                    }
+                }
+            }
+        }
+        // A build's redraw smooths the knit of the T-shirt it reshapes, and the photo's own detail comes back where it
+        // still shows the photo, so a smear in it is the critic's to judge in the close-up.
         if optional {
             var flaw: String?
             if let limits = style.limits, let changes = measured(best), Self.miss(changes, limits) > 0 {
                 flaw = "its shape went past a believable change"
+            } else if let buildFlaw {
+                flaw = buildFlaw
             } else if let overlap = best.overlap, overlap < Self.samePerson {
                 flaw = "it moved the person"
-            } else if try await !host.lostDetail(before: image, after: best.image).isEmpty {
+            } else if !style.keepsOutline, try await !host.lostDetail(before: image, after: best.image).isEmpty {
                 flaw = "it smeared fine detail"
             }
             if let flaw {
                 let note = "The \(style.title.lowercased()) redraw of \(region.info.id) was left out, as \(flaw); the reshaped build stays."
                 for detail in notes + [note] { self.note(.style, detail, events: events) }
-                return notes.filter { !$0.hasPrefix("Shape:") && !$0.hasPrefix(Self.keptBuild) } + [note]
+                return notes.filter { !$0.hasPrefix("Shape:") } + [note]
             }
         }
         if let detail = best.note { notes.append(detail) }
@@ -1011,28 +1042,92 @@ public actor EditAgent {
                                                              reach: max(2, Int((short * 0.08).rounded()))) {
             placed = drawn
         }
+        // A build is placed only inside the warp's outline, a little in from its edge, so the outline stays exactly the
+        // warp's whatever the image model drew there: measured by SAM, a man whose friends' arms lay across his
+        // shoulders came out between 9% narrower and 20% wider in five tries, and the build was left out four times.
+        if style.keepsOutline {
+            // Its soft edge stays clear of the outline: the outer half of the band is the warp's own, or where the redraw
+            // drew the body's edge a little differently a see-through strip of it showed along his side.
+            let band = max(2, Int((short * Self.buildEdge).rounded()))
+            let clear = original.inverted().grown(by: max(1, band / 2)).inverted()
+            placed = original.inverted().grown(by: band).inverted().blurred(by: Double(band) / 2).multiplied(by: clear)
+                .multiplied(by: mask)
+            // Only the redraw's light and shade is laid on the warped photo: placed as it was drawn, it narrowed a waist
+            // inside the warp's (grass inside his side), moved a logo (two crocodiles where they met) and drew a hand
+            // in a gap. The fuller chest shows; every edge, print and colour stays the photo's.
+            if let shaded = try await host.shaded(best.image, onto: image, within: placed) {
+                best.image = shaded
+            }
+            notes.append(Self.keptBuild)
+        }
         // Softened past the part, like a removal's, so the new outline and the background beside it blend in.
-        let soft = placed.blurred(by: short * (style.part == .body || style.dressesUp ? 0.015 : 0.01))
+        // A build's mask is already softened inside the outline; softened again it reached back out to the edge.
+        let soft = style.keepsOutline ? placed : placed.blurred(by: short * (style.part == .body || style.dressesUp ? 0.015 : 0.01))
         return try await place(best.image, mask: frame.map { Self.below($0, soft) } ?? soft, rect: rect, label: label,
-                               region: region.info.id, kind: .style, notes: notes, drawsNew: style.dressesUp,
+                               region: region.info.id, kind: .style, notes: notes, drawsNew: style.dressesUp || style.keepsOutline,
                                redraws: &redraws, events: events)
     }
 
-    /// What SAM finds for `concept` in `image` that best matches `near` (the image's size), when it matches it well; nil
-    /// when nothing does or SAM can't be asked.
-    private func outline(of concept: String, in image: EncodedImage, near: MaskData, events: Events) async throws -> MaskData? {
-        do {
-            let request = SegmentRequest(image: image, concept: concept)
-            let found = try await call(.select, model: segmenter.modelID, detail: "Find the \(concept) to compare the redraw with",
-                                       events: events) { try await self.segmenter.segment(request) }
-            let best = found.map { $0.mask.resized(to: near.size) }.max { near.intersectionOverUnion($0) < near.intersectionOverUnion($1) }
-            return best.flatMap { near.intersectionOverUnion($0) >= Self.samePerson ? $0 : nil }
-        } catch {
-            let error = cancellationError(error)
-            if error as? LumenError == .cancelled { throw error }
+    /// How much bare skin `after` shows within `area` (the crop's size) that `before` didn't, as a share of `area`, both
+    /// found by the colour of the face `face` covers; nil when the host can't tell.
+    private func addedSkin(before: EncodedImage, after: EncodedImage, face: MaskData, within area: MaskData) async throws -> Double? {
+        guard let was = try await host.skin(before, face: face, person: area),
+              let now = try await host.skin(after, face: face, person: area) else { return nil }
+        // A hand moved a little is not a new one.
+        let near = was.resized(to: area.size).grown(by: max(1, min(area.size.width, area.size.height) / 100))
+        let found = now.resized(to: area.size)
+        var inside = 0, new = 0
+        for index in area.coverage.indices where area.coverage[index] >= 128 {
+            inside += 1
+            if found.coverage[index] >= 128 && near.coverage[index] < 128 { new += 1 }
+        }
+        return inside > 0 ? Double(new) / Double(inside) : nil
+    }
+
+    /// The share of a build's area that may turn to bare skin: a pair of forearms drawn over a T-shirt is far more.
+    static let addedSkinLimit = 0.02
+
+    /// What `after`, a redraw of the crop `before`, clearly drew past `outline` (the crop's size), beyond a band of 1.5%
+    /// of the crop's short side its edge may shift by, as a share of the outline; nil when the host can't tell.
+    private func drawnPast(_ outline: MaskData, before: EncodedImage, after: EncodedImage, short: Double) async throws -> Double? {
+        guard let drawn = try await host.drawn(after, over: before, beyond: outline, reach: max(2, Int((short * 0.06).rounded()))) else {
             return nil
         }
+        let edge = outline.grown(by: max(1, Int((short * 0.015).rounded())))
+        var inside = 0, past = 0
+        for index in outline.coverage.indices {
+            if outline.coverage[index] >= 128 { inside += 1 }
+            if drawn.coverage[index] >= 128 && edge.coverage[index] < 128 { past += 1 }
+        }
+        return inside > 0 ? Double(past) / Double(inside) : nil
     }
+
+    /// The share of a build's outline it may draw past it: an arm drawn at a man's side is several times more.
+    static let drawnPastLimit = 0.02
+
+    /// How much of the band just inside `outline` (the crop's size) that a build is placed over only softly `after`, a
+    /// redraw of the crop `before`, clearly changed, as a share of the band; nil when the host can't tell. A redraw that
+    /// drew the body narrower there left a see-through strip of the old torso over the grass.
+    private func edgeMoved(_ outline: MaskData, before: EncodedImage, after: EncodedImage, short: Double) async throws -> Double? {
+        let band = max(2, Int((short * Self.buildEdge).rounded()))
+        let inside = outline.inverted().grown(by: band).inverted()
+        guard let drawn = try await host.drawn(after, over: before, beyond: inside, reach: band) else { return nil }
+        var edge = 0, changed = 0
+        for index in outline.coverage.indices where outline.coverage[index] >= 128 && inside.coverage[index] < 128 {
+            edge += 1
+            if drawn.coverage[index] >= 128 { changed += 1 }
+        }
+        return edge > 0 ? Double(changed) / Double(edge) : nil
+    }
+
+    /// The share of that band a build may change: a black T-shirt redrawn black there changes little.
+    static let edgeMovedLimit = 0.2
+
+    /// How far in from the warped outline a build is placed, as a share of the crop's short side.
+    static let buildEdge = 0.025
+
+    /// The longest edge a crop to warp is rendered at.
+    static let warpLongEdge = 4096
 
     /// Redraws the rest of a person's bare skin (their hands and arms, a bare chest) as their style has it, in its own
     /// close-up so the face's redraw keeps its detail: a face made 30 years older over young hands, or zombie make-up
@@ -1083,7 +1178,9 @@ public actor EditAgent {
         let expanded = NormalizedRect(x: box.x - box.width * 0.25, y: box.y - box.height * 0.25,
                                       width: box.width * 1.5, height: box.height * 1.5)
         guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
-        let image = try await host.render(region: rect, maxLongEdge: 2048)
+        // At the photo's own resolution, up to 4096 px: a warped crop enlarged onto a 6000 px photo got the unmoved
+        // photo's fine detail back, and a friend's finger across a man's side showed a second, thin outline.
+        let image = try await host.render(region: rect, maxLongEdge: Self.warpLongEdge)
         try checkCancellation()
         let started = Date()
         let original = region.mask.cropped(to: rect).resized(to: image.size)
@@ -1102,8 +1199,10 @@ public actor EditAgent {
         }
         let changes = [("shoulders", amount.shoulders), ("waist", amount.waist)].map { (name: $0.0, change: $0.1) }
         let note = style.limits.map { Self.shapeNote(changes, limits: $0) } ?? ""
+        // Moved pixels, not new ones from a model: none of the unmoved photo's detail is added back over them.
         let notes = try await place(shaped.image, mask: shaped.changed.grown(by: 1).blurred(by: 1), rect: rect, label: label,
-                                    region: key, kind: .style, notes: [note].filter { !$0.isEmpty }, redraws: &redraws, events: events)
+                                    region: key, kind: .style, notes: [note].filter { !$0.isEmpty }, drawsNew: true,
+                                    redraws: &redraws, events: events)
         return (notes, shaped.outline.map { $0.placed(over: rect, in: region.mask.size) })
     }
 
@@ -1128,20 +1227,10 @@ public actor EditAgent {
         return max(0, limits.least - largest) + max(0, largest - limits.most) + max(0, waist - (limits.widestWaist ?? .infinity))
     }
 
-    /// How a build redrawn on a reshaped body kept its outline, for the critic. Told "shoulders +2%, waist +1%" in a
-    /// Shape note after the warp's own, the critic took it for the whole change and asked for a V-taper three times.
-    static func keptNote(_ changes: [(name: String, change: Double)]) -> String {
-        func percent(_ value: Double) -> String {
-            let rounded = Int((value * 100).rounded())
-            return rounded < 0 ? "−\(-rounded)%" : "+\(rounded)%"
-        }
-        let moved = changes.map { "\($0.name) \(percent($0.change))" }.joined(separator: ", ")
-        return "\(keptBuild); against the warp's new outline it moved \(moved), and up to 5% keeps it: the body's change "
-            + "is the warp's Shape note."
-    }
-
-    /// What a note on a build redrawn on a reshaped body starts with.
-    static let keptBuild = "The build was redrawn on the reshaped body"
+    /// The note on a build redrawn on a reshaped body, for the critic: told the redraw's own outline numbers after the
+    /// warp's, it took them for the whole change and asked for a V-taper three times.
+    static let keptBuild = "The build was redrawn inside the warp's new outline and placed within it, so the outline is "
+        + "the warp's: the body's change is the warp's Shape note."
 
     /// The outline's change in words, for the critic: "Shape: shoulders +6%, waist −5% (a believable change is 2% to 12%)."
     static func shapeNote(_ changes: [(name: String, change: Double)], limits: ShapeLimits) -> String {

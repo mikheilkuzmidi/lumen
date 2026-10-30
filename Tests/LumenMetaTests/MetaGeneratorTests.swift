@@ -69,6 +69,39 @@ import UniformTypeIdentifiers
     #expect(sent.height == 1024)
 }
 
+/// Given a crop 1335 × 2048, Muse Image scaled it to fill 1280 × 1984 and cut the extra off the sides; stretched back,
+/// its content came out too wide around the middle. An answer cut to its own shape goes back as it was fitted.
+@Test func anAnswerCutToMuseImagesOwnShapeGoesBackWhereItWas() async throws {
+    // A 200 × 100 crop with dark lines at x 50 and 150; the answer is it cut to 180 × 100 (x 10..<190), as Muse Image fits.
+    func png(width: Int, height: Int, dark: (Int) -> Bool) throws -> Data {
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height { for x in 0..<width {
+            let v: UInt8 = dark(x) ? 10 : 230
+            bytes[(y * width + x) * 4 ..< (y * width + x) * 4 + 4] = [v, v, v, 255]
+        } }
+        let context = try #require(CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                             space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try #require(context.makeImage())
+        let output = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return output as Data
+    }
+    let crop = EncodedImage(data: try png(width: 200, height: 100) { $0 == 50 || $0 == 150 }, format: .png, size: PixelSize(width: 200, height: 100))
+    let answer = try png(width: 180, height: 100) { $0 == 40 || $0 == 140 }
+    let placed = try PhotoPNG.placed(answer, over: crop)
+    let source = try #require(CGImageSourceCreateWithData(placed.data as CFData, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+    var bytes = [UInt8](repeating: 0, count: 200 * 100 * 4)
+    let context = try #require(CGContext(data: &bytes, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 800,
+                                         space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.draw(image, in: CGRect(x: 0, y: 0, width: 200, height: 100))
+    func darkest(_ columns: Range<Int>) -> Int { columns.min { bytes[(50 * 200 + $0) * 4] < bytes[(50 * 200 + $1) * 4] }! }
+    #expect(darkest(30..<70) == 50 && darkest(130..<170) == 150, "the lines where the crop had them, not stretched outward")
+    #expect(bytes[(50 * 200 + 3) * 4] > 200, "the strip the answer cut off is the crop's")
+}
+
 @Test func generatorRejectsMalformedAnswers() async throws {
     let photo = try recordedPhoto()
     for answer in [#"{"data":[]}"#, #"{"data":[{"b64_json":"?"}]}"#, #"{"data":[{"b64_json":"AQID"}]}"#, "broken"] {

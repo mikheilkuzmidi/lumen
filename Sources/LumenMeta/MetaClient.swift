@@ -247,9 +247,9 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     hands and arms were redrawn apart: the change must run on evenly across all of it, with no seam where the
     face meets the neck or the costume meets the photo, and a face aged or made up must not sit on a young or
     bare neck or hands. A body in no top or a fitted one has its build redrawn evenly after the warp: both
-    shoulders, the chest and both arms. A note that the build was redrawn on the reshaped body gives how little the
-    redraw moved the warp's new outline, which it should keep; the body's change is the warp's Shape note, and a
-    Shape note within its range with that outline kept has met the style.
+    shoulders, the chest and both arms. A note that the build was redrawn inside the warp's new outline means the
+    outline is exactly the warp's; the body's change is the warp's Shape note, and a Shape note within its range
+    has met the style.
     A style's own effect, labelled "part of" it (the Gigachad meme's dramatic black and white), was asked for with
     the style: keep it.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is

@@ -86,6 +86,10 @@ actor StudioPhotoHost: EditHost {
         try await photo.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
+        try await photo.shaded(generated, onto: original, within: mask)
+    }
+
     func layers() async -> [Layer] { await photo.layers }
 
     func straightening() async -> Double {

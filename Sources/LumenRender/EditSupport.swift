@@ -68,6 +68,11 @@ public enum EditSupport {
         try DrawnArea.drawn(generated, over: original, beyond: mask, reach: reach)
     }
 
+    /// `original` with the broad light and shade of `generated` laid over it under `mask` (`ShadeTransfer`).
+    public static func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) throws -> EncodedImage? {
+        try ShadeTransfer.shaded(generated, onto: original, within: mask)
+    }
+
     /// `photo` at `size`, in CIELAB, rows from the top.
     static func sampledColours(_ photo: CIImage, size: PixelSize, context: CIContext) -> [ColourMeasurement] {
         let sample = PhotoCompositor.resized(photo, to: CGRect(x: 0, y: 0, width: size.width, height: size.height))

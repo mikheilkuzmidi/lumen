@@ -89,8 +89,11 @@ enum PhotoCompositor {
             a.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: b]).cropped(to: patch.extent)
         }
         let detail = sum(lightness(base, 1), lightness(blurred, -1))
-        // How far the patch strays from the softened photo, less what it strays by over a wider area.
-        let strays = sum(lightness(patch, 1), lightness(blurred, -1))
+        // How far the patch strays from the softened photo, less what it strays by over a wider area, in lightness as
+        // the eye sees it (about its square root): in linear light a green logo on a black T-shirt is a step of 0.1,
+        // and its edges came back faintly beside the logo the redraw drew.
+        func seen(_ image: CIImage) -> CIImage { lightness(image, 1).applyingFilter("CIGammaAdjust", parameters: ["inputPower": 0.5]) }
+        let strays = sum(seen(patch), scaled(seen(blurred), -1))
         let wide = strays.clampedToExtent().applyingGaussianBlur(sigma: min(40, sigma * 10)).cropped(to: patch.extent)
         let local = sum(strays, scaled(wide, -1))
         // 1 where it keeps the photo, down to none at 0.1 of linear lightness off it.

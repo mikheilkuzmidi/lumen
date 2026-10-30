@@ -41,7 +41,7 @@ public struct MetaGenerator: Generator {
             guard let base64 = answer.data.first?.b64_json, let image = Data(base64Encoded: base64) else {
                 throw MetaHTTP.invalid("No valid image in data[0].b64_json.")
             }
-            let photo = try PhotoPNG.encode(image, size: request.image.size)
+            let photo = try PhotoPNG.placed(image, over: request.image)
             usage.cost = configuration.recordsCost ? MetaPricing.cost(model: modelID, images: answer.data.count) : nil
             ModelUsageReporting.report?(usage)
             return photo
@@ -57,6 +57,42 @@ public struct MetaGenerator: Generator {
 }
 
 enum PhotoPNG {
+    /// Muse Image's `answer` put back over the crop it was given. It answers at sizes of its own: given a crop 1335 ×
+    /// 2048, it scaled it to fill 1280 × 1984 and cut the 13 px it had too many off the sides. Stretched back to the
+    /// crop's shape, its content came out 0.8% too wide around the middle, and a body redrawn in it sat 15 to 20 px in
+    /// from where it was. The answer is scaled back as it was fitted, centred, and the strips it cut off are the crop's.
+    static func placed(_ answer: Data, over original: EncodedImage) throws -> EncodedImage {
+        let size = original.size
+        guard size.width > 0, size.height > 0,
+              let source = CGImageSourceCreateWithData(answer as CFData, nil),
+              let drawn = CGImageSourceCreateImageAtIndex(source, 0, nil), drawn.width > 0, drawn.height > 0 else {
+            throw MetaHTTP.invalid("Could not decode the photo.")
+        }
+        let scale = max(Double(drawn.width) / Double(size.width), Double(drawn.height) / Double(size.height))
+        let width = Double(drawn.width) / scale, height = Double(drawn.height) / scale
+        // The same shape, near enough: a plain resize.
+        if Double(size.width) - width < 0.5, Double(size.height) - height < 0.5 { return try encode(answer, size: size) }
+        let crop = try encode(original.data, size: size)
+        guard let base = CGImageSourceCreateWithData(crop.data as CFData, nil).flatMap({ CGImageSourceCreateImageAtIndex($0, 0, nil) }),
+              let context = CGContext(data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            throw MetaHTTP.invalid("Could not place the answer.")
+        }
+        context.interpolationQuality = .high
+        context.draw(base, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        context.draw(drawn, in: CGRect(x: (Double(size.width) - width) / 2, y: (Double(size.height) - height) / 2,
+                                       width: width, height: height))
+        let output = NSMutableData()
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {
+            throw MetaHTTP.invalid("Could not encode the photo as PNG.")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { throw MetaHTTP.invalid("Could not finish the PNG.") }
+        return EncodedImage(data: output as Data, format: .png, size: size)
+    }
+
     static func encode(_ data: Data, size: PixelSize) throws -> EncodedImage {
         guard size.width > 0, size.height > 0,
               let source = CGImageSourceCreateWithData(data as CFData, nil),

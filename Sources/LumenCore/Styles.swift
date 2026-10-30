@@ -44,7 +44,7 @@ public struct PersonStyle: Equatable, Sendable {
     /// A body's build drawn inside its outline after the warp has moved it, where the build shows (no top, or a fitted
     /// one). Asked for broader shoulders again over a warped body, Muse Image drew them back as they had been.
     public var buildChange: String?
-    /// Whether the redraw keeps the part's outline where it is, so its mask reaches only a little past it.
+    /// Whether the redraw keeps the part's outline where it is: it is placed only inside it, a little in from its edge.
     public var keepsOutline = false
 
     /// A part of a person a style redraws besides its own, found on them or, for what isn't there yet, made room for.
@@ -211,7 +211,7 @@ public struct PersonStyle: Equatable, Sendable {
         case .subtler: text += " Make the change subtler, about half as much: it went too far."
         case .stronger: text += " Make the change clearly visible: it was too slight to see."
         case .sameTone: text += " Keep the skin exactly the photo's own tone, light and colour cast: the last try came out a different tone, which shows as a seam."
-        case .sameOutline: text += " Keep the body exactly as wide as it is at the shoulders and the waist, every edge where it is: the last try made it narrower or wider."
+        case .samePose: text += " Keep their pose and outline exactly: the last try drew arms or hands that aren't in the photo, or moved the body's edge. Draw none where none show, and keep every edge where it is."
         }
         // Told to keep exactly the photo's skin tone, a face asked to age greyed its hair and kept its young skin.
         let stays = self.part == .body
@@ -250,14 +250,15 @@ public struct PersonStyle: Equatable, Sendable {
         return style
     }
 
-    /// The body style as its build is drawn inside an outline the warp already moved: the build only, the outline
-    /// kept within a few percent; nil for a style with no build to draw.
+    /// The body style as its build is drawn inside an outline the warp already moved: the build only, placed inside that
+    /// outline so it can't move it; nil for a style with no build to draw.
     public func built() -> PersonStyle? {
         guard part == .body, let buildChange else { return nil }
         var style = self
         style.change = buildChange + " Their outline is already the new shape: keep its width, size and every edge "
-            + "exactly where they are, and draw the build inside it."
-        style.limits = ShapeLimits(least: 0, most: 0.05, measures: "shoulders and waist", widestWaist: 0.03)
+            + "exactly where they are, and draw the build inside it. Keep their pose exactly: arms and hands only where "
+            + "they are now, and none added where none show."
+        style.limits = nil
         style.reshape = nil
         style.buildChange = nil
         style.keepsOutline = true
@@ -268,7 +269,7 @@ public struct PersonStyle: Equatable, Sendable {
     /// their head is no longer the shape it was, and that is the point.
     public var dressesUp: Bool { pieces.contains(.top) || pieces.contains(.hat) }
 
-    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone, sameOutline }
+    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone, samePose }
 
     /// Whether the part keeps the photo's own colour: all but those that recolour it (make-up, dyed or greying hair, a
     /// costume).

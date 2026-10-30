@@ -193,4 +193,5 @@ import Testing
     #expect(MetaPlanner.critiquePrompt.contains("must still be clearly the same person"))
     #expect(MetaPlanner.critiquePrompt.contains("its effect is\nalready on, so give effect none"))
     #expect(MetaPlanner.critiquePrompt.contains("judge a body style by the Shape note and the outline"))
+    #expect(MetaPlanner.critiquePrompt.contains("Look at every finger and thumb in the close-ups"))
 }

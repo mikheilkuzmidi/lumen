@@ -246,7 +246,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     what was redrawn with the face or head (their neck and ears, their clothes, room for a hat) and whether their
     hands and arms were redrawn apart: the change must run on evenly across all of it, with no seam where the
     face meets the neck or the costume meets the photo, and a face aged or made up must not sit on a young or
-    bare neck or hands. A body in no top or a fitted one has its build redrawn evenly after the warp: both
+    bare neck or hands. Look at every finger and thumb in the close-ups: one left in its own colour is not met.
+    A body in no top or a fitted one has its build redrawn evenly after the warp: both
     shoulders, the chest and both arms. A note that the build was redrawn inside the warp's new outline means the
     outline is exactly the warp's; the body's change is the warp's Shape note, and a Shape note within its range
     has met the style.

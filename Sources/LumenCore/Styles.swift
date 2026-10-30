@@ -240,8 +240,10 @@ public struct PersonStyle: Equatable, Sendable {
             change = change.replacingOccurrences(of: "hands and arms", with: "hands")
             parts = "hands in this picture"
         }
-        return "Edit this photo. \(change) Change only the bare skin of the \(parts); keep their clothes, their pose, what "
-            + "they hold or wear and everything else exactly as it is, in the photo's own light. Photorealistic."
+        // Asked for the hands, Muse Image made a man's hand up as a zombie's and left its sunlit thumb pink.
+        return "Edit this photo. \(change) Change only the bare skin of the \(parts), all of it: every finger and the thumb, "
+            + "to their tips. Keep their clothes, their pose, what they hold or wear and everything else exactly as it is, "
+            + "in the photo's own light. Photorealistic."
     }
 
     /// The costume style dressed as `outfit`, as the planner put it.

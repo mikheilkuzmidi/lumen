@@ -427,6 +427,8 @@ struct StyleTests {
         #expect(hands.first?.contains("Cover this person's hands and arms in grey-green theatrical body paint") == true)
         #expect(hands.last?.contains("Cover this person's hands in grey-green theatrical body paint") == true
                 && hands.last?.contains("Change only the bare skin of the hands in this picture") == true)
+        // A sunlit thumb was left pink: every finger and the thumb are named.
+        #expect(hands.allSatisfy { $0.contains("every finger and the thumb, to their tips") })
         #expect(await host.patchMasks.count == 2, "the face, then the hands")
     }
 

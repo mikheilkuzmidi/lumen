@@ -119,6 +119,8 @@ Lumen Studio's library reviews its contact sheets and plans its groups with the 
 
 With the nested schema, the run finished in 22 minutes, all on the Mac at no cost. Glimmer described each photo correctly and flagged both misfires, the shaken frame ("motion blur, subject smeared") and the pocket shot ("severely underexposed near-black frame"). The other 14 got Auto, and the three measured as tilted were straightened. The run's first review attempt hit the 600 s limit then in place, and the retry answered from the cached prompt.
 
+Run again on the final code with nothing else using the GPU, the review answered at the first attempt: 4,919 tokens in 405 s, at 12.8 tokens/s. The whole library took 6.8 minutes, with the same flags, Auto and straightening.
+
 ## What was verified
 
 On October 26, 2026, the whole package built and the full `swift test` run passed using Swift 6 strict concurrency. SwiftPM's own sandbox was disabled for this restricted build environment. The existing paid live suite stayed disabled, and the existing pixel-rendering tests skipped where Core Image was unavailable.

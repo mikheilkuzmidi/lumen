@@ -18,6 +18,7 @@ enum StudioStyle {
     static let danger = Color(hex: 0xEC4868)
     static let success = Color(hex: 0x5ED39A)
     static let tint = Color(hex: 0x8C8C92)
+    static let track = Color(hex: 0x3A3A3E)
     static let regionColors: [Color] = [accent, .cyan, .mint, .pink, .yellow, .purple]
 
     static let radius: CGFloat = 6
@@ -96,12 +97,13 @@ struct StudioProgressBar: View {
     let total: Double
 
     var body: some View {
+        // The fill is cut by the track's shape, so 2% shows the track's rounded end filled, not a thin bar.
         GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.1))
-                Capsule().fill(StudioStyle.accent)
-                    .frame(width: geometry.size.width * (total > 0 ? min(1, max(0, value / total)) : 0))
-            }
+            Capsule().fill(StudioStyle.track)
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(StudioStyle.accent).frame(width: geometry.size.width * (total > 0 ? min(1, max(0, value / total)) : 0))
+                }
+                .clipShape(Capsule())
         }
         .frame(height: 8)
         .accessibilityElement()

@@ -117,9 +117,9 @@ Lumen Studio's library reviews its contact sheets and plans its groups with the 
 - **The review ran out of time.** A constrained review of 16 photos ran to 4,560 written tokens: 485 s at 9.4 tokens/s, with Photoeditor's QA sweep sharing the GPU. A review now has 1,200 s and a plan or critique 600 s, where the hosted planners keep 180 s ([#71](https://github.com/mikheilkuzmidi/lumen/issues/71)).
 - **One failed review failed every photo in it.** Now those photos are judged by measurement, as with no reviewer, and each notes why; they still get their base pass ([#69](https://github.com/mikheilkuzmidi/lumen/issues/69)).
 
-With the nested schema, the run finished in 22 minutes, all on the Mac at no cost. Glimmer described each photo correctly and flagged both misfires, the shaken frame ("motion blur, subject smeared") and the pocket shot ("severely underexposed near-black frame"). The other 14 got Auto, and the three measured as tilted were straightened. The run's first review attempt hit the 600 s limit then in place, and the retry answered from the cached prompt.
+With the nested schema, the run finished in 22 minutes, all on the Mac at no cost. Glimmer described each photo correctly and flagged both misfires, the shaken frame ("motion blur, subject smeared") and the pocket shot ("severely underexposed near-black frame"). The other 14 got Auto, and the three measured as tilted were straightened: the lake, the street and, wrongly, the café, whose converging verticals read as a roll ([#74](https://github.com/mikheilkuzmidi/lumen/issues/74)). The run's first review attempt hit the 600 s limit then in place, and the retry answered from the cached prompt.
 
-Run again on the final code with nothing else using the GPU, the review answered at the first attempt: 4,919 tokens in 405 s, at 12.8 tokens/s. The whole library took 6.8 minutes, with the same flags, Auto and straightening.
+Run again with nothing else using the GPU, the review answered at the first attempt: 4,919 tokens in 405 s, at 12.8 tokens/s, and the whole library took 6.8 minutes. After the café's fix, the library asked about two tilted photos and straightened only the lake and the street; that review wrote 6,518 tokens in 567 s.
 
 ## What was verified
 

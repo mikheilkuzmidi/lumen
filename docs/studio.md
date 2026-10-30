@@ -79,9 +79,9 @@ Selection and redraw snapshots are omitted when the plan never reaches those eve
 
 ## Library window
 
-![The Library window after Muse Spark's review: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten three tilted photos?), with a recommendation](images/studio-library-question.jpg)
+![The Library window after Muse Glimmer's review on this Mac: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten the two tilted photos, highlighted?), with a recommendation](images/studio-library-question.jpg)
 
-![The Library window in plan-first mode: Muse Wonder's plan for "Make everyone's T-shirts blue", its photo highlighted, the estimate, and Stop or Approve Plan](images/studio-library-plan.jpg)
+![The Library window in plan-first mode: Muse Glimmer's plan for "Make everyone's T-shirts blue" across 16 photos, the photos it covers highlighted, the estimate, and Stop or Approve Plan](images/studio-library-plan.jpg)
 
 Choose **File › Open Folder…** (⇧⌘O), or drop a folder on a Studio window. Each folder opens its own Library window. Lumen lists JPEG, PNG and HEIC photos directly in that folder. The grid loads thumbnails as they become visible and keeps a bounded image cache, including for libraries of 1,000 photos.
 

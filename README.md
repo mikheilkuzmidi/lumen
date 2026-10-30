@@ -58,7 +58,7 @@ There are three modes:
 
 Results are written to a separate folder with a sidecar per photo, a summary of every answer and who gave it, and before and after contact sheets. The originals are never written. Lumen Studio has the same flow in its Library window (File › Open Folder).
 
-![Lumen Studio's Library after Muse Spark's review: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten three tilted photos?), with a recommendation](docs/images/studio-library-question.jpg)
+![Lumen Studio's Library after Muse Glimmer's review on this Mac: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten the two tilted photos, highlighted?), with a recommendation](docs/images/studio-library-question.jpg)
 
 ## Models
 

@@ -114,6 +114,8 @@ public actor EditAgent {
     private var history: [String] = []
     /// Each region redrawn in this run: where, and how it looked close up before its first redraw.
     private var closeUpsBefore: [(region: String, rect: NormalizedRect, image: EncodedImage)] = []
+    /// The people in this run's photo, found once a shadow needs them: `.some(nil)` when there are none.
+    private var standingPeople: MaskData??
 
     public init(planner: any Planner, segmenter: any Segmenter, generator: any Generator, host: any EditHost,
                 configuration: AgentConfiguration = AgentConfiguration()) {
@@ -208,6 +210,7 @@ public actor EditAgent {
             var run = Run()
             var redraws: [String: Layer.ID] = [:]
             closeUpsBefore = []
+            standingPeople = nil
             guard configuration.maxSteps > 0 else {
                 finish("Step limit reached.", events: events)
                 return
@@ -490,7 +493,17 @@ public actor EditAgent {
                      events: events)
                 return nil
             }
+            let caster = mask
             mask = mask.castShadow(tip: tip)
+            // Ground behind someone standing in front of it isn't seen: a parked motorbike's long shadow crossed the
+            // legs of the man in front of it. Every person but the shadow's own caster is kept out of it.
+            if let people = try await people(in: image, events: events) {
+                let others = (people.size == caster.size ? people : people.resized(to: caster.size)).multiplied(by: caster.inverted())
+                // Still a shadow laid on the ground, not an outline of the photo's own edges.
+                if others.boundingBox != nil {
+                    mask = MaskData(size: mask.size, coverage: mask.multiplied(by: others.inverted()).coverage, followsPhoto: false)
+                }
+            }
         } else if selection.invert {
             mask = mask.inverted()
         }
@@ -506,6 +519,17 @@ public actor EditAgent {
     }
 
     /// Keeps a selection's mask as a region later steps can use.
+    /// The people in this run's photo, found once for keeping shadows off them; nil when there are none.
+    private func people(in image: EncodedImage, events: Events) async throws -> MaskData? {
+        if let found = standingPeople { return found }
+        let segments = try await call(.select, model: segmenter.modelID, detail: "Find the people shadows fall behind", events: events) {
+            try await self.segmenter.segment(SegmentRequest(image: image, concept: "person"))
+        }
+        let union = segments.first.map { first in segments.dropFirst().reduce(first.mask) { $0.union($1.mask) } }
+        standingPeople = .some(union)
+        return union
+    }
+
     private func region(_ selection: Selection, mask: MaskData, label: String, score: Double? = nil,
                         events: Events) async throws -> Region? {
         guard let box = mask.boundingBox else {

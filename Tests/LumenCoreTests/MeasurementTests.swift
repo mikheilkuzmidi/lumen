@@ -154,6 +154,27 @@ struct CastShadowTests {
         #expect(masks == [StandingSegmenter.cup.castShadow(tip: tip)], "the shadow, not the cup or its inverse")
     }
 
+    /// Ground behind someone standing in front of it isn't seen: a parked motorbike's long shadow crossed the legs of
+    /// the man in front of it. A shadow keeps off every person but its own caster, and still reaches the ground past them.
+    @Test func aShadowKeepsOffAPersonStandingInFrontOfIt() async throws {
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "The car's long shadow", steps: [
+            .select(Selection(id: "shadow", concept: "car", shadowTip: NormalizedPoint(x: 0.95, y: 0.78))),
+            .adjust(Adjustment(region: "shadow", values: [.exposure: -1.8])),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: CarAndPersonSegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        for try await event in agent.run("Golden hour") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+        }
+        let shadow = try #require(masks.first)
+        let unblocked = CarAndPersonSegmenter.car.castShadow(tip: NormalizedPoint(x: 0.95, y: 0.78))
+        let size = shadow.size.width
+        let crossed = (0..<shadow.coverage.count).filter { CarAndPersonSegmenter.person.coverage[$0] > 0 && unblocked.coverage[$0] > 0 }
+        #expect(!crossed.isEmpty, "the test's shadow crosses the person")
+        #expect(crossed.allSatisfy { shadow.coverage[$0] == 0 }, "no shadow on the person")
+        #expect((0..<shadow.coverage.count).contains { $0 % size > 13 && shadow.coverage[$0] > 0 }, "the shadow goes on past them")
+    }
+
     /// A bench running off the bottom of the photo stands on no ground in it: its shadow, laid from the frame's edge,
     /// fell on the legs and hands of the man sitting on it. It casts none, and says why.
     @Test func aThingCutOffAtTheBottomCastsNoShadow() async throws {
@@ -180,6 +201,19 @@ private actor StandingSegmenter: Segmenter {
                               coverage: (0..<100).map { (2..<5).contains($0 % 10) && (2..<8).contains($0 / 10) ? 255 : 0 })
     func segment(_ request: SegmentRequest) async throws -> [Segment] {
         [Segment(label: "cup", box: Self.cup.boundingBox!, mask: Self.cup)]
+    }
+}
+
+/// A parked car at the left, and a person standing in front of the ground its shadow is laid across.
+private struct CarAndPersonSegmenter: Segmenter {
+    let modelID = "sam-3.1"
+    static let car = MaskData(size: PixelSize(width: 20, height: 20),
+                              coverage: (0..<400).map { (1..<7).contains($0 % 20) && (10..<16).contains($0 / 20) ? 255 : 0 })
+    static let person = MaskData(size: PixelSize(width: 20, height: 20),
+                                 coverage: (0..<400).map { (10..<13).contains($0 % 20) && (5..<19).contains($0 / 20) ? 255 : 0 })
+    func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        let mask = request.concept == "person" ? Self.person : Self.car
+        return [Segment(label: request.concept ?? "car", box: mask.boundingBox!, mask: mask)]
     }
 }
 

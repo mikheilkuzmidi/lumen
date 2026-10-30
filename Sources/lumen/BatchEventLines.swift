@@ -18,7 +18,7 @@ struct BatchEventLines {
         switch event {
         case .found(let count):
             total = count
-            return ["Found \(count) photos."]
+            return ["Found \(count) \(count == 1 ? "photo" : "photos")."]
         case .measured:
             measured += 1
             return []
@@ -27,7 +27,7 @@ struct BatchEventLines {
         var lines: [String] = []
         if !measurementsPrinted {
             measurementsPrinted = true
-            lines.append("Measured \(measured) of \(total) photos.")
+            lines.append("Measured \(measured) of \(total) \(total == 1 ? "photo" : "photos").")
         }
         switch event {
         case .reviewed(let review):
@@ -43,7 +43,7 @@ struct BatchEventLines {
         case .planned(let plan):
             lines.append("Plan: \(oneLine(plan.summary))")
             for group in plan.groups {
-                lines.append("  \(oneLine(group.title)): \(group.photos.count) photos; \(oneLine(group.instruction ?? "Base pass only"))")
+                lines.append("  \(oneLine(group.title)): \(group.photos.count) \(group.photos.count == 1 ? "photo" : "photos"); \(oneLine(group.instruction ?? "Base pass only"))")
             }
         case .answered(let answer):
             lines.append("Answer [\(oneLine(answer.question.id))]: \(oneLine(answer.answer)) (\(answer.byPerson ? "person" : "recommendation"))")
@@ -55,11 +55,11 @@ struct BatchEventLines {
             if let text = progress.accept(event) { lines.append("\(oneLine(photo.rawValue)): \(text)") }
             edits[photo] = progress
         case .editFinished(let result): edits[result.photo] = nil
-        case .progress(let done, let total): lines.append("Progress: \(done)/\(total) photos")
+        case .progress(let done, let total): lines.append("Progress: \(done)/\(total) \(total == 1 ? "photo" : "photos")")
         case .finished(let summary):
             let flagged = summary.photos.filter { $0.flagged != nil }.count
             let failed = summary.photos.filter(\.failed).count
-            lines.append("Finished: \(summary.photos.count) photos, \(flagged) flagged, \(failed) failed; \(summary.modelCalls) model calls, \(seconds(summary.duration)); \(dollars(summary.totalCost)) USD.")
+            lines.append("Finished: \(summary.photos.count) \(summary.photos.count == 1 ? "photo" : "photos"), \(flagged) flagged, \(failed) failed; \(summary.modelCalls) model \(summary.modelCalls == 1 ? "call" : "calls"), \(seconds(summary.duration)); \(dollars(summary.totalCost)) USD.")
         default: break
         }
         return lines

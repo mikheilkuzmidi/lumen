@@ -84,7 +84,7 @@ struct StudioLibraryView: View {
             }
             HStack(spacing: 8) {
                 Text(model.folder?.lastPathComponent ?? "Library").font(StudioStyle.title).lineLimit(1)
-                Text("\(model.photos.count) photos").font(StudioStyle.value).foregroundStyle(StudioStyle.textSecondary)
+                Text("\(model.photos.count) \(model.photos.count == 1 ? "photo" : "photos")").font(StudioStyle.value).foregroundStyle(StudioStyle.textSecondary)
             }
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))

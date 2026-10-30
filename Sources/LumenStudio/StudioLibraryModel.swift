@@ -101,7 +101,7 @@ final class StudioLibraryModel {
         hasRun = false
         resetRun()
         total = photos.count
-        status = photos.isEmpty ? "No JPEG, PNG or HEIC photos in this folder" : "\(photos.count) photos ready"
+        status = photos.isEmpty ? "No JPEG, PNG or HEIC photos in this folder" : "\(photos.count) \(photos.count == 1 ? "photo" : "photos") ready"
     }
 
     func changeOutput(_ url: URL) async throws {
@@ -233,7 +233,7 @@ final class StudioLibraryModel {
         var symbol = "checkmark"
         var trace: TraceEvent?
         switch event {
-        case .found(let count): total = count; title = "Measuring \(count) photos"; symbol = "viewfinder"
+        case .found(let count): total = count; title = "Measuring \(count) \(count == 1 ? "photo" : "photos")"; symbol = "viewfinder"
         case .measured(let photo, let facts):
             states[photo]?.facts = facts
             states[photo]?.badges.insert(.measured)
@@ -289,7 +289,7 @@ final class StudioLibraryModel {
         case .finished(let summary):
             self.summary = summary; modelCalls = summary.modelCalls
             for result in summary.photos { apply(result); refreshPhoto(result.photo) }
-            title = "Finished · \(summary.photos.count) photos"; symbol = "checkmark.seal"
+            title = "Finished · \(summary.photos.count) \(summary.photos.count == 1 ? "photo" : "photos")"; symbol = "checkmark.seal"
         case .trace(let value): trace = value; title = value.kind.rawValue.capitalized; detail = value.detail; symbol = "waveform.path"
         }
         if let trace {

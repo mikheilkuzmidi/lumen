@@ -267,6 +267,14 @@ struct BatchTests {
         #expect(lines.accept(.progress(done: 2, total: 1000)) == ["Progress: 2/1000 photos"])
     }
 
+    @Test func oneCountsAsOnePhoto() {
+        var lines = BatchEventLines(photos: [PhotoID("only.jpg")])
+        #expect(lines.accept(.found(count: 1)) == ["Found 1 photo."])
+        let facts = PhotoFacts(size: PixelSize(width: 10, height: 10), sharpness: 0.8, exposure: 0.5)
+        #expect(lines.accept(.measured(PhotoID("only.jpg"), facts)).isEmpty)
+        #expect(lines.accept(.progress(done: 1, total: 1)) == ["Measured 1 of 1 photo.", "Progress: 1/1 photo"])
+    }
+
     @Test(.enabled(if: PhotoFixtures.renderingAvailable, "Core Image rendering is unavailable on this host."))
     func folderLibraryExportsUntouchedAndFlaggedPhotosWithSidecars() async throws {
         let folder = try PhotoFixtures.folder()

@@ -133,6 +133,20 @@ struct BatchAgentTests {
         #expect(await library.rotations == [PhotoID("photo-0"): 2.9, PhotoID("photo-3"): -2])
     }
 
+    @Test func oneTiltedPhotoIsAskedAboutAsOne() async throws {
+        let library = BatchTestLibrary([batchTestFacts(tilt: 0.2), batchTestFacts(tilt: -2.5)])
+        let agent = batchTestAgent(library)
+        var asked: [String] = []
+        for try await event in await agent.run(BatchOptions(mode: .askWhenUnsure, auto: false, qualityThreshold: 0)) {
+            if case .question(let question) = event {
+                asked.append(question.question)
+                await agent.answer(question.id, with: "Leave them")
+            }
+            if case .awaitingApproval = event { await agent.approve() }
+        }
+        #expect(asked == ["1 photo looks tilted, by 2.5°. Straighten it?"])
+    }
+
     @Test(arguments: BatchMode.allCases)
     func undecidedStraighteningAsksOrTakesTheRecommendation(mode: BatchMode) async throws {
         let library = BatchTestLibrary([batchTestFacts(tilt: 0.8), batchTestFacts(tilt: 1), batchTestFacts(tilt: -2.5)])

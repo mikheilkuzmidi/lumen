@@ -188,7 +188,7 @@ actor BatchRun {
         guard !inputs.isEmpty else { return }
         do {
             let request = ReviewRequest(instruction: options.instruction, photos: inputs)
-            let response = try await call(.critique, model: reviewer.modelID, detail: "Review \(inputs.count) photos") {
+            let response = try await call(.critique, model: reviewer.modelID, detail: "Review \(inputs.count) \(inputs.count == 1 ? "photo" : "photos")") {
                 try await reviewer.review(request)
             }
             for input in inputs {
@@ -309,7 +309,8 @@ actor BatchRun {
         let tilts = tilted.compactMap { facts[$0]?.tilt }.map(abs)
         let maximum = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), tilts.max() ?? 0)
         let recommended = tilts.filter { $0 >= 1 }.count > tilts.count / 2 ? 0 : 1
-        let question = BatchQuestion(id: "straighten", question: "\(tilted.count) photos look tilted, by up to \(maximum)°. Straighten them?",
+        let question = BatchQuestion(id: "straighten", question: tilted.count == 1 ? "1 photo looks tilted, by \(maximum)°. Straighten it?"
+                                         : "\(tilted.count) photos look tilted, by up to \(maximum)°. Straighten them?",
                                      options: ["Straighten them", "Leave them"], recommended: recommended)
         return try await choose(question) == "Straighten them"
     }

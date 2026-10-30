@@ -31,6 +31,8 @@ enum BodyReshaping {
         let still = held.map { $0.grown(by: reach).blurred(by: Double(reach) / 2) }
         var moved = pixels
         var changed = [UInt8](repeating: 0, count: width * height)
+        let whole = mask.resized(to: PixelSize(width: width, height: height))
+        var outline = whole.coverage
         for y in 0..<height {
             let gain = shape.gain(at: y, shoulders: shoulders, waist: waist)
             guard abs(gain) > 0.0005, let centre = shape.centre[y], let half = shape.half[y] else { continue }
@@ -61,10 +63,14 @@ enum BodyReshaping {
                     moved[(y * width + x) * 4 + channel] = UInt8(min(255, max(0, value.rounded())))
                 }
                 changed[y * width + x] = 255
+                // The outline moves with the pixels, so what is redrawn after knows the body's new shape.
+                let near = whole.coverage[y * width + min(max(Int(source.rounded()), 0), width - 1)]
+                outline[y * width + x] = near
             }
         }
         return Reshaped(image: try RGBAPixels(width: width, height: height, bytes: moved).encoded(),
-                        changed: MaskData(size: PixelSize(width: width, height: height), coverage: changed))
+                        changed: MaskData(size: PixelSize(width: width, height: height), coverage: changed),
+                        outline: MaskData(size: PixelSize(width: width, height: height), coverage: outline))
     }
 
     /// A person's outline, row by row: its centre and half width, smoothed over a few rows so a hand or a strap doesn't

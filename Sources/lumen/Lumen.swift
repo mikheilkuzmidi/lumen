@@ -138,9 +138,11 @@ struct Styles: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List the person styles and effects an edit can use.")
 
     func run() {
-        print("Styles (redraw only the person's face, head or body):")
+        print("Styles (redraw only the person: their face, head or body, and what goes with it):")
         for style in PersonStyle.all {
-            let part = style.part.rawValue + (style.adultsOnly ? ", adults only" : "")
+            let with = PersonStyle.Piece.allCases.filter { style.pieces.contains($0) }.map(\.rawValue)
+            let part = style.part.rawValue + (with.isEmpty ? "" : " with " + with.joined(separator: ", "))
+                + (style.adultsOnly ? ", adults only" : "")
             print("  \(style.id.padding(toLength: 10, withPad: " ", startingAt: 0)) \(style.title) (\(part))")
         }
         print("Effects:")

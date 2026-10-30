@@ -697,36 +697,96 @@ public actor EditAgent {
                                kind: kind, notes: notes, redraws: &redraws, events: events)
     }
 
-    /// Restyles a person: redraws their face, head or body in a catalogue style, then grades the photo with the step's
-    /// effect, or the style's own.
+    /// Restyles a person: redraws their face, head or body in a catalogue style, with the other pieces of them it
+    /// covers (their neck and ears, their clothes, room for a hat, their hands apart), then grades the photo with the
+    /// step's effect, or the style's own.
     private func restyle(_ step: StyleStep, run: inout Run, redraws: inout [String: Layer.ID], events: Events) async throws {
         let person = try step.region.map { try region($0) }
-        let style = step.style.flatMap(PersonStyle.named)
+        var style = step.style.flatMap(PersonStyle.named)
+        if let outfit = step.outfit?.trimmingCharacters(in: .whitespacesAndNewlines), !outfit.isEmpty {
+            style = style?.dressed(as: outfit)
+        }
         let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
-            let part = try await part(style.part, of: person, withFace: style.ages, events: events)
+            let pieces = style.pieces.union((step.with ?? []).compactMap(PersonStyle.Piece.init(rawValue:)))
             // Where a body's shoulders and waist are, and what of it stays as it was: the warp, once, widened the head of
-            // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair.
-            let face = style.part == .body ? try await face(of: person, events: events) : nil
+            // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair. A face's
+            // neck and ears, and the rest of their skin, are found from it too.
+            let face = style.part == .body || !pieces.isEmpty ? try await face(of: person, events: events) : nil
+            let part = try await part(style.part, of: person, withFace: style.coversFace, face: face, events: events)
+            var skin: MaskData?
+            if let face, style.part == .body || !pieces.isDisjoint(with: [.neck, .skin, .top]) {
+                skin = try await self.skin(of: person, face: face.mask)
+            }
             let label = "\(title(person.info.id)): \(style.title)"
             var notes: [String] = []
-            var reshaped = false
-            if let amount = style.reshape,
-               let shaped = try await reshape(part, by: amount, face: face, keeping: held, style: style, label: label,
-                                              redraws: &redraws, events: events) {
-                notes += shaped
-                reshaped = true
+            var near: MaskData?
+            if let face = face?.mask, style.part != .body {
+                for piece in PersonStyle.Piece.allCases where pieces.contains(piece) {
+                    let found: MaskData? = switch piece {
+                    case .neck: PersonPieces.neck(face: face, person: person.mask, skin: skin)
+                    case .top: PersonPieces.top(face: face, person: person.mask, skin: skin)
+                    case .hat: PersonPieces.hat(face: face, head: style.part == .head ? part.mask : nil)
+                    case .skin: nil
+                    }
+                    if let found { near = near.map { $0.union(found) } ?? found }
+                }
             }
-            if style.redraws || !reshaped {
+            // What a body wears decides what its new build shows: bare or in a T-shirt, its chest, shoulders and arms are
+            // redrawn evenly with it; under a jacket only its outline moves.
+            let attire = style.part == .body
+                ? PersonPieces.attire(planned: step.wears, bareChest: face.flatMap { face in
+                    skin.flatMap { PersonPieces.bareChest(face: face.mask, person: person.mask, skin: $0) }
+                })
+                : nil
+            var reshaped = false
+            var outline: MaskData?
+            if let amount = style.reshape {
+                // A body restyled again is warped from the photo as it was, not over its last redraw: warped again over
+                // it, the shoulders were widened twice.
+                try await replaceRedraw(of: part.info.id, redraws: &redraws, events: events)
+                if let shaped = try await reshape(part, by: amount, face: face?.mask, keeping: held, style: style, label: label,
+                                                  redraws: &redraws, events: events) {
+                    notes += shaped.notes
+                    outline = shaped.outline
+                    reshaped = true
+                }
+            }
+            // Where the build shows, it is drawn inside the outline the warp moved, which the redraw keeps.
+            let built = reshaped && attire?.showsBuild == true ? style.built() : nil
+            let body = built.flatMap { _ in outline }.map { outline in
+                Region(info: RegionInfo(id: part.info.id, concept: part.info.concept, box: outline.boundingBox ?? part.info.box,
+                                        area: outline.area), mask: outline, asset: part.asset)
+            }
+            if style.redraws || !reshaped || body != nil {
                 do {
-                    notes += try await redraw(part, as: style, label: label, face: face, keeping: held, optional: reshaped,
-                                              redraws: &redraws, events: events)
+                    notes += try await redraw(body ?? part, as: body == nil ? style : built!, label: label,
+                                              face: style.part == .body ? face?.mask : nil, keeping: held, adding: near,
+                                              pieces: pieces, wears: attire, optional: reshaped, redraws: &redraws, events: events)
                 } catch {
                     // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
                     // gym-built redraw of a man beside his wife, twice.
                     let error = cancellationError(error)
                     guard reshaped, error as? LumenError != .cancelled else { throw error }
                     notes.append("The redraw of \(part.info.id) didn't work (\(error.localizedDescription)); the reshaped build stays.")
+                }
+            }
+            if let attire {
+                notes.append("The \(person.info.id) wears \(attire.words), so \(attire.showsBuild ? "their build was redrawn as well as their outline moved" : "only their outline moved").")
+            }
+            let covered = PersonStyle.Piece.allCases.filter { $0 != .skin && pieces.contains($0) }.map(\.words)
+            if near != nil, !covered.isEmpty {
+                notes.append("Redrawn with the \(style.part.rawValue): \(covered.joined(separator: "; ")).")
+            }
+            if pieces.contains(.skin), let face = face?.mask, let skin,
+               style.skinChange != nil, let rest = PersonPieces.rest(face: face, person: person.mask, skin: skin, near: near) {
+                do {
+                    notes += try await redrawSkin(rest, of: person, as: style, label: "\(label) (hands and arms)",
+                                                  redraws: &redraws, events: events)
+                } catch {
+                    let error = cancellationError(error)
+                    if error as? LumenError == .cancelled { throw error }
+                    notes.append("The redraw of the \(person.info.id)'s hands and arms didn't work (\(error.localizedDescription)).")
                 }
             }
             run.edit(person.info.id)
@@ -761,8 +821,11 @@ public actor EditAgent {
     /// What a style redraws of a person: the person for a body; otherwise their face or head, the largest one SAM finds
     /// that lies mostly on them, so in a group it is never the face beside theirs. A head `withFace` is their face as
     /// well: SAM's "head" was sometimes only the hair, and a face asked to grow 30 years older stayed as young as it was.
-    private func part(_ part: PersonStyle.Part, of person: Region, withFace: Bool = false, events: Events) async throws -> Region {
+    /// Their `face`, already found, is used as it is.
+    private func part(_ part: PersonStyle.Part, of person: Region, withFace: Bool = false, face known: Region? = nil,
+                      events: Events) async throws -> Region {
         if part == .body || person.info.concept?.lowercased().contains(part.concept) == true { return person }
+        if part == .face, let known { return known }
         let id = "\(person.info.id)-\(part.rawValue)"
         let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
         let request = SegmentRequest(image: image, concept: part.concept)
@@ -772,7 +835,10 @@ public actor EditAgent {
         let theirs = found.map { $0.mask.resized(to: person.mask.size) }
             .filter { Self.share(of: $0, inside: person.mask) >= 0.5 }
             .max { $0.area < $1.area }
-        let face = part == .head && withFace ? try await face(of: person, events: events) : nil
+        var face: MaskData?
+        if part == .head && withFace {
+            if let known { face = known.mask } else { face = try await self.face(of: person, events: events)?.mask }
+        }
         guard let theirs, let region = try await region(Selection(id: id, concept: part.concept),
                                                         mask: face.map { theirs.union($0.resized(to: theirs.size)) } ?? theirs,
                                                         label: part.concept, events: events) else {
@@ -782,15 +848,25 @@ public actor EditAgent {
         return region
     }
 
-    /// The face of a person whose body is restyled; nil when SAM finds none on them, as with their back to the camera.
-    private func face(of person: Region, events: Events) async throws -> MaskData? {
+    /// The face of a person whose body is restyled, or whose neck and skin are found from it; nil when SAM finds none
+    /// on them, as with their back to the camera.
+    private func face(of person: Region, events: Events) async throws -> Region? {
         do {
-            return try await part(.face, of: person, events: events).mask
+            return try await part(.face, of: person, events: events)
         } catch {
             let error = cancellationError(error)
             if error as? LumenError == .cancelled { throw error }
             return nil
         }
+    }
+
+    /// The person's bare skin, over the photo at their mask's size, as the host finds it by their face's colour; nil
+    /// when it can't.
+    private func skin(of person: Region, face: MaskData) async throws -> MaskData? {
+        let image = try await host.render(maxLongEdge: configuration.selectionLongEdge)
+        let size = image.size
+        let skin = try await host.skin(image, face: face.resized(to: size), person: person.mask.resized(to: size))
+        return skin?.resized(to: person.mask.size)
     }
 
     /// `mask` with nothing at or above the chin of `frame`, fading in below it.
@@ -813,14 +889,19 @@ public actor EditAgent {
     /// off where the person is, or smeared. Over loose clothes Muse Image's muscles came back with shoulders 21% wider
     /// or a waist 17% wider, and soft, where the reshape alone was clean.
     /// A body with its `face` known is redrawn only below the chin, and measured from it.
+    /// The `near` pieces of the person (over the photo, at the part's mask size) are redrawn with the part, in the same
+    /// close-up, and the prompt names each of `pieces`; what a body `wears` says how its new build shows.
     private func redraw(_ region: Region, as style: PersonStyle, label: String, face: MaskData? = nil, keeping held: MaskData? = nil,
+                        adding near: MaskData? = nil, pieces: Set<PersonStyle.Piece> = [], wears attire: Attire? = nil,
                         optional: Bool = false, redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
-        // Room around the part for its outline to grow into: broader shoulders, a wider jaw.
-        let margin = style.part == .body ? 0.25 : 0.3
-        let expanded = NormalizedRect(x: box.x - box.width * margin, y: box.y - box.height * margin,
-                                      width: box.width * (1 + 2 * margin), height: box.height * (1 + 2 * margin))
+        let whole = near?.boundingBox.map { box.union($0) } ?? box
+        // Room around the part for its outline to grow into: broader shoulders, a wider jaw. Pieces around it already
+        // make room (for a hat, a costume's coat), so less is added.
+        let margin = style.part == .body ? 0.25 : near == nil ? 0.3 : 0.15
+        let expanded = NormalizedRect(x: whole.x - whole.width * margin, y: whole.y - whole.height * margin,
+                                      width: whole.width * (1 + 2 * margin), height: whole.height * (1 + 2 * margin))
         guard let rect = expanded.onPhoto else { throw LumenError.invalidResponse("The region has no bounds.") }
         let image = try await host.render(region: rect, maxLongEdge: 2048)
         try checkCancellation()
@@ -831,17 +912,23 @@ public actor EditAgent {
         let short = Double(min(image.size.width, image.size.height))
         let original = region.mask.cropped(to: rect).resized(to: image.size)
         // A body's reaches 8% of the crop past it, for broader shoulders; a face's 5%, for a wider jaw or a beard: further,
-        // a head the redraw drew a little to one side showed twice through the soft edge, as a pale arc.
+        // a head the redraw drew a little to one side showed twice through the soft edge, as a pale arc. A build drawn
+        // inside an outline already moved reaches only 3% past it. A costume's reaches as far as a body's: a vampire's
+        // standing collar and the hem of his cape were cut off by a soft edge 5% past his jacket.
         // What the person holds stays as it was: the redraw doesn't show over it.
-        let grown = original.grown(by: max(2, Int((short * (style.part == .body ? 0.08 : 0.05)).rounded())))
+        let drawn = near.map { original.union($0.cropped(to: rect).resized(to: image.size)) } ?? original
+        let reach = style.keepsOutline ? 0.03 : style.part == .body || style.dressesUp ? 0.08 : 0.05
+        let grown = drawn.grown(by: max(2, Int((short * reach).rounded())))
         let frame = face.flatMap { BodyFrame(face: $0.cropped(to: rect).resized(to: image.size)) }
         let kept = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
         let mask = frame.map { Self.below($0, kept) } ?? kept
         let position = Self.place(of: box, in: rect)
         func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
-            let request = GenerateRequest(image: image, mask: mask, prompt: style.prompt(person: "person", place: position, firmer: firmness))
-            return try await redrawAttempt(request, original: original, concept: style.part.concept, region: region.info.id,
-                                           kind: .style, events: events)
+            let prompt = style.prompt(person: "person", place: position, firmer: firmness, pieces: pieces, wears: attire)
+            let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
+            // A costume changes the head's outline (a hat on it) on purpose, so it isn't looked for again to compare.
+            return try await redrawAttempt(request, original: original, concept: style.dressesUp ? nil : style.part.concept,
+                                           region: region.info.id, kind: .style, events: events)
         }
         var best = try await attempt(.asked)
         var notes: [String] = []
@@ -874,18 +961,20 @@ public actor EditAgent {
                     best = next
                 }
             }
-            if let changes = measured(best) { notes.append(Self.shapeNote(changes, limits: limits)) }
+            if let changes = measured(best) {
+                notes.append(style.keepsOutline ? Self.keptNote(changes) : Self.shapeNote(changes, limits: limits))
+            }
         }
         // A face redrawn warmer or cooler than the photo around it shows a seam where the redraw ends, down the neck:
         // Muse Image "corrected" a bluish phone photo's skin, and did again when told not to. The host gives the redraw
         // back the photo's own cast where it can; otherwise a drifted one is drawn once more, told so, and the closer kept.
-        if style.keepsTone, let matched = try await host.toneMatched(best.image, to: image, under: original) {
+        if style.keepsTone, let matched = try await host.toneMatched(best.image, to: image, under: drawn) {
             best.image = matched
-        } else if style.keepsTone, let drift = try await toneDrift(from: image, to: best.image, under: original), drift > Self.toneDrift {
+        } else if style.keepsTone, let drift = try await toneDrift(from: image, to: best.image, under: drawn), drift > Self.toneDrift {
             let retry = try await retried(.sameTone)
             if let note = retry.note { notes.append(note) }
             if let next = retry.attempt, (next.overlap ?? 0) >= Self.samePerson,
-               let nextDrift = try await toneDrift(from: image, to: next.image, under: original), nextDrift < drift {
+               let nextDrift = try await toneDrift(from: image, to: next.image, under: drawn), nextDrift < drift {
                 best = next
             }
         }
@@ -901,7 +990,7 @@ public actor EditAgent {
             if let flaw {
                 let note = "The \(style.title.lowercased()) redraw of \(region.info.id) was left out, as \(flaw); the reshaped build stays."
                 for detail in notes + [note] { self.note(.style, detail, events: events) }
-                return notes.filter { !$0.hasPrefix("Shape:") } + [note]
+                return notes.filter { !$0.hasPrefix("Shape:") && !$0.hasPrefix(Self.keptBuild) } + [note]
             }
         }
         if let detail = best.note { notes.append(detail) }
@@ -909,16 +998,62 @@ public actor EditAgent {
             let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
             notes.append("The \(region.info.id) was found well off where it was after the restyle (overlap \(value)).")
         }
+        // A costume is placed as far as it was drawn: a vampire's standing collar and the hem of his cape reached past
+        // the room made for them, and the mask's edge cut them off.
+        var placed = mask
+        if style.dressesUp, let drawn = try await host.drawn(best.image, over: image, beyond: mask,
+                                                             reach: max(2, Int((short * 0.08).rounded()))) {
+            placed = drawn
+        }
         // Softened past the part, like a removal's, so the new outline and the background beside it blend in.
-        let soft = mask.blurred(by: short * (style.part == .body ? 0.015 : 0.01))
+        let soft = placed.blurred(by: short * (style.part == .body || style.dressesUp ? 0.015 : 0.01))
         return try await place(best.image, mask: frame.map { Self.below($0, soft) } ?? soft, rect: rect, label: label,
-                               region: region.info.id, kind: .style, notes: notes, redraws: &redraws, events: events)
+                               region: region.info.id, kind: .style, notes: notes, drawsNew: style.dressesUp,
+                               redraws: &redraws, events: events)
+    }
+
+    /// Redraws the rest of a person's bare skin (their hands and arms, a bare chest) as their style has it, in its own
+    /// close-up so the face's redraw keeps its detail: a face made 30 years older over young hands, or zombie make-up
+    /// that stopped at the wrists, showed where the face's mask ended.
+    private func redrawSkin(_ skin: MaskData, of person: Region, as style: PersonStyle, label: String,
+                            redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+        let id = "\(person.info.id)-skin"
+        try await replaceRedraw(of: id, redraws: &redraws, events: events)
+        guard let box = skin.boundingBox else { return [] }
+        let expanded = NormalizedRect(x: box.x - box.width * 0.2, y: box.y - box.height * 0.2,
+                                      width: box.width * 1.4, height: box.height * 1.4)
+        guard let rect = expanded.onPhoto, let prompt = style.skinPrompt(person: "person", place: Self.place(of: box, in: rect)) else {
+            return []
+        }
+        let image = try await host.render(region: rect, maxLongEdge: 2048)
+        try checkCancellation()
+        if !closeUpsBefore.contains(where: { $0.region == id }) {
+            let closeUp = try await host.render(region: rect, maxLongEdge: configuration.closeUpLongEdge)
+            closeUpsBefore.append((id, rect, closeUp))
+        }
+        let short = Double(min(image.size.width, image.size.height))
+        let mask = skin.cropped(to: rect).resized(to: image.size).grown(by: max(1, Int((short * 0.02).rounded())))
+        let attempt: RedrawAttempt
+        do {
+            attempt = try await redrawAttempt(GenerateRequest(image: image, mask: mask, prompt: prompt), original: mask,
+                                              concept: nil, region: id, kind: .style, events: events)
+        } catch LumenError.http(let status, let message) where status == 400 && message.contains("content management policy") {
+            // Turned down by the content filter, the hands alone are asked for once more.
+            guard let hands = style.skinPrompt(person: "person", place: Self.place(of: box, in: rect), handsOnly: true),
+                  hands != prompt else { throw LumenError.http(status: status, message: message) }
+            attempt = try await redrawAttempt(GenerateRequest(image: image, mask: mask, prompt: hands), original: mask,
+                                              concept: nil, region: id, kind: .style, events: events)
+        }
+        return try await place(attempt.image, mask: mask.blurred(by: max(1, short * 0.006)), rect: rect, label: label,
+                               region: id, kind: .style, notes: [attempt.note].compactMap { $0 }, redraws: &redraws, events: events)
     }
 
     /// Reshapes a body by moving its pixels (`EditHost.reshaped`), by exactly the style's amount; nil when the host can't,
     /// for the image model to try instead. Only the pixels the warp moved are placed.
+    /// With its notes comes the body's new outline, over the photo at its mask's size, when the host says.
     private func reshape(_ region: Region, by amount: PersonStyle.Reshape, face: MaskData? = nil, keeping held: MaskData? = nil,
-                         style: PersonStyle, label: String, redraws: inout [String: Layer.ID], events: Events) async throws -> [String]? {
+                         style: PersonStyle, label: String, redraws: inout [String: Layer.ID],
+                         events: Events) async throws -> (notes: [String], outline: MaskData?)? {
         // Its own layer, apart from a redraw of the same person, so one never replaces the other.
         let key = "\(region.info.id)-shape"
         try await replaceRedraw(of: key, redraws: &redraws, events: events)
@@ -945,8 +1080,9 @@ public actor EditAgent {
         }
         let changes = [("shoulders", amount.shoulders), ("waist", amount.waist)].map { (name: $0.0, change: $0.1) }
         let note = style.limits.map { Self.shapeNote(changes, limits: $0) } ?? ""
-        return try await place(shaped.image, mask: shaped.changed.grown(by: 1).blurred(by: 1), rect: rect, label: label,
-                               region: key, kind: .style, notes: [note].filter { !$0.isEmpty }, redraws: &redraws, events: events)
+        let notes = try await place(shaped.image, mask: shaped.changed.grown(by: 1).blurred(by: 1), rect: rect, label: label,
+                                    region: key, kind: .style, notes: [note].filter { !$0.isEmpty }, redraws: &redraws, events: events)
+        return (notes, shaped.outline.map { $0.placed(over: rect, in: region.mask.size) })
     }
 
     /// How far the colour under `mask` moved from `before` to `after` (CIELAB ΔE of their medians); nil when the host
@@ -969,6 +1105,21 @@ public actor EditAgent {
         let waist = changes.first { $0.name == "waist" }?.change ?? 0
         return max(0, limits.least - largest) + max(0, largest - limits.most) + max(0, waist - (limits.widestWaist ?? .infinity))
     }
+
+    /// How a build redrawn on a reshaped body kept its outline, for the critic. Told "shoulders +2%, waist +1%" in a
+    /// Shape note after the warp's own, the critic took it for the whole change and asked for a V-taper three times.
+    static func keptNote(_ changes: [(name: String, change: Double)]) -> String {
+        func percent(_ value: Double) -> String {
+            let rounded = Int((value * 100).rounded())
+            return rounded < 0 ? "−\(-rounded)%" : "+\(rounded)%"
+        }
+        let moved = changes.map { "\($0.name) \(percent($0.change))" }.joined(separator: ", ")
+        return "\(keptBuild); against the warp's new outline it moved \(moved), and up to 5% keeps it: the body's change "
+            + "is the warp's Shape note."
+    }
+
+    /// What a note on a build redrawn on a reshaped body starts with.
+    static let keptBuild = "The build was redrawn on the reshaped body"
 
     /// The outline's change in words, for the critic: "Shape: shoulders +6%, waist −5% (a believable change is 2% to 12%)."
     static func shapeNote(_ changes: [(name: String, change: Double)], limits: ShapeLimits) -> String {
@@ -1012,12 +1163,14 @@ public actor EditAgent {
 
     /// Puts a redrawn crop on the photo as a layer.
     private func place(_ generated: EncodedImage, mask: MaskData, rect: NormalizedRect, label: String, region: String,
-                       kind: TraceEvent.Kind, notes: [String], redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+                       kind: TraceEvent.Kind, notes: [String], drawsNew: Bool = false, redraws: inout [String: Layer.ID],
+                       events: Events) async throws -> [String] {
         for detail in notes { note(kind, detail, events: events) }
         let imageAsset = await assets.put(.image(generated))
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
-            let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect))
+            let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect),
+                              drawsNew: drawsNew ? true : nil)
             try await apply(layer, kind: kind.rawValue, region: region, events: events)
             redraws[region] = layer.id
         } catch {
@@ -1154,7 +1307,8 @@ public actor EditAgent {
             return value
         } catch {
             let error = cancellationError(error)
-            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: notes.detail(short("\(detail): \(error.localizedDescription)")),
+            // The call's own text is shortened, never the error after it: why a call failed is the point of the trace.
+            events.yield(.trace(TraceEvent(kind: kind, model: model, detail: notes.detail("\(short(detail)): \(error.localizedDescription)"),
                                            started: started, duration: max(0, Date().timeIntervalSince(started))).recording(usage.value)))
             throw error
         }

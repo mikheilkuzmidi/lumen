@@ -69,6 +69,23 @@ struct PlanCheck {
                     restyle.keep = regions.contains(aliases[keep] ?? keep) ? (aliases[keep] ?? keep) : nil
                     if restyle.keep == nil { notes.append("\(label): dropped keep using unknown region \"\(keep)\".") }
                 }
+                if let wears = restyle.wears, Attire(rawValue: wears) == nil {
+                    if wears != "unknown" { notes.append("\(label): dropped unknown attire \"\(wears)\".") }
+                    restyle.wears = nil
+                }
+                if let with = restyle.with {
+                    let known = with.filter { PersonStyle.Piece(rawValue: $0) != nil }
+                    for piece in with where !known.contains(piece) { notes.append("\(label): dropped unknown piece \"\(piece)\".") }
+                    restyle.with = known.isEmpty ? nil : known
+                }
+                if let outfit = restyle.outfit?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                    restyle.outfit = outfit.isEmpty || restyle.style != "costume" ? nil : String(outfit.prefix(200))
+                }
+                // A costume with no costume named has nothing to dress the person as.
+                if restyle.style == "costume", restyle.outfit == nil {
+                    notes.append("\(label): dropped the costume style with no outfit.")
+                    restyle.style = nil
+                }
                 guard restyle.style != nil || restyle.effect != nil else {
                     notes.append("\(label): dropped a style step with no style or effect.")
                     continue

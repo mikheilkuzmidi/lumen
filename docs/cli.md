@@ -19,7 +19,7 @@ The default result is `coat-lumen.jpg` beside the original. Output extensions se
 | `--trace <file.json>` | No trace file | JSON record written after the result. |
 | `--max-steps N` | `12` | Attempted steps across all plans, including select and finish. Zero skips models. |
 | `--max-revisions N` | `2` | Additional plans the critic may request. Zero still allows the first critique. |
-| `--style <id>` | None | Restyle the person the instruction names: one of `lumen styles` (chad, gigachad, hollywood, beard, smile, shades, zombie, older, platinum, athletic, muscular). Only the person's face, head or body is redrawn; reshaping and ageing are for adults only. |
+| `--style <id>` | None | Restyle the person the instruction names: one of `lumen styles` (chad, gigachad, hollywood, beard, older, smile, shades, zombie, platinum, vampire, pirate, costume, athletic, muscular). Only that person is redrawn, with the parts the style needs (an older face's neck and hands, a costume's clothes and hat); for `costume`, name the costume in the instruction. Reshaping and ageing are for adults only. |
 | `--effect <id>` | None | Grade with one of `lumen styles`' effects (monoDrama, mainCharacter, vintage, neonNight, redCarpet), with a style or alone. |
 | `--preview N` | `1024` | Long edge seen by the planner and critic: Muse Spark reads a 1024 px photo as about 860 input tokens, against about 1,940 at 1536 px. SAM selects at 1536 px; region redraws use crops up to 2048 px. Export remains full size. |
 

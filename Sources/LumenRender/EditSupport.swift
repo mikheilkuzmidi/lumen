@@ -57,6 +57,17 @@ public enum EditSupport {
         try ToneMatching.matched(generated, to: original, under: mask)
     }
 
+    /// The bare skin of a person in `image`: what `person` covers that has the colour of the skin `face` covers
+    /// (`SkinFinding`). Nil when the face shows too little skin to tell its colour.
+    public static func skin(_ image: EncodedImage, face: MaskData, person: MaskData) throws -> MaskData? {
+        try SkinFinding.skin(image, face: face, person: person)
+    }
+
+    /// `mask` grown over what `generated`, a redraw of the crop `original`, drew past it (`DrawnArea`).
+    public static func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) throws -> MaskData? {
+        try DrawnArea.drawn(generated, over: original, beyond: mask, reach: reach)
+    }
+
     /// `photo` at `size`, in CIELAB, rows from the top.
     static func sampledColours(_ photo: CIImage, size: PixelSize, context: CIContext) -> [ColourMeasurement] {
         let sample = PhotoCompositor.resized(photo, to: CGRect(x: 0, y: 0, width: size.width, height: size.height))

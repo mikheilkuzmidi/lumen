@@ -108,6 +108,14 @@ public actor PhotoDocument: EditHost {
         try EditSupport.toneMatched(generated, to: original, under: mask)
     }
 
+    public func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData? {
+        try EditSupport.skin(image, face: face, person: person)
+    }
+
+    public func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? {
+        try EditSupport.drawn(generated, over: original, beyond: mask, reach: reach)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?
@@ -277,9 +285,9 @@ public actor PhotoDocument: EditHost {
                 // A patch's mask is the size of its own crop, so it is placed on the patch, not stretched over the photo.
                 let coverage = PhotoCompositor.scaledMask(mask, to: patchBounds)
                 let enlargement = min(patchBounds.width / patch.extent.width, patchBounds.height / patch.extent.height)
-                let matched = PhotoCompositor.restoringDetail(
-                    PhotoCompositor.colorMatched(placed, to: image, mask: coverage, context: context),
-                    from: image, enlargement: enlargement)
+                let corrected = PhotoCompositor.colorMatched(placed, to: image, mask: coverage, context: context)
+                let matched = layer.drawsNew == true
+                    ? corrected : PhotoCompositor.restoringDetail(corrected, from: image, enlargement: enlargement)
                 // A patch's mask carries its own edge: a recolour's is held to the photo's edges, a removal's is
                 // softened outside the thing. A wider blend here would let the old colour show along the edge (a red
                 // sweater redrawn green kept a red rim), so it only smooths the mask's pixel steps, as wide as they are

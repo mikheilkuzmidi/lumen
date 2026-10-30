@@ -164,15 +164,26 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         let effects = StyleEffect.all.map { "\($0.id) (\($0.title))" }.joined(separator: ", ")
         return """
         A person's looks (a "Chad" or "Gigachad" face, a beard, an older face, a smile, sunglasses, zombie make-up,
-        platinum blonde hair, an athletic or gym-built body) are changed with a style step, never with regenerate: select the person
+        platinum blonde hair, an athletic or gym-built body, a costume) are changed with a style step, never with regenerate: select the person
         (concept "person", a point on them), then a style step with that region and one style from the catalogue. It
-        redraws only their face, head or body, finds the face itself, and keeps a believable amount. Styles: \(styles).
+        redraws only their face, head or body and what goes with it, finds the face itself, and keeps a believable
+        amount. Styles: \(styles).
         Choose by the words: "chad", "jawline", "chiselled" is chad; "gigachad" or the meme is gigachad; "athletic",
         "V-taper", "fit", "slimmer waist", "lose the belly" is athletic; "jacked", "buff", "bodybuilder", "muscular" is
         muscular; "glow-up", "red carpet", "Hollywood" is hollywood. Restyle every person the instruction names, one
         style step each. When the person holds something in front of their body (a fish, a bag, a baby, a dog),
         select it too and give its region as keep, so reshaping or redrawing them leaves it as it is; use null
-        otherwise. A style marked adults only is never for someone who looks under 18: plan nothing for them and
+        otherwise. For a body style (athletic, muscular), say in wears what the person has on their upper body: bare
+        for no top, fitted for a T-shirt, tank top or thin shirt the body's shape shows through, loose for a jacket,
+        coat, hoodie or sweater; their chest, shoulders and arms are redrawn with the new build only when it shows. A
+        style covers what goes with it by itself (an older face takes the neck, ears and hands with it; a pirate the
+        hat, coat and neck), so give with empty unless the instruction asks for more of the person ("his hands too":
+        skin; "and a crown": hat; "and a suit": top). A costume the catalogue lacks ("dress me as a knight", "make
+        her an astronaut") is the costume style, with the costume in outfit, a few words saying what is worn
+        (a medieval knight in shining armour with a plumed helmet), and in with what it covers: top for clothes,
+        hat for anything worn on the head, neck for make-up or a collar there, skin for gloves, paint or make-up on
+        the hands. Use outfit null for every other style.
+        A style marked adults only is never for someone who looks under 18: plan nothing for them and
         finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
         alone (style none, and the person's region for main character and redCarpet): \(effects). "Black and white
         meme", "dramatic mono" is monoDrama; "main character", "make them pop" is mainCharacter; "retro", "film", "old
@@ -231,7 +242,14 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     already on, so give effect none. A body reshaped moves its outline and keeps its colours, so its measured
     change stays under 3 however much it moved: judge a body style by the Shape note and the outline in the
     close-up, not by that change, and a Shape note within its range with a broader or narrower outline in the
-    close-up has met it. For a face the jaw number is rough: judge the face itself in the close-up.
+    close-up has met it. For a face the jaw number is rough: judge the face itself in the close-up. A note says
+    what was redrawn with the face or head (their neck and ears, their clothes, room for a hat) and whether their
+    hands and arms were redrawn apart: the change must run on evenly across all of it, with no seam where the
+    face meets the neck or the costume meets the photo, and a face aged or made up must not sit on a young or
+    bare neck or hands. A body in no top or a fitted one has its build redrawn evenly after the warp: both
+    shoulders, the chest and both arms. A note that the build was redrawn on the reshaped body gives how little the
+    redraw moved the warp's new outline, which it should keep; the body's change is the warp's Shape note, and a
+    Shape note within its range with that outline kept has met the style.
     A style's own effect, labelled "part of" it (the Gigachad meme's dramatic black and white), was asked for with
     the style: keep it.
     Answer satisfied true or false and explain briefly in notes. Be satisfied when the instruction is

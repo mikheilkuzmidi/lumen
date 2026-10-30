@@ -48,13 +48,19 @@ public struct Layer: Codable, Equatable, Identifiable, Sendable {
     public var isEnabled: Bool
     /// 0...1.
     public var opacity: Double
+    /// Whether a patch draws something new over what was there (a costume over a jacket), so none of the photo's own
+    /// detail under it is added back when it is enlarged: added back, the jacket's seams and grain showed through a
+    /// vampire's cape. Nil, as in layers saved before it, is false.
+    public var drawsNew: Bool?
 
-    public init(id: UUID = UUID(), label: String, content: Content, isEnabled: Bool = true, opacity: Double = 1) {
+    public init(id: UUID = UUID(), label: String, content: Content, isEnabled: Bool = true, opacity: Double = 1,
+                drawsNew: Bool? = nil) {
         self.id = id
         self.label = label
         self.content = content
         self.isEnabled = isEnabled
         self.opacity = opacity
+        self.drawsNew = drawsNew
     }
 }
 

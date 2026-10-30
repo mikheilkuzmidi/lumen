@@ -78,6 +78,14 @@ actor StudioPhotoHost: EditHost {
         try await photo.toneMatched(generated, to: original, under: mask)
     }
 
+    func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData? {
+        try await photo.skin(image, face: face, person: person)
+    }
+
+    func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? {
+        try await photo.drawn(generated, over: original, beyond: mask, reach: reach)
+    }
+
     func layers() async -> [Layer] { await photo.layers }
 
     func straightening() async -> Double {

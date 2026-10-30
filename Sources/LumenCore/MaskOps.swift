@@ -248,6 +248,29 @@ extension MaskData {
         return (top, bottom, left, right, crowns.reduce(0, +) / Double(max(1, crowns.count)))
     }
 
+    /// This mask, of the photo's part in `rect`, put back on a mask of the whole photo at `size`, covering nothing
+    /// outside `rect`.
+    public func placed(over rect: NormalizedRect, in size: PixelSize) -> MaskData {
+        var coverage = [UInt8](repeating: 0, count: size.width * size.height)
+        guard rect.width > 0, rect.height > 0, self.size.width > 0, self.size.height > 0 else {
+            return MaskData(size: size, coverage: coverage)
+        }
+        let left = max(0, Int((rect.x * Double(size.width)).rounded(.down)))
+        let right = min(size.width, Int(((rect.x + rect.width) * Double(size.width)).rounded(.up)))
+        let top = max(0, Int((rect.y * Double(size.height)).rounded(.down)))
+        let bottom = min(size.height, Int(((rect.y + rect.height) * Double(size.height)).rounded(.up)))
+        for y in top..<max(top, bottom) {
+            let v = ((Double(y) + 0.5) / Double(size.height) - rect.y) / rect.height * Double(self.size.height)
+            guard v >= 0, v < Double(self.size.height) else { continue }
+            for x in left..<max(left, right) {
+                let u = ((Double(x) + 0.5) / Double(size.width) - rect.x) / rect.width * Double(self.size.width)
+                guard u >= 0, u < Double(self.size.width) else { continue }
+                coverage[y * size.width + x] = self[Int(u), Int(v)]
+            }
+        }
+        return MaskData(size: size, coverage: coverage, followsPhoto: followsPhoto)
+    }
+
     /// Coverage where both masks cover, resizing the other mask to this mask's size if needed.
     public func multiplied(by other: MaskData) -> MaskData {
         let other = other.size == size ? other : other.resized(to: size)
@@ -293,5 +316,12 @@ extension NormalizedRect {
         let bottom = min(1, y + height)
         guard left < right, top < bottom else { return nil }
         return NormalizedRect(x: left, y: top, width: right - left, height: bottom - top)
+    }
+
+    /// The smallest rectangle holding both.
+    func union(_ other: NormalizedRect) -> NormalizedRect {
+        let left = min(x, other.x), top = min(y, other.y)
+        return NormalizedRect(x: left, y: top, width: max(x + width, other.x + other.width) - left,
+                              height: max(y + height, other.y + other.height) - top)
     }
 }

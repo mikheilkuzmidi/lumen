@@ -339,6 +339,14 @@ public protocol EditHost: Sendable {
     /// `generated`, a redraw of the crop `original`, with its colour cast under `mask` moved back to the original's,
     /// keeping its own lightness, and nothing changed outside the mask. Nil when the host can't.
     func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage?
+    /// The bare skin of a person in `image`, a render of the photo as it is now: what `person` covers that has the colour
+    /// of the skin `face` covers (their neck, ears, hands and arms), both masks at the image's size. Nil when the host
+    /// can't look at its pixels, or the face shows too little skin to tell its colour.
+    func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData?
+    /// `mask` (the size of `original`, a crop) grown over the pixels beside it that `generated`, a redraw of the crop,
+    /// clearly changed, up to `reach` pixels past it: what the redraw drew beyond the mask's edge, such as a vampire's
+    /// standing collar or the hem of his cape. Nil when the host can't tell.
+    func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData?
 }
 
 /// A crop with a person reshaped, and where its pixels changed.
@@ -346,10 +354,13 @@ public struct Reshaped: Equatable, Sendable {
     public var image: EncodedImage
     /// The crop's size: covered where the reshape moved pixels.
     public var changed: MaskData
+    /// The person's mask moved as their pixels were, the crop's size: their new outline. Nil when the host doesn't say.
+    public var outline: MaskData?
 
-    public init(image: EncodedImage, changed: MaskData) {
+    public init(image: EncodedImage, changed: MaskData, outline: MaskData? = nil) {
         self.image = image
         self.changed = changed
+        self.outline = outline
     }
 }
 
@@ -366,4 +377,8 @@ public extension EditHost {
                   waist: Double) async throws -> Reshaped? { nil }
     /// A host that can't change its pixels has a drifted face drawn again instead.
     func toneMatched(_ generated: EncodedImage, to original: EncodedImage, under mask: MaskData) async throws -> EncodedImage? { nil }
+    /// A host that can't look at its pixels finds no skin, and a neck is taken from the outline under the chin.
+    func skin(_ image: EncodedImage, face: MaskData, person: MaskData) async throws -> MaskData? { nil }
+    /// A host that can't look at its pixels places a redraw through its mask as it is.
+    func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? { nil }
 }

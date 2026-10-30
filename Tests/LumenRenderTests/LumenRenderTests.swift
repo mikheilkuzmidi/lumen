@@ -231,6 +231,67 @@ struct PhotoPixelTests {
         #expect(after[64, 48].green > after[64, 48].red, "still the patch's colour")
     }
 
+    /// A jacket's white logo showed through the pirate's coat drawn over it: the photo's detail came back wherever the
+    /// patch was enlarged. Where the patch drew something new, the old detail stays off.
+    @Test
+    func anEnlargedPatchDoesNotBringBackDetailItDrewOver() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A black jacket with a white logo of 2-pixel strokes in its middle (x 56..<72, y 44..<52).
+        func logo(_ x: Int, _ y: Int) -> Bool { (56..<72).contains(x) && (44..<52).contains(y) && x % 4 < 2 }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, y in logo(x, y) ? RGB(240, 240, 240) : RGB(20, 20, 22) })
+        let assets = AssetStore()
+        // The coat drawn over it, small and flat red: no logo.
+        let patchURL = try folder.photo(width: 16, height: 12) { _, _ in RGB(150, 20, 30) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 16, height: 12))))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 16, height: 12), filledWith: 255)))
+        try await document.apply(Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
+                                                                      rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+        let after = try await folder.pixels(document)
+        let stroke = linear(after[64, 48].green), gap = linear(after[66, 48].green)
+        #expect(abs(stroke - gap) < 0.01, "no logo strokes on the coat: \(stroke) against \(gap)")
+    }
+
+    /// A vampire's standing collar and the hem of his cape reached past the room made for them, and the mask's soft edge
+    /// cut them off. A costume is placed as far as it was drawn, joined to the mask and within reach, over the redraw's
+    /// overall drift; what it changed further off is not taken.
+    @Test
+    func aCostumeIsPlacedAsFarAsItWasDrawn() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        // A grey wall; the redraw is a little warmer all over, with a dark collar from x 30 to 44 (the mask ends at 36)
+        // and a dark spot well away, at x 80.
+        let wall = try folder.photo(width: 100, height: 60) { _, _ in RGB(170, 170, 175) }
+        let redraw = try folder.photo(width: 100, height: 60) { x, y in
+            (30..<44).contains(x) || ((78..<84).contains(x) && (20..<26).contains(y)) ? RGB(25, 20, 22) : RGB(178, 170, 170)
+        }
+        func encoded(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 100, height: 60))
+        }
+        let mask = MaskData(size: PixelSize(width: 100, height: 60), coverage: (0..<6000).map { $0 % 100 < 36 ? 255 : 0 })
+        let drawn = try #require(try EditSupport.drawn(try encoded(redraw), over: try encoded(wall), beyond: mask, reach: 12))
+        #expect(drawn[40, 30] == 255 && drawn[43, 10] == 255, "the collar past the mask")
+        #expect(drawn[50, 30] == 0 && drawn[80, 22] == 0, "not the wall beside it, nor what changed further off")
+    }
+
+    /// The jacket's seams and grain showed through a vampire's cape drawn over it, dark on dark. A patch that draws
+    /// something new takes none of the photo's detail back.
+    @Test
+    func aPatchThatDrawsSomethingNewTakesNoDetailBack() async throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x % 4 < 2 ? RGB(40, 40, 40) : RGB(20, 20, 20) })
+        let assets = AssetStore()
+        let patchURL = try folder.photo(width: 16, height: 12) { _, _ in RGB(15, 15, 18) }
+        let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 16, height: 12))))
+        let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 16, height: 12), filledWith: 255)))
+        try await document.apply(Layer(label: "Cape", content: .patch(image: imageID, mask: maskID,
+                                                                      rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)),
+                                       drawsNew: true), assets: assets)
+        let after = try await folder.pixels(document)
+        #expect(abs(linear(after[64, 48].green) - linear(after[66, 48].green)) < 0.002, "no grain on the cape")
+    }
+
     /// A red coat redrawn blue would get red ripples back: its detail is nearly all in the red channel, and was added back
     /// as it was. Only its lightness comes back, the same in every channel.
     @Test
@@ -392,6 +453,39 @@ struct PhotoPixelTests {
         #expect(after[5, 5].distance(to: RGB(60, 120, 60)) <= 1.0 / 255, "nothing outside the mask changes")
     }
 
+    /// A face aged over a young neck, or made up only to the jaw, showed where its mask ended. A person's skin is found
+    /// by their face's own colour: their neck in shade and a hand in light are, their black T-shirt, brown hair and the
+    /// grass beside them are not.
+    @Test
+    func aPersonsSkinIsFoundByTheirFacesColour() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        func person(_ x: Int, _ y: Int) -> Bool { (15..<46).contains(x) }
+        let photo = try folder.photo(width: 60, height: 60) { x, y in
+            guard person(x, y) else { return RGB(60, 140, 60) }
+            if y < 5 { return RGB(90, 60, 40) }
+            if y < 21, (22..<38).contains(x) {
+                return y >= 10 && y < 12 && ((25..<28).contains(x) || (32..<35).contains(x)) ? RGB(40, 30, 30) : RGB(225, 170, 140)
+            }
+            if y < 28, (26..<34).contains(x) { return RGB(200, 150, 122) }
+            if y >= 45, y < 53, (16..<22).contains(x) { return RGB(235, 185, 155) }
+            // Fingertips, redder than the face, joined to the hand; the same red on its own on the shirt.
+            if y >= 53, y < 56, (16..<22).contains(x) || (38..<43).contains(x) { return RGB(230, 160, 140) }
+            return y < 28 ? RGB(90, 60, 40) : RGB(20, 20, 22)
+        }
+        let size = PixelSize(width: 60, height: 60)
+        let image = EncodedImage(data: try Data(contentsOf: photo), format: .png, size: size)
+        let face = MaskData(size: size, coverage: (0..<3600).map { (22..<38).contains($0 % 60) && (5..<21).contains($0 / 60) ? 255 : 0 })
+        let outline = MaskData(size: size, coverage: (0..<3600).map { person($0 % 60, $0 / 60) ? 255 : 0 })
+        let skin = try #require(try EditSupport.skin(image, face: face, person: outline))
+        #expect(skin[30, 24] == 255 && skin[18, 48] == 255, "the neck and the hand")
+        #expect(skin[18, 54] == 255 && skin[40, 54] == 0, "the redder fingertips joined to the hand, not the same red alone")
+        #expect(skin[30, 40] == 0 && skin[30, 2] == 0 && skin[17, 15] == 0, "not the T-shirt or the hair")
+        #expect(skin[5, 30] == 0, "nor anything off the person")
+        let grey = MaskData(size: size, coverage: (0..<3600).map { (15..<46).contains($0 % 60) && (30..<40).contains($0 / 60) ? 255 : 0 })
+        #expect(try EditSupport.skin(image, face: grey, person: outline) == nil, "a face that shows no skin colour gives none")
+    }
+
     /// Asked for broader shoulders and a slimmer waist, Muse Image changed a body by a percent or two, or not at all. A
     /// warp moves the outline by exactly the share asked for, leaves the head as it was, and bends only the background
     /// right beside the body.
@@ -420,6 +514,12 @@ struct PhotoPixelTests {
         for y in [30, 80, 170] { #expect(after[2, y].distance(to: RGB((2 / 5) % 2 == 0 ? 120 : 160, 120, 120)) <= 1.0 / 255) }
         #expect(shaped.changed[2, 80] == 0 && shaped.changed[100, 30] == 0, "only beside the body is changed")
         #expect(shaped.changed[52, 80] == 255, "the shoulder's new edge is")
+        // The outline moves with the pixels, for a build redrawn inside it after.
+        let outline = try #require(shaped.outline)
+        func covered(_ y: Int) -> Int { (0..<200).filter { outline[$0, y] > 127 }.count }
+        #expect(abs((60..<100).map(covered).max()! - shoulders) <= 2 && abs((150..<180).map(covered).min()! - waist) <= 2,
+                "the outline's shoulders and waist are the photo's")
+        #expect(covered(30) == 40, "the head's as it was")
     }
 
     /// The critic turned down a gentle edit of an overcast sky three times for "a white grid over the sky": the preview it

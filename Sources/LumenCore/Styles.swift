@@ -112,12 +112,18 @@ public struct PersonStyle: Equatable, Sendable {
                     // Measured on SAM's face outline, which takes in the stubble under the jaw once the neck is redrawn
                     // too: a natural, visible chad read +25% to +28% there, and was turned down three times at "up to 20%".
                     adultsOnly: true, limits: ShapeLimits(least: 0.05, most: 0.3, measures: "jaw"), pieces: [.neck],
+                    // The owner between two friends was filtered three times in a row; on his own, never.
+                    gentler: "Give this person a more defined, grown-up look: a firmer, squarer jawline and chin, defined "
+                        + "cheekbones, a confident gaze and short, even stubble along the jaw, chin and upper lip.",
                     example: "Give the person a chad face"),
         PersonStyle(id: "gigachad", title: "Gigachad", part: .face,
                     change: "Turn this person into the \"Gigachad\" meme: a very strong, wide, square jaw and chin, sharply "
                         + "defined cheekbones and brow ridge, an intense stare and a short dark beard shadow.",
                     adultsOnly: true, limits: ShapeLimits(least: 0, most: 0.4, measures: "jaw"), effect: "monoDrama",
-                    pieces: [.neck], example: "Make the person a gigachad"),
+                    pieces: [.neck],
+                    gentler: "Give this person a strong, rugged look: a firm, square jaw and chin, defined cheekbones and "
+                        + "brow, an intense gaze and a short beard shadow.",
+                    example: "Make the person a gigachad"),
         PersonStyle(id: "hollywood", title: "Hollywood glow-up", part: .face,
                     change: "Give this person a clearly visible red-carpet glow-up, as a film's make-up artist and retoucher "
                         + "would before a premiere: luminous, even skin with a healthy glow, redness and blemishes gone but "

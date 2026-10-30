@@ -1,6 +1,7 @@
 import Foundation
 import LumenCore
 import LumenMeta
+import LumenOpen
 import Testing
 @testable import LumenStudio
 
@@ -30,7 +31,7 @@ struct StudioLibraryBackendTests {
         let transport = LibraryRecordedTransport()
         let reviewer = MetaBatchPlanner(configuration: MetaConfiguration(apiKey: "local-glimmer",
             baseURL: URL(string: "http://127.0.0.1:8786/v1")!, planningModel: "muse-glimmer"),
-            transport: StudioLibraryGlimmerTransport(transport: transport))
+            transport: GlimmerChatTransport(transport: transport))
         let photo = fixture.photos[0]
         let image = try await fixture.host.thumbnail(photo, maxLongEdge: 512)
         let reviews = try await reviewer.review(ReviewRequest(instruction: "Blue shirts",
@@ -46,12 +47,17 @@ struct StudioLibraryBackendTests {
             #expect(request.url?.path == "/v1/chat/completions")
             let body = try #require(request.httpBody)
             let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            // llama-server 0.7 constrains only to the nested schema: given it directly, Glimmer answered freely.
             let format = try #require(json["response_format"] as? [String: Any])
             #expect(format["type"] as? String == "json_schema")
-            let schema = try #require(format["schema"] as? [String: Any])
+            let wrapper = try #require(format["json_schema"] as? [String: Any])
+            let schema = try #require(wrapper["schema"] as? [String: Any])
             #expect(schema["type"] as? String == "object")
             #expect(schema["additionalProperties"] as? Bool == false)
         }
+        // A review names its photo before it describes it.
+        let review = String(decoding: try #require(requests.first?.httpBody), as: UTF8.self)
+        #expect(review.contains(#""properties":{"number":{"#))
     }
 }
 

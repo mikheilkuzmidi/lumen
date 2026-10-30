@@ -288,7 +288,10 @@ extension StudioModels {
             reviewConfiguration = configuration
         case .glimmer:
             planner = LocalGlimmerPlanner(baseURL: glimmerURL)
-            reviewConfiguration = MetaConfiguration(apiKey: "local-glimmer", baseURL: glimmerURL, planningModel: planner.modelID, recordsCost: false)
+            // Glimmer writes 7–10 tokens a second on a Mac: its review of 16 photos ran to 4,560 tokens and 485 s, and
+            // a review takes up to 20.
+            reviewConfiguration = MetaConfiguration(apiKey: "local-glimmer", baseURL: glimmerURL, planningModel: planner.modelID, timeout: 1200,
+                                                    recordsCost: false)
         case .sparkOpen:
             guard let provider else { throw StudioScriptError.message("Save the Muse Spark Open provider in Settings.") }
             planner = HostedSparkOpenPlanner(endpoint: provider.baseURL, apiKey: provider.key, modelID: provider.modelID)
@@ -297,31 +300,7 @@ extension StudioModels {
         return StudioModels(planner: planner, segmenter: MetaSegmenter(configuration: configuration),
                             generator: MetaGenerator(configuration: configuration),
                             reviewer: MetaBatchPlanner(configuration: reviewConfiguration,
-                                transport: backend == .glimmer ? StudioLibraryGlimmerTransport() : RetryingMetaTransport()))
-    }
-}
-
-/// Sends library schemas in llama-server's direct schema format.
-struct StudioLibraryGlimmerTransport: MetaTransport {
-    var transport: any MetaTransport = RetryingMetaTransport()
-
-    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        var request = request
-        request.setValue(nil, forHTTPHeaderField: "Authorization")
-        if let body = request.httpBody,
-           var payload = try JSONSerialization.jsonObject(with: body) as? [String: Any],
-           let format = payload["response_format"] as? [String: Any],
-           let wrapper = format["json_schema"] as? [String: Any], let schema = wrapper["schema"] {
-            payload["response_format"] = ["type": "json_schema", "schema": schema]
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        }
-        return try await transport.data(for: request)
-    }
-
-    func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
-        var request = request
-        request.setValue(nil, forHTTPHeaderField: "Authorization")
-        return try await transport.lines(for: request)
+                                transport: backend == .glimmer ? GlimmerChatTransport() : RetryingMetaTransport()))
     }
 }
 

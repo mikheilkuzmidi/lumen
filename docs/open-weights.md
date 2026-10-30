@@ -109,6 +109,16 @@ One Mac, one photo, single runs: these are observations, not benchmarks.
 
 So the whole planning loop runs on the Mac with open weights, and it works; on this machine, with other work open, it is slow. Muse Spark remains the default.
 
+## A whole library on Glimmer, October 30, 2026
+
+Lumen Studio's library reviews its contact sheets and plans its groups with the chosen planner. The first run of the 16-photo library in `Fixtures/library` on Glimmer, with no instruction, failed all 16 photos, for three reasons, each fixed:
+
+- **The schema wasn't applied.** Studio put the review's schema directly under `response_format.schema`. llama-server 0.7.0 ignores that form: given a test schema that way, Glimmer answered `{"n":7,"w":"hello"}`; given it nested under `json_schema.schema`, it answered with the schema's keys, in the schema's order. The unconstrained review couldn't be decoded. The library now goes through the same transport as the planner, which sends the nested form and leads each review with the photo's number ([#70](https://github.com/mikheilkuzmidi/lumen/issues/70)).
+- **The review ran out of time.** A constrained review of 16 photos ran to 4,560 written tokens: 485 s at 9.4 tokens/s, with Photoeditor's QA sweep sharing the GPU. A review now has 1,200 s and a plan or critique 600 s, where the hosted planners keep 180 s ([#71](https://github.com/mikheilkuzmidi/lumen/issues/71)).
+- **One failed review failed every photo in it.** Now those photos are judged by measurement, as with no reviewer, and each notes why; they still get their base pass ([#69](https://github.com/mikheilkuzmidi/lumen/issues/69)).
+
+With the nested schema, the run finished in 22 minutes, all on the Mac at no cost. Glimmer described each photo correctly and flagged both misfires, the shaken frame ("motion blur, subject smeared") and the pocket shot ("severely underexposed near-black frame"). The other 14 got Auto, and the three measured as tilted were straightened. The run's first review attempt hit the 600 s limit then in place, and the retry answered from the cached prompt.
+
 ## What was verified
 
 On October 26, 2026, the whole package built and the full `swift test` run passed using Swift 6 strict concurrency. SwiftPM's own sandbox was disabled for this restricted build environment. The existing paid live suite stayed disabled, and the existing pixel-rendering tests skipped where Core Image was unavailable.

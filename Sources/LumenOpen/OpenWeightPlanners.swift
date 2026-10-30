@@ -75,8 +75,11 @@ public struct LocalGlimmerPlanner: Planner, PhotoCostEstimating {
         self.transport = transport
     }
 
+    /// A plan writes 350–560 tokens of reasoning and the plan at 7–10 tokens a second: 127 s on a busy Mac, so the
+    /// hosted planners' 180 s leaves too little room.
     private var planner: MetaPlanner {
-        MetaPlanner(configuration: MetaConfiguration(apiKey: "local-glimmer", baseURL: baseURL, planningModel: modelID, recordsCost: false),
+        MetaPlanner(configuration: MetaConfiguration(apiKey: "local-glimmer", baseURL: baseURL, planningModel: modelID, timeout: 600,
+                                                     recordsCost: false),
                     transport: GlimmerChatTransport(transport: transport))
     }
 

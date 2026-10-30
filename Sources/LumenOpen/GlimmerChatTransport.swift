@@ -1,11 +1,17 @@
 import Foundation
 import LumenMeta
 
-/// Accommodates llama-server versions that expect the schema directly in the response format.
-struct GlimmerChatTransport: MetaTransport {
+/// Talks to llama-server for Muse Glimmer's plans, critiques and library reviews: no key, keys in the order Glimmer
+/// should write them, and the schema in the nested format llama-server 0.7 constrains to. The direct format it ignores
+/// there, so it is sent only to a version that asks for it.
+public struct GlimmerChatTransport: MetaTransport {
     let transport: any MetaTransport
 
-    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    public init(transport: any MetaTransport = RetryingMetaTransport()) {
+        self.transport = transport
+    }
+
+    public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.setValue(nil, forHTTPHeaderField: "Authorization")
         if let body = request.httpBody, let json = try? JSONSerialization.jsonObject(with: body) {
@@ -27,7 +33,7 @@ struct GlimmerChatTransport: MetaTransport {
         return try await transport.data(for: request)
     }
 
-    func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
+    public func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
         var request = request
         request.setValue(nil, forHTTPHeaderField: "Authorization")
         return try await transport.lines(for: request)
@@ -48,10 +54,11 @@ struct GlimmerChatTransport: MetaTransport {
 }
 
 /// llama.cpp's grammar writes an object's keys in the order the schema lists them, so a step's type has to come
-/// before its other fields, and a plan's summary before its steps: otherwise the model commits to fields before
-/// it has said what the step is. JSON text with keys in that order, the rest alphabetical.
+/// before its other fields, a plan's summary before its steps, and a review's photo number before what it says about
+/// the photo: otherwise the model commits to fields before it has said what they are about. JSON text with keys in
+/// that order, the rest alphabetical.
 enum OrderedJSON {
-    private static let leading = ["type", "summary", "notes", "satisfied", "id", "region", "layer", "concept"]
+    private static let leading = ["type", "summary", "notes", "satisfied", "id", "number", "region", "layer", "concept"]
 
     static func text(_ value: Any) -> String {
         switch value {

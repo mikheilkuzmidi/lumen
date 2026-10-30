@@ -53,6 +53,8 @@ struct StyleTests {
         #expect(asked.contains("Keep their face, pose and clothes") && asked.contains("continue the background"))
         #expect(!asked.contains("slightly"), "said outright: asked for slightly broader shoulders, Muse Image changed nothing")
         #expect(athletic.prompt(person: "person", place: "on the left", firmer: .subtler).contains("subtler"))
+        #expect(athletic.built()!.prompt(person: "person", place: "on the left", firmer: .sameOutline)
+            .contains("Keep the body exactly as wide as it is at the shoulders and the waist"))
         #expect(PersonStyle.named("chad")!.prompt(person: "person", place: "on the left").contains("Change only the face of the person on the left"))
     }
 
@@ -439,8 +441,9 @@ struct StyleTests {
                 .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.5)])),
                 .style(StyleStep(region: "man", style: "athletic", wears: wears == "unsaid" ? "fitted" : wears)),
             ]))
+            // SAM's outline of the warped crop, to compare the build with, then the build found again 4% slimmer.
             let segmenter = StyleSegmenter(answers: [[Self.segment(Self.person())], [Self.segment(Self.face, "face")],
-                                                     [Self.segment(Self.person(waist: 23))]])
+                                                     [Self.segment(Self.person())], [Self.segment(Self.person(waist: 23))]])
             let host = KeepingHost(outlines: wears != "unsaid")
             let generator = StyleGenerator()
             let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
@@ -454,6 +457,8 @@ struct StyleTests {
                         "the build inside the warped outline, not the outline asked for again")
                 let done = await planner.critiqued.first ?? []
                 #expect(done.contains("The man wears a fitted top, so their build was redrawn as well as their outline moved."))
+                #expect(await segmenter.requests.map(\.concept) == ["person", "face", "person", "person"],
+                        "the warped crop's own outline, then the build's")
                 #expect(done.contains("The build was redrawn on the reshaped body; against the warp's new outline it moved "
                                       + "shoulders +0%, waist −4%, and up to 5% keeps it: the body's change is the warp's Shape note."))
             } else {

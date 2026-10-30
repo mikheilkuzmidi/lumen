@@ -923,11 +923,16 @@ public actor EditAgent {
         let kept = held.map { grown.multiplied(by: $0.cropped(to: rect).resized(to: image.size).inverted()) } ?? grown
         let mask = frame.map { Self.below($0, kept) } ?? kept
         let position = Self.place(of: box, in: rect)
+        // A build kept inside a warped outline is compared with SAM's own outline of the warped crop, as SAM finds the
+        // redraw: against the warp's outline, SAM's differences alone read as the redraw narrowing a man whose friends'
+        // arms lay across his shoulders by 5% to 9%, or widening him by 3%.
+        let compared = style.keepsOutline ? try await outline(of: style.part.concept, in: image, near: original, events: events) ?? original
+            : original
         func attempt(_ firmness: PersonStyle.Firmness) async throws -> RedrawAttempt {
             let prompt = style.prompt(person: "person", place: position, firmer: firmness, pieces: pieces, wears: attire)
             let request = GenerateRequest(image: image, mask: mask, prompt: prompt)
             // A costume changes the head's outline (a hat on it) on purpose, so it isn't looked for again to compare.
-            return try await redrawAttempt(request, original: original, concept: style.dressesUp ? nil : style.part.concept,
+            return try await redrawAttempt(request, original: compared, concept: style.dressesUp ? nil : style.part.concept,
                                            region: region.info.id, kind: .style, events: events)
         }
         var best = try await attempt(.asked)
@@ -949,12 +954,13 @@ public actor EditAgent {
             if let next = retry.attempt, (next.overlap ?? 0) > overlap { best = next }
         }
         func measured(_ attempt: RedrawAttempt) -> [(name: String, change: Double)]? {
-            attempt.object.flatMap { ShapeMeasure.change(style.part, before: original, after: $0, frame: frame) }
+            attempt.object.flatMap { ShapeMeasure.change(style.part, before: compared, after: $0, frame: frame) }
         }
         if let limits = style.limits {
             if let changes = measured(best), Self.miss(changes, limits) > 0 {
                 let largest = changes.map { abs($0.change) }.max() ?? 0
-                let retry = try await retried(largest > limits.most ? .subtler : .stronger)
+                // A build drawn inside a warped outline is asked to keep it, not to change less: it narrowed or widened it.
+                let retry = try await retried(style.keepsOutline ? .sameOutline : largest > limits.most ? .subtler : .stronger)
                 if let note = retry.note { notes.append(note) }
                 if let next = retry.attempt, let nextChanges = measured(next),
                    Self.miss(nextChanges, limits) < Self.miss(changes, limits), (next.overlap ?? 0) >= Self.samePerson {
@@ -1010,6 +1016,22 @@ public actor EditAgent {
         return try await place(best.image, mask: frame.map { Self.below($0, soft) } ?? soft, rect: rect, label: label,
                                region: region.info.id, kind: .style, notes: notes, drawsNew: style.dressesUp,
                                redraws: &redraws, events: events)
+    }
+
+    /// What SAM finds for `concept` in `image` that best matches `near` (the image's size), when it matches it well; nil
+    /// when nothing does or SAM can't be asked.
+    private func outline(of concept: String, in image: EncodedImage, near: MaskData, events: Events) async throws -> MaskData? {
+        do {
+            let request = SegmentRequest(image: image, concept: concept)
+            let found = try await call(.select, model: segmenter.modelID, detail: "Find the \(concept) to compare the redraw with",
+                                       events: events) { try await self.segmenter.segment(request) }
+            let best = found.map { $0.mask.resized(to: near.size) }.max { near.intersectionOverUnion($0) < near.intersectionOverUnion($1) }
+            return best.flatMap { near.intersectionOverUnion($0) >= Self.samePerson ? $0 : nil }
+        } catch {
+            let error = cancellationError(error)
+            if error as? LumenError == .cancelled { throw error }
+            return nil
+        }
     }
 
     /// Redraws the rest of a person's bare skin (their hands and arms, a bare chest) as their style has it, in its own

@@ -211,6 +211,7 @@ public struct PersonStyle: Equatable, Sendable {
         case .subtler: text += " Make the change subtler, about half as much: it went too far."
         case .stronger: text += " Make the change clearly visible: it was too slight to see."
         case .sameTone: text += " Keep the skin exactly the photo's own tone, light and colour cast: the last try came out a different tone, which shows as a seam."
+        case .sameOutline: text += " Keep the body exactly as wide as it is at the shoulders and the waist, every edge where it is: the last try made it narrower or wider."
         }
         // Told to keep exactly the photo's skin tone, a face asked to age greyed its hair and kept its young skin.
         let stays = self.part == .body
@@ -267,7 +268,7 @@ public struct PersonStyle: Equatable, Sendable {
     /// their head is no longer the shape it was, and that is the point.
     public var dressesUp: Bool { pieces.contains(.top) || pieces.contains(.hat) }
 
-    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone }
+    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone, sameOutline }
 
     /// Whether the part keeps the photo's own colour: all but those that recolour it (make-up, dyed or greying hair, a
     /// costume).

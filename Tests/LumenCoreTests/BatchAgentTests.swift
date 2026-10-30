@@ -341,6 +341,21 @@ struct BatchAgentTests {
         #expect(events.batchProgress == [1, 2])
     }
 
+    /// SAM found no shirts by one name and the revision went on to a result the critic accepted, yet the photo was
+    /// marked failed in Studio's grid. A step that failed fails the photo only when its edit didn't recover.
+    @Test func aStepThatFailedFailsThePhotoOnlyIfTheEditDidNotRecover() async throws {
+        for (revisions, failed) in [(1, false), (9, true)] {
+            let library = BatchTestLibrary([batchTestFacts()])
+            let agent = batchTestAgent(library, planner: BatchTestPlanner(redraw: true, revisions: revisions),
+                                       segmenter: BatchTestSegmenter(findsNothing: 1))
+            let events = try await batchTestCollect(await agent.run(
+                BatchOptions(mode: .autonomous, instruction: "Blue shirts", auto: false, straighten: false)))
+            let summary = try batchTestSummary(events)
+            #expect(summary.photos[0].failed == failed, "after \(revisions) revisions asked for")
+            #expect(summary.photos[0].outcome?.contains("nothing was found") == true, "the skipped step is still noted")
+        }
+    }
+
     @Test func hostFailuresAreIsolatedAndChangedPhotosAreSaved() async throws {
         let library = BatchTestLibrary([batchTestFacts(), batchTestFacts(), batchTestFacts(), batchTestFacts()],
                                        failingFacts: [PhotoID("photo-0")], failingAuto: [PhotoID("photo-1")], failingSave: [PhotoID("photo-2")])

@@ -472,6 +472,9 @@ actor BatchRun {
                                   generator: BatchPhotoGenerator(base: generator, calls: calls, reservation: reservation),
                                   host: editHost, configuration: configuration)
             agents[photo] = agent
+            // A step that failed is a failure only if the edit didn't recover from it: the shirts SAM didn't find by
+            // one name, it found by another on the critic's revision, and the photo was marked failed all the same.
+            var stepFailed = false, satisfied = false
             try await withTaskCancellationHandler {
                 for try await event in agent.run(instruction) {
                     try checkCancellation()
@@ -491,14 +494,17 @@ actor BatchRun {
                         changed.insert(photo)
                     case .finished(let reason):
                         note(reason, for: photo)
+                    case .critiqued(let critique):
+                        satisfied = critique.satisfied
                     case .trace(let trace) where trace.kind == .failure:
-                        results[photo]?.failed = true
+                        stepFailed = true
                         note(trace.detail, for: photo)
                     default:
                         break
                     }
                 }
                 try checkCancellation()
+                if stepFailed && !satisfied { results[photo]?.failed = true }
             } onCancel: {
                 Task { await agent.cancel() }
             }

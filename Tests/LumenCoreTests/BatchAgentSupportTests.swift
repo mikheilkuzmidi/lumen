@@ -228,9 +228,13 @@ actor BatchTestPlanner: Planner {
 
 actor BatchTestSegmenter: Segmenter {
     let modelID = "sam-3.1"
+    /// How many of the first requests find nothing.
+    private let findsNothing: Int
     private(set) var requests: [SegmentRequest] = []
+    init(findsNothing: Int = 0) { self.findsNothing = findsNothing }
     func segment(_ request: SegmentRequest) async throws -> [Segment] {
         requests.append(request)
+        if requests.count <= findsNothing { return [] }
         return [Segment(label: "shirt", box: .whole, mask: MaskData(size: request.image.size, filledWith: 255))]
     }
 }

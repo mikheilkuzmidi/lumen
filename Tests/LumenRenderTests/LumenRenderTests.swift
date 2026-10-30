@@ -500,6 +500,9 @@ struct PhotoPixelTests {
             if y >= 45, y < 53, (16..<22).contains(x) { return RGB(235, 185, 155) }
             // Fingertips, redder than the face, joined to the hand; the same red on its own on the shirt.
             if y >= 53, y < 56, (16..<22).contains(x) || (38..<43).contains(x) { return RGB(230, 160, 140) }
+            // A sunlit thumb tip over white cloth, pinker still; a saturated red cuff at the wrist.
+            if y >= 46, y < 52, (22..<25).contains(x) { return RGB(212, 172, 192) }
+            if y >= 43, y < 45, (16..<22).contains(x) { return RGB(200, 40, 50) }
             return y < 28 ? RGB(90, 60, 40) : RGB(20, 20, 22)
         }
         let size = PixelSize(width: 60, height: 60)
@@ -509,6 +512,8 @@ struct PhotoPixelTests {
         let skin = try #require(try EditSupport.skin(image, face: face, person: outline))
         #expect(skin[30, 24] == 255 && skin[18, 48] == 255, "the neck and the hand")
         #expect(skin[18, 54] == 255 && skin[40, 54] == 0, "the redder fingertips joined to the hand, not the same red alone")
+        #expect(skin[23, 48] == 255, "the pinker thumb joined to the hand")
+        #expect(skin[18, 44] == 0, "not the red cuff beside the hand")
         #expect(skin[30, 40] == 0 && skin[30, 2] == 0 && skin[17, 15] == 0, "not the T-shirt or the hair")
         #expect(skin[5, 30] == 0, "nor anything off the person")
         let grey = MaskData(size: size, coverage: (0..<3600).map { (15..<46).contains($0 % 60) && (30..<40).contains($0 / 60) ? 255 : 0 })

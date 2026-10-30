@@ -38,13 +38,19 @@ enum SkinFinding {
         for index in coverage.indices where person.coverage[index] >= 128 {
             let colour = lab(index)
             let c = (colour.a * colour.a + colour.b * colour.b).squareRoot()
-            var turn = abs(atan2(colour.b, colour.a) * 180 / .pi - hue)
-            if turn > 180 { turn = 360 - turn }
+            var signed = atan2(colour.b, colour.a) * 180 / .pi - hue
+            if signed > 180 { signed -= 360 } else if signed <= -180 { signed += 360 }
+            let turn = abs(signed)
+            let lit = colour.lightness >= middle - 32 && colour.lightness <= middle + 26
             if c >= chroma * 0.5, c <= chroma * 1.7, colour.lightness >= middle - 28, colour.lightness <= middle + 20,
                turn <= hueReach {
                 coverage[index] = 255
-            } else if c >= chroma * 0.35, c <= chroma * 2.4, colour.lightness >= middle - 32, colour.lightness <= middle + 26,
-                      turn <= min(35, hueReach * 2) {
+            } else if c >= chroma * 0.35, c <= chroma * 2.4, lit, turn <= min(35, hueReach * 2) {
+                likely[index] = true
+            } else if signed < 0, turn <= 75, c >= chroma * 0.35, c <= chroma * 1.6, lit {
+                // Redder still, never yellower: a sunlit thumb over white trousers read 37° to 69° pinker than the face
+                // and was left pink by zombie make-up. Wood and clothes in skin's tones lie the other way; a red
+                // sleeve is more colourful than this.
                 likely[index] = true
             }
         }

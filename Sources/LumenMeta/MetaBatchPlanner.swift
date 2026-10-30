@@ -155,6 +155,9 @@ public struct MetaBatchPlanner: BatchPlanner {
 
     static let planPrompt = """
     Plan the instruction across the library using the numbered reviews and answers so far. No images are sent.
+    The summary is one short sentence the person reads above the plan, saying what it changes across the library,
+    for example "Turn everyone's T-shirts royal blue; the other photos get the base pass". Nothing about the request,
+    the number of photos or what to do next.
     Group photos that should receive the same edit. Use only supplied photo numbers, once each at most,
     and include only photos the instruction applies to. likelyMatch is the reviewer's judgement of that from the
     photo itself; a description is only a few words and can leave out what the instruction is about. Include every

@@ -139,7 +139,8 @@ import Testing
     for rule in ["person's choice", "two to four short options", "recommendation", "same shirt", "own style",
                  "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",
                  "With every answer given, the plan has no questions",
-                 "photo with likelyMatch true unless its description rules the instruction out"] {
+                 "photo with likelyMatch true unless its description rules the instruction out",
+                 "The summary is one short sentence the person reads above the plan", "Nothing about the request"] {
         #expect(MetaBatchPlanner.planPrompt.contains(rule))
     }
 }

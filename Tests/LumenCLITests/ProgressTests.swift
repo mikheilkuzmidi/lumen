@@ -52,6 +52,32 @@ struct ProgressTests {
         #expect(lines.lines.contains { $0.hasPrefix("Failed:") })
     }
 
+    @Test func aFailureARevisionMadeGoodDoesNotFailTheRun() {
+        // Live on November 1: SAM found no "sky" in a RAW, the adjust was skipped, the revision found it from the
+        // planner's box and adjusted it, and the critic accepted the result. The run succeeded.
+        func failure(_ detail: String) -> AgentEvent {
+            .trace(TraceEvent(kind: .failure, detail: detail, started: Date(), duration: 0))
+        }
+        let layer = Layer(label: "Sky: warmer", content: .adjustment(values: [.temperature: 25], mask: nil))
+        var recovered = EditProgress(instruction: "Warm sky", backend: .meta, models: PhotoFixtures.models().ids,
+                                     configuration: AgentConfiguration())
+        recovered.accept(failure("adjust: Skipped adjust: nothing was found for sky."))
+        recovered.accept(.critiqued(Critique(satisfied: false, notes: "Unchanged.")))
+        #expect(recovered.trace.failure == "Skipped adjust: nothing was found for sky.")
+        recovered.accept(.applied(layer))
+        recovered.accept(.critiqued(Critique(satisfied: true, notes: "The sky is warm.")))
+        #expect(recovered.trace.failure == nil)
+        #expect(recovered.trace.events.contains { $0.kind == .failure })
+
+        // Accepted with nothing changed after the failure: the failure stands.
+        var unchanged = EditProgress(instruction: "Warm sky", backend: .meta, models: PhotoFixtures.models().ids,
+                                     configuration: AgentConfiguration())
+        unchanged.accept(.applied(layer))
+        unchanged.accept(failure("regenerate: Cannot redraw."))
+        unchanged.accept(.critiqued(Critique(satisfied: true, notes: "Fine.")))
+        #expect(unchanged.trace.failure == "Cannot redraw.")
+    }
+
     @Test func zeroStepRunMakesNoCalls() async throws {
         var options = try PhotoFixtures.options()
         options.maxSteps = 0

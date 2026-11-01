@@ -49,6 +49,8 @@ struct EditProgress {
     var configuration: AgentConfiguration
     private var regions: Set<String> = []
     private var attemptedSteps = 0
+    /// Whether a layer was applied or reverted after the recorded failure, so a revision may have made it good.
+    private var changedSinceFailure = false
 
     init(instruction: String, backend: Backend, models: ModelIDs, configuration: AgentConfiguration) {
         trace = EditTrace(instruction: instruction, backend: backend, modelIDs: models)
@@ -63,9 +65,18 @@ struct EditProgress {
         case .applied(let layer):
             trace.layerLabels.append(layer.label)
             trace.stepsApplied += 1
-        case .reverted: trace.stepsApplied += 1
+            if trace.failure != nil { changedSinceFailure = true }
+        case .reverted:
+            trace.stepsApplied += 1
+            if trace.failure != nil { changedSinceFailure = true }
         case .critiqued(let critique):
             trace.critiques.append(critique)
+            // A failed step that a revision then made good: the critic accepted a result changed after the failure.
+            // The failure stays in the events and the printed lines; the run itself succeeded.
+            if critique.satisfied, trace.failure != nil, changedSinceFailure {
+                trace.failure = nil
+                changedSinceFailure = false
+            }
             if !critique.satisfied, trace.revisions < configuration.maxRevisions,
                attemptedSteps < configuration.maxSteps {
                 trace.revisions += 1

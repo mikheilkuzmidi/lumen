@@ -277,6 +277,8 @@ Answered "Full costume", the knight was redrawn in a full suit of armour down pa
 | Muse Wonder left the woman in the red sweatshirt out of "T-shirts" without asking (the October 31 library recording). | A near match gets its own group and a question: "Include the woman's red sweatshirt too?" |
 | The first T-shirt run then also asked which blue, and whether everyone gets the same shirt: questions with a usual answer. | Muse Wonder asks only about near matches and photos where the subject is small or hidden; a colour named is a clear, true shade, and each person keeps their own style. The next run asked only about the sweatshirt and the silhouettes. |
 
+The same T-shirt instruction in Lumen Studio's Library on Muse Glimmer, on this Mac (an M4 Max), reviewed and planned with no Meta call: 2 model calls in 16 minutes, the straighten question, and a plan for the T-shirts on three photos and the base pass on eleven. It asked nothing about the red sweatshirt and marked the café photo for attention. Glimmer works for a library, slowly; Muse Spark and Muse Wonder review and plan it better.
+
 ## At scale
 
 The project's 126 local test photos cover portraits, faces, groups, pets, landscapes, cities, water, snow, night, indoor flash and studio. They are the maintainer's own test set, so they are not in the repository, and only the numbers are reported here.

@@ -104,7 +104,7 @@ final class StudioLibraryModel {
         hasRun = false
         resetRun()
         total = photos.count
-        status = photos.isEmpty ? "No JPEG, PNG or HEIC photos in this folder" : "\(photos.count) \(photos.count == 1 ? "photo" : "photos") ready"
+        status = photos.isEmpty ? "No JPEG, PNG, HEIC or RAW photos in this folder" : "\(photos.count) \(photos.count == 1 ? "photo" : "photos") ready"
     }
 
     func changeOutput(_ url: URL) async throws {

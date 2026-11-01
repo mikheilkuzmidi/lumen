@@ -51,3 +51,22 @@ These four were made from CC0 photos above by a script, to stand for what goes w
 | `library/pocket-shot.jpg` | `photos/living-room.jpg` | A corner, heavily blurred and 5 stops darker |
 | `library/kayaks-on-a-mountain-lake-tilted.jpg` | `photos/kayaks-on-a-mountain-lake.jpg` | Rotated 4° and cropped to fill |
 | `library/man-on-bike-on-road-tilted.jpg` | `photos/man-on-bike-on-road.jpg` | Rotated −3° and cropped to fill |
+
+## Camera RAW
+
+Lumen opens camera RAW (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and the other formats macOS develops) and exports the edit as JPEG. One small RAW is part of the tests; four full-size ones are downloaded on request, so the repository stays small:
+
+```sh
+scripts/get-raw-samples.sh   # about 90 MB into Fixtures/raw/, which git ignores
+.build/release/lumen edit Fixtures/raw/iphone-12-pro-lake.dng "Make the sky a warm sunset"
+```
+
+All five come from [raw.pixls.us](https://raw.pixls.us), a public-domain library of RAW files shared to test RAW software. The script checks each file's published SHA-256 and that its listing still says CC0 before keeping it.
+
+| File | Camera | raw.pixls.us file | License |
+| --- | --- | --- | --- |
+| `Tests/LumenRenderTests/RAW/samsung-galaxy-s10.dng` (1.3 MB, in the repository) | Samsung SM-G973U | Samsung - SM-G973U - 16bit 16bit (2.1132075471698).dng | CC0 |
+| `Fixtures/raw/sony-a7-iii-trees.arw` | Sony ILCE-7M3 | Sony - ILCE-7M3 - 14bit 14bit compressed (3:2).ARW | CC0 |
+| `Fixtures/raw/canon-eos-r6-clay-figures.cr3` | Canon EOS R6 | Canon - EOS R6 - 3:2.CR3 | CC0 |
+| `Fixtures/raw/nikon-z6-still-life.nef` | Nikon Z 6 | Nikon - Z 6 - 14bit 14bit compressed (3:2).NEF | CC0 |
+| `Fixtures/raw/iphone-12-pro-lake.dng` | Apple iPhone 12 Pro | Apple - iPhone 12 Pro - 8bit (4:3).DNG | CC0 |

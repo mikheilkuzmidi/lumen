@@ -21,20 +21,34 @@ public actor PhotoDocument: EditHost {
     private var patches: [UUID: CIImage] = [:]
 
     public init(contentsOf url: URL) throws {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw LumenError.invalidResponse("The photo could not be opened.")
         }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.int32Value ?? 1
-        let oriented = CIImage(cgImage: image).oriented(forExifOrientation: orientation)
+        let oriented: CIImage
+        if PhotoFormats.isRaw(url) {
+            // A camera RAW is developed by Core Image with the camera's own defaults (white balance, exposure, lens
+            // corrections), upright, and kept at full precision; it is saved as sRGB.
+            guard let raw = CIRAWFilter(imageURL: url), let developed = raw.outputImage,
+                  !developed.extent.isInfinite, !developed.extent.isEmpty else {
+                throw LumenError.invalidResponse("This RAW photo could not be developed on this Mac.")
+            }
+            oriented = developed
+            sourceColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        } else {
+            guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                throw LumenError.invalidResponse("The photo could not be opened.")
+            }
+            let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.int32Value ?? 1
+            oriented = CIImage(cgImage: image).oriented(forExifOrientation: orientation)
+            let colorSpace = image.colorSpace
+            sourceColorSpace = (colorSpace?.model == .indexed ? colorSpace?.baseColorSpace : colorSpace)
+                ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        }
         photo = oriented.transformed(by: CGAffineTransform(translationX: -oriented.extent.minX,
                                                          y: -oriented.extent.minY))
         canvas = photo
         capturedAt = PhotoStatistics.capturedAt(in: properties)
-        let colorSpace = image.colorSpace
-        sourceColorSpace = (colorSpace?.model == .indexed ? colorSpace?.baseColorSpace : colorSpace)
-            ?? CGColorSpace(name: CGColorSpace.sRGB)!
         context = CIContext(options: [
             .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
             .workingFormat: CIFormat.RGBAh,

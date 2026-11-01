@@ -38,7 +38,7 @@ let package = Package(
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),
         .testTarget(name: "LumenMetaTests", dependencies: ["LumenMeta"], resources: [.copy("Recorded")]),
         .testTarget(name: "LumenSAMMaskTests", dependencies: ["LumenSAMMask"]),
-        .testTarget(name: "LumenRenderTests", dependencies: ["LumenRender"]),
+        .testTarget(name: "LumenRenderTests", dependencies: ["LumenRender"], resources: [.copy("RAW")]),
         .testTarget(name: "LumenOpenTests", dependencies: ["LumenOpen"]),
         .testTarget(name: "LumenVoiceTests", dependencies: ["LumenVoice"]),
         .testTarget(name: "LumenCLITests", dependencies: ["lumen"]),

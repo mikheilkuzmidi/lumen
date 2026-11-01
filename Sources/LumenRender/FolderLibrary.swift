@@ -12,7 +12,8 @@ public actor FolderLibrary: LibraryHost {
     private let destinations: [PhotoID: URL]
     private var documents: [PhotoID: PhotoDocument] = [:]
 
-    /// Lists JPEG, PNG and HEIC files directly in the folder. HEIC exports keep their base name with .jpg.
+    /// Lists JPEG, PNG, HEIC and camera RAW files directly in the folder. HEIC and RAW export with their base name and
+    /// .jpg.
     public init(folder: URL, output: URL) throws {
         self.folder = folder.standardizedFileURL
         self.output = output.standardizedFileURL
@@ -23,7 +24,7 @@ public actor FolderLibrary: LibraryHost {
                                                                   includingPropertiesForKeys: [.isRegularFileKey])
         // A link to a photo elsewhere counts as a photo; a link to a folder does not.
         let photos = try entries.filter { url in
-            guard ["jpg", "jpeg", "png", "heic"].contains(url.pathExtension.lowercased()) else { return false }
+            guard PhotoFormats.opens(url) else { return false }
             return try url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         var originals: [PhotoID: URL] = [:]
@@ -31,8 +32,7 @@ public actor FolderLibrary: LibraryHost {
         var names: Set<String> = []
         for url in photos {
             let id = PhotoID(url.lastPathComponent)
-            let name = url.pathExtension.lowercased() == "heic"
-                ? url.deletingPathExtension().lastPathComponent + ".jpg" : url.lastPathComponent
+            let name = PhotoFormats.exportName(for: url)
             guard names.insert(name.lowercased()).inserted else {
                 throw LumenError.invalidResponse("More than one photo would export as \(name).")
             }

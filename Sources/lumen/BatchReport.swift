@@ -1,5 +1,6 @@
 import Foundation
 import LumenCore
+import LumenRender
 
 enum BatchReport {
     static let filenames = ["batch-summary.md", "batch-trace.json", "contact-before.jpg", "contact-after.jpg"]
@@ -42,9 +43,7 @@ enum BatchReport {
         if let answers { inputs.insert(path(answers)) }
         var destinations = filenames.map { output.appendingPathComponent($0) }
         for photo in photos {
-            let name = URL(fileURLWithPath: photo.rawValue)
-            let exported = name.pathExtension.lowercased() == "heic"
-                ? name.deletingPathExtension().lastPathComponent + ".jpg" : photo.rawValue
+            let exported = PhotoFormats.exportName(for: URL(fileURLWithPath: photo.rawValue))
             let destination = output.appendingPathComponent(exported)
             destinations += [destination, destination.appendingPathExtension("lumen.json")]
         }

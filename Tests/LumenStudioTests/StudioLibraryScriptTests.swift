@@ -29,6 +29,27 @@ struct StudioLibraryScriptTests {
         #expect(script.outputURL(relativeTo: URL(fileURLWithPath: "/tmp/run/library.json"))?.path == "/tmp/run/results")
     }
 
+    /// Muse Wonder names its questions, so a script can answer by a word in the question and words in the option; an
+    /// answer under the question's own id must still be one of its options; anything else takes the recommendation.
+    @Test func answersByIdOrByAWordInTheQuestion() throws {
+        let script = try StudioLibraryScript.parse(Data("""
+        {"folder":"photos", "answers":{"sweatshirt":"include", "silhouette":"leave", "straighten":"Leave them"}, "visible":true}
+        """.utf8))
+        #expect(script.visible)
+        let sweatshirt = BatchQuestion(id: "include-sweatshirt", question: "Include the woman's red sweatshirt too?",
+                                       options: ["Include it", "Leave it out"], recommended: 1)
+        let hikers = BatchQuestion(id: "include-hidden", question: "Include the four hikers shown as dark silhouettes?",
+                                   options: ["Include them", "Leave them out"], recommended: 0)
+        let straighten = BatchQuestion(id: "straighten", question: "Straighten them?", options: ["Straighten them", "Leave them"], recommended: 0)
+        let shade = BatchQuestion(id: "shade", question: "Which blue?", options: ["Navy", "Sky"], recommended: 1)
+        #expect(try script.answer(to: sweatshirt) == "Include it")
+        #expect(try script.answer(to: hikers) == "Leave them out")
+        #expect(try script.answer(to: straighten) == "Leave them")
+        #expect(try script.answer(to: shade) == "Sky")
+        let wrong = try StudioLibraryScript.parse(Data(#"{"folder":"photos", "answers":{"straighten":"Maybe"}}"#.utf8))
+        #expect(throws: (any Error).self) { try wrong.answer(to: straighten) }
+    }
+
     @Test(arguments: ["true", "false", "null", "\"ask\"", "\"yes\"", "\"no\""])
     func acceptsStraightenChoices(value: String) throws {
         let script = try StudioLibraryScript.parse(Data("{\"folder\":\"photos\",\"options\":{\"straighten\":\(value)}}".utf8))

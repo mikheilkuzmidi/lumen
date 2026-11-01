@@ -141,7 +141,7 @@ Cells show Measured, Misfire, Auto, Straightened, Edited, Needs attention and Fa
 
 `mode` is `autonomous`, `ask` (the default), or `plan`. `backend` is `meta` (the default), `glimmer`, or `spark-open`. Options default to Auto on, Straighten Ask, Flag misfires on, quality threshold 0.5, concurrency 3, and no model call limit. Straighten also accepts `true`, `false`, or `null`. Concurrency must be 1–32, quality threshold 0–1, and the call limit nonnegative. Window limits match the photo script.
 
-Answers are keyed by the question's id and must match one of its option texts. Missing answers take the recommendation. Autonomous mode always takes recommendations. Plan mode captures the approval panel and then approves by default; set `approve` to `false` to capture and cancel the plan without changing photos.
+Answers are keyed by the question's id and must match one of its option texts. Since Muse Wonder names its questions, an answer can instead be keyed by a word in the question, with words from one option: `{"sweatshirt": "include"}`. Missing answers take the recommendation. `"visible": true` puts the window on screen for a recording, as for a photo script. Autonomous mode always takes recommendations. Plan mode captures the approval panel and then approves by default; set `approve` to `false` to capture and cancel the plan without changing photos.
 
 The script drives the same view model and batch agent as Run, in an offscreen, nonactivating window. It captures the first occurrence of each milestone that the run reaches:
 

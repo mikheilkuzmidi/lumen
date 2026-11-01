@@ -136,12 +136,13 @@ import Testing
         ["number": $0.offset + 1, "description": $0.element.description, "group": $0.element.group,
          "likelyMatch": $0.element.matchesInstruction]
     }, "answers": [:]])
-    for rule in ["person's choice", "two to four short options", "recommendation", "same shirt", "own style",
+    for rule in ["Ask only these questions", "two to four short options", "recommendation", "and no others",
                  "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",
+                 "a colour named is a clear, true shade of it", "keeps their own clothes' style",
                  "With every answer given, the plan has no questions",
                  "photo with likelyMatch true unless its description rules the instruction out",
                  "The summary is one short sentence the person reads above the plan", "Nothing about the request",
-                 "never leave that photo out or put it in\nsilently", "a sweatshirt, hoodie,\npolo",
+                 "never leave that photo\n  out or put it in silently", "One question per near match",
                  "Include the woman's red sweatshirt too?", "Answered no, leave the group out"] {
         #expect(MetaBatchPlanner.planPrompt.contains(rule))
     }

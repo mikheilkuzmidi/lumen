@@ -21,6 +21,9 @@ Everything Lumen does on the Mac between those answers runs again for real: the 
 the redraw is checked and composited, and the critic's measurements are taken. Replayed on this Mac, the jacket came out
 byte for byte the same as the live run, and the knight within 2 of 255 in any channel.
 
+The knight's run was recorded before Lumen asked about costumes. Replayed now, Lumen first asks "Full costume, or over
+their own clothes?" and, with no terminal or `--answer`, takes the recommendation (Full costume), as a live run would.
+
 A replay follows the recorded run. Given another photo or instruction, it says so, and stops with an error where the run
 asks for an answer that wasn't recorded. Record your own with `--record run.json` on a live edit.
 

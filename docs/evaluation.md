@@ -248,6 +248,35 @@ Each of these runs found something, and each was fixed and run again:
 | After the portrait rule below, the reviewer called the tilted lake and street level: an October 27 run left both crooked. A rule that water is always level fixed three review-only runs, but not a run with an instruction. | The reviewer also names the line that should be level: horizon, water, building or none. A contact sheet shows that plainly where a 3° tilt is hard to see. A measured tilt with a horizon or water line is straightened; with none, it is not. |
 | Muse Wonder planned the T-shirts on one photo of four. It decided from the reviewer's few-word descriptions, which left the shirts out. | Photos the reviewer matched from the image stay in unless their description rules the instruction out. |
 | The boys' shirts in the black-and-white photo were redrawn blue but exported grey: the export kept the source's grey colour space. | A greyscale photo that an edit gives colour is exported in sRGB. |
+## November 1: questions by fixed rules, and plan-first mode tested
+
+**One photo.** The planner used to decide by itself when to ask, and asked about the same knight one time and not the next. Lumen now asks only where a fixed rule finds a choice the words leave open; the planner only reports what the words say. The one rule today is a costume that doesn't say whether it replaces the clothes. On the photo of the man in a denim jacket, with Muse Spark:
+
+| Instruction | Coverage the planner reported | Asked? |
+| --- | --- | --- |
+| Dress the man up as a medieval knight (twice) | unsaid | Yes, both times: "Full costume, or over their own clothes?" |
+| Make him an astronaut | unsaid | Yes |
+| Dress him in a full suit of armour, head to toe | full | No |
+| Put knight armour over his jacket | over | No |
+| Make his jacket navy; Give the man aviator sunglasses | no costume | No |
+
+Answered "Full costume", the knight was redrawn in a full suit of armour down past his hips (7 calls, $0.06); before, the armour stopped there and his denim sleeves showed.
+
+**A whole library, plan first.** `lumen batch Fixtures/library "<instruction>" --mode plan`, declined at the approval, so nothing changed. Muse Spark reviewed, Muse Wonder planned:
+
+| Instruction | Questions | Plan |
+| --- | --- | --- |
+| Make everyone's T-shirts blue | Straighten (recommended yes); include the woman's red sweatshirt; include the silhouetted hikers | T-shirts on four photos; the sweatshirt and silhouettes as their own groups until answered |
+| Give everyone sunglasses | Straighten | Nine photos in five groups by how many people; the silhouettes and the photos with nobody left out |
+| Make the skies more dramatic | Straighten | Daytime, sunset and night skies as three groups, seven photos |
+| Remove the phone from the café table | Straighten | The café photo only |
+| Make it look like autumn | Straighten | Foliage turned red, orange and gold on six photos, each group's instruction naming what is green there |
+
+| Problem found | Change |
+| --- | --- |
+| Muse Wonder left the woman in the red sweatshirt out of "T-shirts" without asking (the October 31 library recording). | A near match gets its own group and a question: "Include the woman's red sweatshirt too?" |
+| The first T-shirt run then also asked which blue, and whether everyone gets the same shirt: questions with a usual answer. | Muse Wonder asks only about near matches and photos where the subject is small or hidden; a colour named is a clear, true shade, and each person keeps their own style. The next run asked only about the sweatshirt and the silhouettes. |
+
 ## At scale
 
 The project's 126 local test photos cover portraits, faces, groups, pets, landscapes, cities, water, snow, night, indoor flash and studio. They are the maintainer's own test set, so they are not in the repository, and only the numbers are reported here.

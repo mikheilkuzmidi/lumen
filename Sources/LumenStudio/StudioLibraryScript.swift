@@ -52,6 +52,21 @@ struct StudioLibraryScript: Decodable, Sendable {
         visible = try values.decodeIfPresent(Bool.self, forKey: .visible) ?? false
     }
 
+    /// The scripted answer to a question: by its id, which must name one of its options exactly; else by a word in its
+    /// id or text (`{"sweatshirt": "include"}`), since Muse Wonder names its questions; else the recommendation.
+    func answer(to question: BatchQuestion) throws -> String {
+        if let answer = answers[question.id] {
+            guard question.options.contains(answer) else { throw StudioScriptError.message("The answer for \(question.id) must be one of its options.") }
+            return answer
+        }
+        let asked = EditQuestion(id: question.id, question: question.question, options: question.options, recommended: question.recommended)
+        for (word, answer) in answers.sorted(by: { $0.key < $1.key })
+        where question.id.localizedCaseInsensitiveContains(word) || question.question.localizedCaseInsensitiveContains(word) {
+            if let option = asked.option(matching: answer) { return option }
+        }
+        return asked.recommendation
+    }
+
     static func parse(_ data: Data) throws -> Self {
         let script: Self
         do { script = try JSONDecoder().decode(Self.self, from: data) }
@@ -137,9 +152,7 @@ struct StudioLibraryScriptRunner {
                     if reviewed == model.total { try await take(.reviewed) }
                 case .question(let question):
                     try await take(.question)
-                    let answer = script.answers[question.id] ?? question.options[question.recommended]
-                    guard question.options.contains(answer) else { throw StudioScriptError.message("The answer for \(question.id) must be one of its options.") }
-                    await model.answer(answer)
+                    await model.answer(try script.answer(to: question))
                 case .answered: try await take(.question)
                 case .awaitingApproval:
                     try await take(.plan)

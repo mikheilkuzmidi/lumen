@@ -17,7 +17,10 @@ struct StudioLibraryView: View {
             Rectangle().fill(StudioStyle.line).frame(height: 1)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    if let question = model.question { questionCard(question) }
+                    if let question = model.question {
+                        StudioQuestionCard(question: question.question, options: question.options, recommended: question.recommended,
+                                           disabled: model.isStopping) { option in Task { await model.answer(option) } }
+                    }
                     else if let decision = model.recentDecision { decisionCard(decision) }
                     if let plan = model.plan, let calls = model.estimatedModelCalls { planPanel(plan, calls: calls) }
                     grid
@@ -66,7 +69,7 @@ struct StudioLibraryView: View {
     private var header: some View {
         ZStack {
             HStack(spacing: StudioStyle.barSpacing) {
-                Text("Lumen").font(StudioStyle.title).foregroundStyle(StudioStyle.textSecondary)
+                StudioWindowTitle()
                 Spacer(minLength: 12)
                 StudioChip(isSelected: model.compare, action: { model.compare.toggle() }) {
                     HStack(spacing: 5) { Image(systemName: "square.on.square"); Text("Before / After") }
@@ -87,7 +90,7 @@ struct StudioLibraryView: View {
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))
         }
-        .padding(.leading, 84).padding(.trailing, StudioStyle.barInset)
+        .padding(.horizontal, StudioStyle.barInset)
         .frame(height: StudioStyle.topBarHeight)
     }
 
@@ -217,31 +220,6 @@ struct StudioLibraryView: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .accessibilityLabel("Planner")
         .simultaneousGesture(TapGesture().onEnded { Task { await model.backends.refreshAvailability() } })
-    }
-
-    private func questionCard(_ question: BatchQuestion) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(question.question).font(StudioStyle.title)
-            ViewThatFits(in: .horizontal) {
-                HStack { options(question) }
-                VStack(alignment: .leading) { options(question) }
-            }
-        }
-        .padding(StudioStyle.gutter).frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioStyle.raised)
-        .overlay(alignment: .bottom) { Rectangle().fill(StudioStyle.line).frame(height: 1) }
-    }
-
-    private func options(_ question: BatchQuestion) -> some View {
-        ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-            StudioChip(isSelected: index == question.recommended, action: { Task { await model.answer(option) } }) {
-                HStack(spacing: 6) {
-                    Text(option).font(StudioStyle.body)
-                    if index == question.recommended { Text("Recommended").font(StudioStyle.caption).foregroundStyle(StudioStyle.accent) }
-                }
-            }
-            .disabled(model.isStopping)
-        }
     }
 
     private func decisionCard(_ answer: BatchAnswer) -> some View {

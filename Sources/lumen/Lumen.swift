@@ -39,6 +39,9 @@ struct Edit: AsyncParsableCommand {
     @Option(help: "Grade the photo with this effect (see lumen styles).")
     var effect: String?
 
+    @Option(help: "Your answer if Lumen asks first (a costume that doesn't say whether it replaces the clothes): one of the options, or its number. Without it you're asked in a terminal; otherwise the recommended option is taken.")
+    var answer: String?
+
     @Option(help: "Keep every Meta answer of this run in a file, to replay it later with --replay.")
     var record: String?
 
@@ -109,10 +112,12 @@ struct Edit: AsyncParsableCommand {
             said = styled(transcript.text)
         }
         let instruction = said
+        let input = BatchInput.standard, supplied = answer
+        let answerer: EditAnswerer = { question in try await input.answer(question, supplied: supplied, line: output.write) }
         let result = try await withInterruptCancellation {
             try await options.backend.withLocalModel(line: output.write) {
                 try await EditRunner.run(photo: photoURL, instruction: instruction, options: options,
-                                         models: models, output: outputURL, trace: traceURL, line: output.write)
+                                         models: models, output: outputURL, trace: traceURL, answer: answerer, line: output.write)
             }
         }
         if let recording, let record {

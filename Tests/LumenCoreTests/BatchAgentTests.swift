@@ -219,6 +219,21 @@ struct BatchAgentTests {
         #expect(try batchTestSummary(events).modelCalls == 3)
     }
 
+    /// A photo's own agent never waits on a question in a batch: nobody is there to answer each photo, so it takes the
+    /// recommendation and plans with it.
+    @Test func aPhotosAgentTakesTheRecommendation() async throws {
+        let library = BatchTestLibrary([batchTestFacts()])
+        let planner = BatchTestPlanner(asks: true)
+        let reviewer = BatchTestReviewer(reviews: [batchTestReview(PhotoID("photo-0"), quality: 0.3)])
+        let events = try await batchTestCollect(await batchTestAgent(library, reviewer: reviewer, planner: planner).run(
+            BatchOptions(mode: .autonomous, auto: false, straighten: false)))
+        let answered = events.compactMap { event -> String? in
+            if case .edit(_, .answered(_, let answer)) = event { answer } else { nil }
+        }
+        #expect(answered == [QuestionRules.costume.recommendation])
+        #expect(await planner.plans.count == 1, "the answer is applied to the plan, not planned again")
+    }
+
     @Test func askModeWaitsAndReplansWithThePersonsAnswer() async throws {
         let library = BatchTestLibrary([batchTestFacts(), batchTestFacts()])
         let reviewer = BatchTestReviewer(reviews: [batchTestReview(PhotoID("photo-1"), matches: false)])

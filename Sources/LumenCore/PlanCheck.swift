@@ -78,6 +78,13 @@ struct PlanCheck {
                     for piece in with where !known.contains(piece) { notes.append("\(label): dropped unknown piece \"\(piece)\".") }
                     restyle.with = known.isEmpty ? nil : known
                 }
+                // A costume's coverage is one of three; one the words don't settle is asked about (QuestionRules).
+                if restyle.style == "costume" {
+                    restyle.coverage = restyle.coverage.flatMap(StyleStep.Coverage.init(rawValue:))?.rawValue
+                        ?? StyleStep.Coverage.unsaid.rawValue
+                } else {
+                    restyle.coverage = nil
+                }
                 if let outfit = restyle.outfit?.trimmingCharacters(in: .whitespacesAndNewlines) {
                     restyle.outfit = outfit.isEmpty || restyle.style != "costume" ? nil : String(outfit.prefix(200))
                 }

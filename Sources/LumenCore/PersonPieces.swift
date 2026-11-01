@@ -105,6 +105,19 @@ public enum PersonPieces {
         return top.boundingBox == nil ? nil : top
     }
 
+    /// Everything they wear below the face: the person from the chin down to their lowest edge in the photo, less their
+    /// face and bare skin. A knight's armour drawn only over `top` stopped at his hips, over his jeans.
+    public static func outfit(face: MaskData, person: MaskData, skin: MaskData?) -> MaskData? {
+        guard let f = Face(face) else { return nil }
+        let size = person.size
+        let bare = skin.map { $0.size == size ? $0 : $0.resized(to: size) }
+        let outfit = MaskData(size: size, coverage: (0..<size.width * size.height).map { index in
+            index / size.width >= f.bottom && face.coverage[index] < 128 && (bare?.coverage[index] ?? 0) < 128
+                ? person.coverage[index] : 0
+        })
+        return outfit.boundingBox == nil ? nil : outfit
+    }
+
     /// Room just above their head for what they wear on it, which the photo doesn't have yet: an oval three face widths
     /// across, from three quarters of a face above the top of their `head` (the face's top less a third without one)
     /// to halfway down the face's height into it. Two face widths cut a pirate's tricorn off at its brim.

@@ -23,7 +23,7 @@ struct LumenStudioApp: App {
 
     var body: some Scene {
         Window("Lumen Studio", id: "studio") {
-            StudioView(model: model, openFolder: libraries.openFolder)
+            StudioView(model: model, openFolder: libraries.openFolder, openPhotoWindow: libraries.openPhotoWindow)
                 .onAppear { delegate.model = model; delegate.libraries = libraries; libraries.focusedPhoto = model }
                 .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { notification in
                     if let window = notification.object as? NSWindow,
@@ -39,9 +39,11 @@ struct LumenStudioApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open Photo…", action: model.choosePhoto)
-                    .keyboardShortcut("o")
-                    .disabled(model.isBusy)
+                // While the edit runs, the photo opens in a new window.
+                Button("Open Photo…") {
+                    if model.isBusy { StudioModel.choosePhotoFile(libraries.openPhotoWindow) } else { model.choosePhoto() }
+                }
+                .keyboardShortcut("o")
                 Button("Open Folder…", action: libraries.chooseFolder)
                     .keyboardShortcut("o", modifiers: [.command, .shift])
             }

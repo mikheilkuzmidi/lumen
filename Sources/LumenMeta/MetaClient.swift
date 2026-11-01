@@ -191,7 +191,12 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         her an astronaut") is the costume style, with the costume in outfit, a few words saying what is worn
         (a medieval knight in shining armour with a plumed helmet), and in with what it covers: top for clothes,
         hat for anything worn on the head, neck for make-up or a collar there, skin for gloves, paint or make-up on
-        the hands. Use outfit null for every other style.
+        the hands. Its coverage says only what the words say: full when they say it replaces everything worn ("a
+        full suit of armour", "head to toe", "a spacesuit"), over when they say it goes over their own clothes or is
+        only part of a costume ("armour over his jacket", "a cape", "just the helmet"), and unsaid when they don't
+        say ("dress him as a knight", "make her an astronaut"): never guess it from the photo; Lumen asks the
+        person. History may hold the answer, after the instruction: follow it. Use outfit null and coverage none for
+        every other style.
         A style marked adults only is never for someone who looks under 18: plan nothing for them and
         finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
         alone (style none, and the person's region for main character and redCarpet): \(effects). "Black and white

@@ -22,6 +22,8 @@ struct EditTrace: Codable, Sendable {
     var exported = false
     var finalReason: String?
     var failure: String?
+    /// The person's answers to the planner's question, by question.
+    var answers: [String: String]?
 
     var totalCost: Double { events.reduce(0) { $0 + ($1.cost ?? 0) } }
     var costSummary: String { "Cost: \(dollars(totalCost)) USD · \(modelCalls) model calls" }
@@ -83,6 +85,8 @@ struct EditProgress {
                 trace.plans.append(EditPlan(summary: critique.notes, steps: critique.steps).checked(knownRegions: regions).plan)
             }
         case .finished(let reason): trace.finalReason = reason
+        case .question: break
+        case .answered(let question, let answer): trace.answers = (trace.answers ?? [:]).merging([question.question: answer]) { $1 }
         case .trace(let event):
             trace.events.append(event)
             if event.kind == .failure, trace.failure == nil {

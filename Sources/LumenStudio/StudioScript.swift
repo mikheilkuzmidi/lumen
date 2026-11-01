@@ -20,8 +20,13 @@ struct StudioScript: Decodable, Sendable {
     let voice: String?
     let backend: Backend
     let window: Window
+    /// Answers to the planner's question, by its id; an answer naming one of its options is taken whatever its key, since
+    /// the planner names its questions. The recommendation otherwise.
+    let answers: [String: String]
+    /// Puts the window on screen, still ignoring the mouse, where it's drawn at full frame rate for a recording.
+    let visible: Bool
 
-    private enum CodingKeys: String, CodingKey { case photo, area, instruction, voice, backend, window }
+    private enum CodingKeys: String, CodingKey { case photo, area, instruction, voice, backend, window, answers, visible }
 
     init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -31,6 +36,19 @@ struct StudioScript: Decodable, Sendable {
         voice = try values.decodeIfPresent(String.self, forKey: .voice)
         backend = try values.decode(Backend.self, forKey: .backend)
         window = try values.decode(Window.self, forKey: .window)
+        answers = try values.decodeIfPresent([String: String].self, forKey: .answers) ?? [:]
+        visible = try values.decodeIfPresent(Bool.self, forKey: .visible) ?? false
+    }
+
+    /// The scripted answer to a question: by its id, else the first answer that names one of its options.
+    func answer(to question: EditQuestion) throws -> String {
+        if let answer = answers[question.id] {
+            guard let option = question.option(matching: answer) else {
+                throw StudioScriptError.message("The answer for \(question.id) must name one of its options: \(question.options.joined(separator: ", ")).")
+            }
+            return option
+        }
+        return answers.values.lazy.compactMap(question.option(matching:)).first ?? question.recommendation
     }
 
     static func parse(_ data: Data) throws -> StudioScript {
@@ -115,7 +133,7 @@ enum StudioScriptError: LocalizedError {
 
 /// Stable filenames for the first occurrence of each edit milestone.
 enum StudioSnapshot: Int, CaseIterable, Sendable {
-    case opened = 1, area, planned, selected, redrawn, finished, compare, layers, failed
+    case opened = 1, area, planned, selected, redrawn, finished, compare, layers, failed, question
 
     var filename: String {
         let name: String = switch self {
@@ -128,6 +146,7 @@ enum StudioSnapshot: Int, CaseIterable, Sendable {
         case .compare: "compare"
         case .layers: "layers"
         case .failed: "failed"
+        case .question: "question"
         }
         return "\(rawValue)-\(name).png"
     }
@@ -145,6 +164,7 @@ struct StudioSnapshots {
             guard case .patch = layer.content else { return nil }
             snapshot = .redrawn
         case .finished: snapshot = .finished
+        case .question: snapshot = .question
         default: return nil
         }
         return captured.insert(snapshot).inserted ? snapshot : nil
@@ -188,6 +208,7 @@ struct StudioScriptRunner {
                     if snapshot == .finished { finished = true }
                     else { try await capture(snapshot) }
                 }
+                if case .question(let question) = event { model.answer(try script.answer(to: question)) }
             }
             if let issue = model.issue { throw StudioScriptError.message(issue) }
             guard finished else { throw StudioScriptError.message("The edit ended without a finished event.") }

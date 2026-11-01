@@ -17,9 +17,13 @@ xattr -dr com.apple.quarantine ".build/studio/Lumen Studio.app"
 
 Open Settings with the gear button and paste your Meta API key. Studio stores it in this Mac's Keychain under service `Lumen`, account `meta-api-key`. If no key is saved, Studio reads `META_API_KEY` from its environment. A Finder launch does not inherit variables from your terminal, so use Settings or launch the executable from that terminal.
 
-The header shows the photo's name and pixel size, plus Open, Settings and Export. The canvas fits the photo with space around it; use the Fit and zoom controls below it to inspect details. Drag a box on the photo to tell Lumen where to look, then move it or resize its corners. Escape clears the box. Compare shows the original; holding Space also compares when you are not typing.
+The header shows "Lumen" at the left edge, the photo's name and pixel size, plus Open, Settings and Export. The window's close, minimise and zoom buttons appear when the pointer is over the top-left corner, and "Lumen" moves aside for them. The canvas fits the photo with space around it; use the Fit and zoom controls below it to inspect details. Drag a box on the photo to tell Lumen where to look, then move it or resize its corners. Escape clears the box. Compare shows the original; holding Space also compares when you are not typing.
 
 The instruction field below the canvas sends your request with Run. Stop cancels the edit. Selection masks reveal on the canvas while the edit runs.
+
+Lumen asks only where a fixed rule finds a choice the words leave open, as the command line does: today, a costume that doesn't say whether it replaces the clothes ("Dress the man up as a medieval knight"). The question appears in a card above the instruction field with its options and the recommended one marked; click an option and the edit goes on with it, without planning again. Stop ends the edit without an answer.
+
+While an edit runs, what doesn't change the photo stays usable: Before / After, zoom and Fit, the Steps and Layers tabs, and Settings. Open Photo (⌘O), or a photo dropped on the window, opens in a new window. The instruction, styles, microphone, layer controls, Undo, Redo and Export wait until the edit finishes or stops; their help says so.
 
 To say the instruction, click the microphone beside the field and speak; click it again, or press Return, when you are done, and Escape throws the recording away. Muse Voice Transcribe writes down what you said, in the language you said it, after anything already typed; nothing runs until you press Run. The first time, macOS asks whether Lumen Studio may use the microphone. The library's instruction field has the same microphone.
 
@@ -60,11 +64,13 @@ The script uses the same edit code as Run. Set `backend` to `meta`, `glimmer` or
 }
 ```
 
+`answers` answers Lumen's question, if it asks one (`{"costume-coverage": "Full costume"}`): by the question's id or, under any key, when it names one of the options, as `--answer` does; otherwise the run takes the recommendation. `"visible": true` puts the window in the middle of the screen, above other windows, still ignoring the mouse and keyboard, so it is drawn at full frame rate for a screen recording; a Library script takes it too.
+
 In place of `instruction`, `"voice": "said.m4a"` gives a recording of it, relative to the script: Muse Voice Transcribe writes it into the field as if it had been said, and the run goes on from there.
 
 Photo paths can be absolute, start with `~`, or be relative to the script file. Set `area` to `null` or omit it to use the whole photo. Area coordinates are fractions from the photo's top-left corner and must stay inside it. Window dimensions are in points, at least 980 × 680 and at most 8192 × 8192.
 
-Scripted mode starts as an accessory application and creates a nonactivating, mouse-ignoring window beyond the visible screens. It captures the window content at its backing scale without screen recording. Keychain access cannot display an authentication prompt in this mode; unlock or authorize the saved key in the interactive app first if needed.
+Scripted mode starts as an accessory application and creates a nonactivating, mouse-ignoring window beyond the visible screens, or on screen with `visible`. It captures the window content at its backing scale without screen recording. Keychain access cannot display an authentication prompt in this mode; unlock or authorize the saved key in the interactive app first if needed.
 
 The output folder contains the first occurrence of each milestone:
 
@@ -78,6 +84,7 @@ The output folder contains the first occurrence of each milestone:
 | `6-finished.png` | Finished edit |
 | `7-compare.png` | Original shown with Compare |
 | `8-layers.png` | Edited photo with the Layers tab open |
+| `10-question.png` | Lumen's question, when it asks one |
 
 Selection and redraw snapshots are omitted when the plan never reaches those events. The run also writes the full-size `result.jpg` and a readable `timeline.txt`, then exits. Failures write `error.txt` and exit with a nonzero status. Reusing an output folder replaces these known output files; use a separate folder for each run to keep earlier captures.
 

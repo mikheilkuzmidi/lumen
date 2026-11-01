@@ -64,6 +64,8 @@ enum PlanSchema {
                              "items": ["type": "string", "enum": PersonStyle.Piece.allCases.map(\.rawValue),
                                        "description": "neck (neck and ears), skin (their other bare skin: hands, arms), top (the clothes on their upper body) or hat (room above the head for what is worn on it)."]],
                     "outfit": string("For the costume style, the costume in a few words; null otherwise.", nullable: true),
+                    "coverage": ["type": "string", "enum": StyleStep.Coverage.allCases.map(\.rawValue) + ["none"],
+                                 "description": "For the costume style, what the words say it covers: full (everything they wear, down to their feet: a full suit of armour, head to toe), over (over their own clothes, or only part of them: armour over his jacket, a cape, just the helmet) or unsaid (the words don't say: dress him as a knight); none for every other style."],
                 ]),
                 step("crop", properties: ["rect": rect()]),
                 step("revert", properties: ["layer": string("The id of an applied layer to take off the photo.")]),

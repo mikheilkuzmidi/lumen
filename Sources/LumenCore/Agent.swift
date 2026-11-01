@@ -94,9 +94,15 @@ public enum AgentEvent: Sendable {
     case applied(Layer)
     case reverted(Layer.ID)
     case critiqued(Critique)
+    /// The planner asks the person one question before editing; the run waits for the answer.
+    case question(EditQuestion)
+    case answered(question: EditQuestion, answer: String)
     case finished(reason: String)
     case trace(TraceEvent)
 }
+
+/// Answers a plan's question with one of its options, as the person chose it.
+public typealias EditAnswerer = @Sendable (EditQuestion) async throws -> String
 
 /// Plans an instruction, carries out each step as a layer on the host, looks at the result and revises it.
 public actor EditAgent {
@@ -130,11 +136,13 @@ public actor EditAgent {
     }
 
     /// Runs the instruction; `area` is where the user asked the agent to look. `maxRevisions` lowers the configured
-    /// limit for this instruction only, as an app does when its credits run low.
-    public nonisolated func run(_ instruction: String, area: NormalizedRect? = nil, maxRevisions: Int? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+    /// limit for this instruction only, as an app does when its credits run low. `answer` is asked when the planner
+    /// has a question; without it, or given something that isn't an option, the recommendation is taken.
+    public nonisolated func run(_ instruction: String, area: NormalizedRect? = nil, maxRevisions: Int? = nil,
+                                answer: EditAnswerer? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { events in
             let task = Task {
-                await self.start(instruction, area: area, maxRevisions: maxRevisions, events: events)
+                await self.start(instruction, area: area, maxRevisions: maxRevisions, answer: answer, events: events)
             }
             events.onTermination = { @Sendable _ in task.cancel() }
         }
@@ -188,13 +196,13 @@ public actor EditAgent {
 
     private typealias Events = AsyncThrowingStream<AgentEvent, Error>.Continuation
 
-    private func start(_ instruction: String, area: NormalizedRect?, maxRevisions: Int?, events: Events) async {
+    private func start(_ instruction: String, area: NormalizedRect?, maxRevisions: Int?, answer: EditAnswerer?, events: Events) async {
         let id = UUID()
         let previous = latestRun
         let limit = min(configuration.maxRevisions, maxRevisions ?? configuration.maxRevisions)
         let task = Task {
             await previous?.value
-            await self.run(instruction, area: area, maxRevisions: limit, events: events)
+            await self.run(instruction, area: area, maxRevisions: limit, answer: answer, events: events)
         }
         latestRun = task
         tasks[id] = task
@@ -207,7 +215,7 @@ public actor EditAgent {
         if tasks.isEmpty { latestRun = nil }
     }
 
-    private func run(_ instruction: String, area: NormalizedRect?, maxRevisions: Int, events: Events) async {
+    private func run(_ instruction: String, area: NormalizedRect?, maxRevisions: Int, answer: EditAnswerer?, events: Events) async {
         do {
             try checkCancellation()
             var run = Run()
@@ -228,6 +236,20 @@ public actor EditAgent {
                 try await self.planner.plan(request)
             }
             var next = checked(plan, events: events)
+            // Only a fixed rule asks (QuestionRules), once, before anything changes. The answer is applied to this
+            // plan and to the critic's revisions, and stays with the instruction for follow-ups.
+            var decided = QuestionRules.stated(in: next)
+            if let question = QuestionRules.question(for: next) {
+                events.yield(.question(question))
+                let reply = try await answer?(question)
+                try checkCancellation()
+                let chosen = reply.flatMap(question.option(matching:)) ?? question.recommendation
+                note(.plan, "Asked \u{201C}\(question.question)\u{201D} and went with \u{201C}\(chosen)\u{201D}.", events: events)
+                events.yield(.answered(question: question, answer: chosen))
+                history[history.count - 1] = "\(instruction) (\(question.question) \(chosen))"
+                decided[question.id] = chosen
+            }
+            next = QuestionRules.apply(decided, to: next)
             events.yield(.planned(next))
             var revisions = 0
             while true {
@@ -271,7 +293,7 @@ public actor EditAgent {
                     return
                 }
                 revisions += 1
-                next = checked(EditPlan(summary: critique.notes, steps: critique.steps), events: events)
+                next = QuestionRules.apply(decided, to: checked(EditPlan(summary: critique.notes, steps: critique.steps), events: events))
             }
         } catch {
             let error = cancellationError(error)
@@ -773,14 +795,17 @@ public actor EditAgent {
         }
         let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
-            let pieces = style.pieces.union((step.with ?? []).compactMap(PersonStyle.Piece.init(rawValue:)))
+            var pieces = style.pieces.union((step.with ?? []).compactMap(PersonStyle.Piece.init(rawValue:)))
+            // A full costume replaces everything they wear; a costume over their clothes keeps what they wear below.
+            if step.coverage == StyleStep.Coverage.full.rawValue { pieces.insert(.outfit) }
+            else if step.coverage == StyleStep.Coverage.over.rawValue { pieces.remove(.outfit) }
             // Where a body's shoulders and waist are, and what of it stays as it was: the warp, once, widened the head of
             // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair. A face's
             // neck and ears, and the rest of their skin, are found from it too.
             let face = style.part == .body || !pieces.isEmpty ? try await face(of: person, events: events) : nil
             let part = try await part(style.part, of: person, withFace: style.coversFace, face: face, events: events)
             var skin: MaskData?
-            if let face, style.part == .body || !pieces.isDisjoint(with: [.neck, .skin, .top]) {
+            if let face, style.part == .body || !pieces.isDisjoint(with: [.neck, .skin, .top, .outfit]) {
                 skin = try await self.skin(of: person, face: face.mask)
             }
             let label = "\(title(person.info.id)): \(style.title)"
@@ -791,6 +816,7 @@ public actor EditAgent {
                     let found: MaskData? = switch piece {
                     case .neck: PersonPieces.neck(face: face, person: person.mask, skin: skin)
                     case .top: PersonPieces.top(face: face, person: person.mask, skin: skin)
+                    case .outfit: PersonPieces.outfit(face: face, person: person.mask, skin: skin)
                     case .hat: PersonPieces.hat(face: face, head: style.part == .head ? part.mask : nil)
                     case .skin: nil
                     }

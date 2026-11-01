@@ -186,13 +186,16 @@ actor BatchTestPlanner: Planner {
     private let redraw: Bool
     private let noChange: Bool
     private let revisions: Int
+    private let asks: Bool
     private(set) var plans: [PlanRequest] = []
     private(set) var critiques: [CritiqueRequest] = []
     private(set) var active = 0
     private(set) var peak = 0
     private(set) var cancellations = 0
 
-    init(gate: BatchTestGate? = nil, failingPlanAt: Int? = nil, redraw: Bool = false, noChange: Bool = false, revisions: Int = 0) {
+    init(gate: BatchTestGate? = nil, failingPlanAt: Int? = nil, redraw: Bool = false, noChange: Bool = false, revisions: Int = 0,
+         asks: Bool = false) {
+        self.asks = asks
         self.gate = gate
         self.failingPlanAt = failingPlanAt
         self.redraw = redraw
@@ -210,6 +213,12 @@ actor BatchTestPlanner: Planner {
         if Task.isCancelled { cancellations += 1 }
         await gate?.leave()
         if index == failingPlanAt { throw LumenError.refused("Cannot edit this photo.") }
+        if asks {
+            return EditPlan(summary: "Dress him as a knight", steps: [
+                .select(Selection(id: "man", concept: "person")),
+                .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .unsaid)),
+            ])
+        }
         if noChange { return EditPlan(summary: "Keep it", steps: []) }
         if redraw {
             return EditPlan(summary: "Blue shirt", steps: [

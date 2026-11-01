@@ -46,6 +46,15 @@ import Testing
     }
 }
 
+/// The planner only says what a costume's words say it covers; it never asks, and never guesses it from the photo.
+@Test func thePlannerSaysWhatACostumeCoversAndNeverAsks() {
+    for rule in ["Its coverage says only what the words say", "full when they say it replaces everything worn",
+                 "over when they say it goes over their own clothes", "unsaid when they don't\nsay", "never guess it from the photo"] {
+        #expect(MetaPlanner.planPrompt.contains(rule), "\(rule)")
+    }
+    #expect(!MetaPlanner.planPrompt.contains("ask the person one question"))
+}
+
 @Test func critiqueLabelsBothPhotosAndReadsAnswer() async throws {
     let transport = ReplayTransport([try .init(file: "critique.json")])
     let planner = MetaPlanner(configuration: testConfiguration, transport: transport)

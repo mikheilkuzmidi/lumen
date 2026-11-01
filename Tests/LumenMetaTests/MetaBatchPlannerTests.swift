@@ -140,7 +140,9 @@ import Testing
                  "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",
                  "With every answer given, the plan has no questions",
                  "photo with likelyMatch true unless its description rules the instruction out",
-                 "The summary is one short sentence the person reads above the plan", "Nothing about the request"] {
+                 "The summary is one short sentence the person reads above the plan", "Nothing about the request",
+                 "never leave that photo out or put it in\nsilently", "a sweatshirt, hoodie,\npolo",
+                 "Include the woman's red sweatshirt too?", "Answered no, leave the group out"] {
         #expect(MetaBatchPlanner.planPrompt.contains(rule))
     }
 }

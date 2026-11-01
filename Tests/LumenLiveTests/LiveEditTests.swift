@@ -31,6 +31,8 @@ struct LiveEditTests {
             case .reverted(let id): log.append("Reverted layer \(id)")
             case .critiqued(let critique): log.append("Critique: \(critique.satisfied ? "satisfied" : "not yet") — \(critique.notes)")
             case .finished(let reason): finished = true; log.append("Finished: \(reason)")
+            case .question(let question): log.append("Question: \(question.question) \(question.options.joined(separator: " / "))")
+            case .answered(_, let answer): log.append("Answer: \(answer)")
             case .trace(let trace): log.append(String(format: "  [%@%@] %.1f s %@", trace.kind.rawValue, trace.model.map { " " + $0 } ?? "", trace.duration, trace.detail))
             }
         }

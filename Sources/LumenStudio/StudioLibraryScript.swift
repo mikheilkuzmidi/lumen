@@ -34,8 +34,10 @@ struct StudioLibraryScript: Decodable, Sendable {
     let output: String?
     let approve: Bool
     let window: StudioScript.Window
+    /// Puts the window on screen for a recording, as a photo script's `visible`.
+    let visible: Bool
 
-    private enum CodingKeys: String, CodingKey { case folder, instruction, mode, options, answers, backend, output, approve, window }
+    private enum CodingKeys: String, CodingKey { case folder, instruction, mode, options, answers, backend, output, approve, window, visible }
     init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         folder = try values.decode(String.self, forKey: .folder)
@@ -47,6 +49,7 @@ struct StudioLibraryScript: Decodable, Sendable {
         output = try values.decodeIfPresent(String.self, forKey: .output)
         approve = try values.decodeIfPresent(Bool.self, forKey: .approve) ?? true
         window = try values.decodeIfPresent(StudioScript.Window.self, forKey: .window) ?? StudioScript.Window(width: 1440, height: 900)
+        visible = try values.decodeIfPresent(Bool.self, forKey: .visible) ?? false
     }
 
     static func parse(_ data: Data) throws -> Self {

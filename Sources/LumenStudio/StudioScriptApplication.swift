@@ -80,10 +80,8 @@ final class StudioScriptApplication {
             .tint(StudioStyle.accent)
             .frame(width: size.width, height: size.height)
         panel.contentView = NSHostingView(rootView: root)
-        let right = NSScreen.screens.map(\.frame.maxX).max() ?? 0
-        panel.setFrameOrigin(NSPoint(x: right + size.width + 100, y: 0))
         window = panel
-        panel.orderBack(nil)
+        Self.show(panel, visible: script.visible)
     }
 
     private func capture(_ snapshot: StudioSnapshot) throws {
@@ -109,6 +107,23 @@ final class StudioScriptApplication {
         for name in names {
             let url = arguments.output.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
+    }
+
+    /// A scripted window off every screen, where macOS still draws it for the snapshots but nobody sees it; or, visible,
+    /// in the middle of the screen above other windows, drawn at full frame rate for a recording. Either way it never
+    /// takes the mouse or the keyboard.
+    static func show(_ panel: NSPanel, visible: Bool) {
+        if visible, let screen = NSScreen.main {
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+            let area = screen.visibleFrame, size = panel.frame.size
+            panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2))
+            panel.orderFrontRegardless()
+        } else {
+            let right = NSScreen.screens.map(\.frame.maxX).max() ?? 0
+            panel.setFrameOrigin(NSPoint(x: right + panel.frame.width + 100, y: 0))
+            panel.orderBack(nil)
         }
     }
 

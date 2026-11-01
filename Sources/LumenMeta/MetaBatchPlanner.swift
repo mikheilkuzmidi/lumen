@@ -173,6 +173,11 @@ public struct MetaBatchPlanner: BatchPlanner {
     Ask only what is truly the person's choice, as two to four short options with a recommendation.
     Examples: whether everyone gets the same shirt or each keeps their own style in the new colour;
     whether to include photos where the subject is small or partly hidden.
+    When a description shows something close to what the instruction names but not quite it (a sweatshirt, hoodie,
+    polo or long-sleeved top for "T-shirts"; a cardigan for "jackets"), never leave that photo out or put it in
+    silently: put such photos in a group of their own, its instruction written as if they are included, and ask
+    whether to include them, naming the near match ("Include the woman's red sweatshirt too?"), with that group
+    in the question's groups. Answered no, leave the group out.
     Never ask what the photos themselves can answer. Use a zero-based recommended option index and
     list the group ids each question affects. Give each question a short unique id.
     Apply every supplied answer. Never repeat a question whose id is already answered.

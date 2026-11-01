@@ -37,6 +37,20 @@ final class StudioLibraryWindows {
         }
     }
 
+    /// A photo in a window of its own, opened while another window's edit runs.
+    func openPhotoWindow(_ url: URL) {
+        let model = StudioModel()
+        let id = UUID()
+        let view = StudioView(model: model, openFolder: { [weak self] in self?.openFolder($0) },
+                              openPhotoWindow: { [weak self] in self?.openPhotoWindow($0) })
+        let controller = makeWindow(id: id, title: url.lastPathComponent, view: view, focusedPhoto: model) {
+            await model.close()
+        }
+        windows[id] = controller
+        controller.showWindow(nil)
+        model.open(url)
+    }
+
     private func openPhoto(_ photo: PhotoID, from library: StudioLibraryModel) {
         guard !library.isRunning else { return }
         let key = "\(ObjectIdentifier(library)):\(photo.rawValue)"
@@ -51,7 +65,8 @@ final class StudioLibraryWindows {
             do {
                 try await library.openPhoto(photo, in: model)
                 model.photoDidChange = { [weak library] in library?.refreshPhoto(photo) }
-                let view = StudioView(model: model, openFolder: { [weak self] in self?.openFolder($0) })
+                let view = StudioView(model: model, openFolder: { [weak self] in self?.openFolder($0) },
+                                      openPhotoWindow: { [weak self] in self?.openPhotoWindow($0) })
                 let controller = makeWindow(id: id, title: photo.rawValue, view: view, focusedPhoto: model) {
                     await model.close()
                     library.refreshPhoto(photo)

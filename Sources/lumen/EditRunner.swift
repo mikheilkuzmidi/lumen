@@ -4,7 +4,8 @@ import LumenRender
 
 enum EditRunner {
     static func run(photo: URL, instruction: String, options: EditOptions, models: EditModels,
-                    output: URL, trace: URL?, line: @Sendable (String) -> Void) async throws -> EditTrace {
+                    output: URL, trace: URL?, answer: EditAnswerer? = nil,
+                    line: @Sendable (String) -> Void) async throws -> EditTrace {
         try Task.checkCancellation()
         let format = try PhotoOutput.format(for: output)
         try PhotoOutput.validate(photo: photo, output: output, trace: trace)
@@ -12,7 +13,8 @@ enum EditRunner {
         var result = EditTrace(instruction: instruction, backend: options.backend, modelIDs: models.ids)
         do {
             let document = try PhotoDocument(contentsOf: photo)
-            result = await run(host: document, instruction: instruction, options: options, models: models, line: line, reportsCost: false)
+            result = await run(host: document, instruction: instruction, options: options, models: models, answer: answer,
+                               line: line, reportsCost: false)
             if Task.isCancelled { throw LumenError.cancelled }
             try await document.export(to: output, format: format)
             result.exported = true
@@ -27,7 +29,7 @@ enum EditRunner {
     }
 
     static func run(host: any EditHost, instruction: String, options: EditOptions, models: EditModels,
-                    line: @Sendable (String) -> Void, reportsCost: Bool = true) async -> EditTrace {
+                    answer: EditAnswerer? = nil, line: @Sendable (String) -> Void, reportsCost: Bool = true) async -> EditTrace {
         let started = Date()
         let agent = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator,
                               host: host, configuration: options.agentConfiguration)
@@ -36,7 +38,7 @@ enum EditRunner {
         var lines = EventLines()
         do {
             try await withTaskCancellationHandler {
-                for try await event in agent.run(instruction, area: options.area) {
+                for try await event in agent.run(instruction, area: options.area, answer: answer) {
                     try Task.checkCancellation()
                     progress.accept(event)
                     if let text = lines.accept(event) { line(text) }

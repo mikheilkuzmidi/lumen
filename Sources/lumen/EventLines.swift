@@ -37,6 +37,9 @@ struct EventLines {
             return "→ revert"
         case .critiqued(let critique):
             return "Critique: \(critique.satisfied ? "satisfied" : "needs revision"): \(oneLine(critique.notes))"
+        // The question is shown where it's answered (BatchInput.answer), so its choices come right after it, and the
+        // answer in the plan's note ("Asked … and went with …").
+        case .question, .answered: return nil
         case .finished(let reason): return "Finished: \(oneLine(reason))"
         case .trace(let trace):
             if trace.model != nil {

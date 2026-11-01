@@ -55,6 +55,37 @@ struct BatchInput: Sendable {
         }
     }
 
+    /// The answer to the planner's question about one photo: the one given (an option's text or number), else the
+    /// person's choice in a terminal, else the recommendation.
+    func answer(_ question: EditQuestion, supplied: String?, line: @Sendable (String) -> Void) async throws -> String {
+        line("Question: \(oneLine(question.question))")
+        for (index, option) in question.options.enumerated() {
+            line("  \(index + 1). \(oneLine(option))\(index == question.recommended ? " (recommended)" : "")")
+        }
+        if let supplied {
+            guard let option = question.option(matching: supplied) else {
+                throw CLIError("--answer must be one of the options or its number: \(question.options.joined(separator: ", ")).")
+            }
+            return option
+        }
+        if !isTerminal {
+            line("Using the recommendation: \(oneLine(question.recommendation)) (stdin is not a terminal; answer with --answer).")
+            return question.recommendation
+        }
+        while true {
+            try Task.checkCancellation()
+            line("Choice [\(question.recommended + 1)]:")
+            guard let text = try await read() else {
+                line("Using the recommendation: \(oneLine(question.recommendation)) (end of stdin).")
+                return question.recommendation
+            }
+            let choice = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if choice.isEmpty { return question.recommendation }
+            if let option = question.option(matching: choice) { return option }
+            line("Choose a number from 1 to \(question.options.count), or press Enter for the recommendation.")
+        }
+    }
+
     func approve(line: @Sendable (String) -> Void) async throws -> Bool {
         line("Go ahead? [y/N]")
         let answer = try await read()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

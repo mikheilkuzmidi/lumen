@@ -116,6 +116,8 @@ struct StudioView: View {
     @Bindable var model: StudioModel
     var activatesBackend = true
     var openFolder: (URL) -> Void = { _ in }
+    /// Opens a photo in a new window: Open Photo and a dropped photo go there while this window's edit runs.
+    var openPhotoWindow: (@MainActor @Sendable (URL) -> Void)?
     @State private var dropTarget = false
 
     var body: some View {
@@ -141,6 +143,11 @@ struct StudioView: View {
                     .overlay(alignment: .bottom) {
                         VStack(spacing: 8) {
                             if let issue = model.issue ?? model.backends.issue { issueBanner(issue) }
+                            if let question = model.question {
+                                StudioQuestionCard(question: question.question, options: question.options,
+                                                   recommended: question.recommended, floating: true,
+                                                   disabled: model.phase != .running, answer: model.answer)
+                            }
                             PromptBar(model: model)
                         }
                         .frame(maxWidth: 780)
@@ -164,10 +171,14 @@ struct StudioView: View {
                 openFolder(url)
                 return true
             }
-            guard !model.isBusy else { return false }
+            guard !model.isBusy else {
+                guard let openPhotoWindow else { return false }
+                openPhotoWindow(url)
+                return true
+            }
             model.open(url)
             return true
-        } isTargeted: { dropTarget = $0 && !model.isBusy }
+        } isTargeted: { dropTarget = $0 && (!model.isBusy || openPhotoWindow != nil) }
         .onExitCommand { model.area = nil }
         .background(CompareKeyboard(model: model).frame(width: 0, height: 0))
         .task { if activatesBackend { await model.backends.activate() } }
@@ -184,10 +195,16 @@ struct StudioView: View {
     private var header: some View {
         ZStack {
             HStack(spacing: StudioStyle.barSpacing) {
-                Text("Lumen").font(StudioStyle.title).foregroundStyle(StudioStyle.textSecondary)
+                StudioWindowTitle()
                 Spacer(minLength: 12)
-                StudioIconButton(symbol: "folder", help: "Open Photo (⌘O)", action: model.choosePhoto)
-                    .disabled(model.isBusy)
+                if model.isBusy, let openPhotoWindow {
+                    StudioIconButton(symbol: "folder", help: "Open Photo in a new window (⌘O)") {
+                        StudioModel.choosePhotoFile(openPhotoWindow)
+                    }
+                } else {
+                    StudioIconButton(symbol: "folder", help: "Open Photo (⌘O)", action: model.choosePhoto)
+                        .disabled(model.isBusy)
+                }
                 SettingsLink {
                     Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(StudioStyle.textSecondary)
                         .frame(width: StudioStyle.control, height: StudioStyle.control)
@@ -211,7 +228,7 @@ struct StudioView: View {
                 .frame(maxWidth: 520)
             }
         }
-        .padding(.leading, 84).padding(.trailing, StudioStyle.barInset)
+        .padding(.horizontal, StudioStyle.barInset)
         .frame(height: StudioStyle.topBarHeight)
         .background(StudioStyle.panel)
     }
@@ -253,7 +270,7 @@ struct PromptBar: View {
             .fixedSize()
             .disabled(model.isRunning)
             .accessibilityLabel("Styles")
-            .help("Restyle a person, or grade the photo")
+            .help(model.isRunning ? StudioModel.busyHelp : "Restyle a person, or grade the photo")
             if model.area != nil {
                 StudioChip(isSelected: true, action: { model.area = nil }) {
                     HStack(spacing: 5) {
@@ -269,7 +286,8 @@ struct PromptBar: View {
                 .textFieldStyle(.plain)
                 .font(StudioStyle.title)
                 .disabled(model.isRunning || model.voice.isRecording)
-                .onSubmit(model.run)
+                .help(model.isRunning ? StudioModel.busyHelp : "")
+                .onSubmit { model.run() }
                 .accessibilityLabel("Edit instruction")
             StudioMicButton(voice: model.voice, disabled: model.isRunning, heard: model.hear) { model.issue = $0 }
             if model.modelCalls > 0 {
@@ -282,7 +300,7 @@ struct PromptBar: View {
                            action: model.stop)
             } else if !model.voice.isRecording {
                 sendButton(symbol: "arrow.up", help: "Run instruction (Return)", enabled: model.canRun && !model.voice.isTranscribing,
-                           action: model.run)
+                           action: { model.run() })
                     .keyboardShortcut(.defaultAction)
             }
         }

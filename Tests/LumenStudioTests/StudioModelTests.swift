@@ -44,9 +44,11 @@ struct StudioModelTests {
                 #expect(!model.showsOriginal && model.sidebar == .layers)
             case .failed:
                 Issue.record("an edit that finished isn't captured as failed")
+            case .question:
+                Issue.record("the planner asked nothing")
             }
         }
-        #expect(snapshots == StudioSnapshot.allCases.filter { $0 != .failed })
+        #expect(snapshots == StudioSnapshot.allCases.filter { $0 != .failed && $0 != .question })
         #expect(model.phase == .idle && model.canUndo && model.canExport)
         #expect(await planner.requestedArea == script.area)
         let result = folder.appendingPathComponent("result.jpg")
@@ -251,6 +253,70 @@ struct StudioModelTests {
         return url
     }
 
+    /// A question waits for the person's answer in the window, and the edit plans with it.
+    @Test func aQuestionWaitsForTheAnswerInTheWindow() async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = StudioModel(makePhoto: { try StudioTestPhoto(url: $0) })
+        try await model.openPhoto(try makePhoto(in: folder))
+        model.prompt = "Make the jacket yellow"
+        let planner = StudioPlanner(asks: true)
+        let models = StudioModels(planner: planner, segmenter: StudioSegmenter(), generator: StudioGenerator())
+        let run = Task { try? await model.runEdit(using: models, allowKeychainInteraction: false) }
+        while model.question == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.question == QuestionRules.costume && model.isRunning)
+        #expect(model.steps.first?.title == "Waiting for your answer")
+        model.answer("Not an option")
+        #expect(model.question == QuestionRules.costume, "only one of its options answers it")
+        model.answer("Over their clothes")
+        await run.value
+        #expect(model.question == nil && model.phase == .idle)
+        #expect(await planner.plans == 1, "the answer is applied to the plan, not planned again")
+        #expect(model.steps.first?.detail == "Full costume, or over their own clothes? Over their clothes.")
+    }
+
+    /// Stopped while it waits, the edit ends without planning again.
+    @Test func stoppingWhileAQuestionWaitsEndsTheEdit() async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = StudioModel(makePhoto: { try StudioTestPhoto(url: $0) })
+        try await model.openPhoto(try makePhoto(in: folder))
+        model.prompt = "Make the jacket yellow"
+        let planner = StudioPlanner(asks: true)
+        let models = StudioModels(planner: planner, segmenter: StudioSegmenter(), generator: StudioGenerator())
+        model.run(using: models)
+        while model.question == nil { try await Task.sleep(for: .milliseconds(10)) }
+        model.stop()
+        while model.isBusy { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.question == nil && model.layers.isEmpty)
+        #expect(await planner.plans == 1)
+    }
+
+    /// A script answers by naming an option, captures the question first, and the run goes on.
+    @Test func aScriptAnswersTheQuestionAndCapturesIt() async throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let photo = try makePhoto(in: folder)
+        let json: [String: Any] = ["photo": photo.path, "instruction": "Make the jacket yellow", "backend": "meta",
+                                   "window": ["width": 1440, "height": 900], "answers": ["coverage": "over"], "visible": false]
+        let script = try StudioScript.parse(JSONSerialization.data(withJSONObject: json))
+        #expect(script.answers == ["coverage": "over"] && !script.visible)
+        #expect(try script.answer(to: QuestionRules.costume) == "Over their clothes", "an answer naming an option is taken under any key")
+        let model = StudioModel(makePhoto: { try StudioTestPhoto(url: $0) })
+        let planner = StudioPlanner(asks: true)
+        let models = StudioModels(planner: planner, segmenter: StudioSegmenter(), generator: StudioGenerator())
+        let runner = StudioScriptRunner(model: model, script: script, scriptURL: folder.appendingPathComponent("edit.json"), output: folder)
+        var snapshots: [StudioSnapshot] = []
+        try await runner.run(using: models) { snapshot in
+            snapshots.append(snapshot)
+            if snapshot == .question { #expect(model.question == QuestionRules.costume) }
+        }
+        #expect(snapshots.prefix(4) == [.opened, .question, .planned, .selected])
+        #expect(await planner.plans == 1)
+        let wrong = try StudioScript.parse(JSONSerialization.data(withJSONObject: json.merging(["answers": ["costume-coverage": "teal"]]) { $1 }))
+        #expect(throws: (any Error).self) { try wrong.answer(to: QuestionRules.costume) }
+    }
+
     private func makeScript(photo: URL, area: Bool) throws -> StudioScript {
         let json: [String: Any] = [
             "photo": photo.path, "area": area ? ["x": 0.2, "y": 0.1, "width": 0.4, "height": 0.7] : NSNull(),
@@ -264,19 +330,29 @@ private actor StudioPlanner: Planner {
     nonisolated let modelID: String
     let steps: [EditStep]
     let fails: Bool
+    let asks: Bool
     private(set) var requestedArea: NormalizedRect?
+    private(set) var plans = 0
 
     init(modelID: String = "recorded-planner", steps: [EditStep] = [.select(Selection(id: "jacket", concept: "jacket")),
                              .regenerate(Regeneration(region: "jacket", prompt: "Keep the jacket folds and make it bright yellow"))],
-         fails: Bool = false) {
+         fails: Bool = false, asks: Bool = false) {
         self.steps = steps
         self.modelID = modelID
         self.fails = fails
+        self.asks = asks
     }
 
     func plan(_ request: PlanRequest) async throws -> EditPlan {
         if fails { throw LumenError.invalidResponse("recorded failure") }
+        plans += 1
         requestedArea = request.area
+        // A costume whose words don't say what it covers: Lumen asks.
+        if asks {
+            return EditPlan(summary: "Dress him as a knight", steps: steps + [
+                .style(StyleStep(region: "jacket", style: "costume", outfit: "a knight", coverage: .unsaid)),
+            ])
+        }
         return EditPlan(summary: "Turn the jacket yellow", steps: steps)
     }
 

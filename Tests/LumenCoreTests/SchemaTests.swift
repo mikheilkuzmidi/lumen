@@ -166,7 +166,8 @@ struct SchemaTests {
         }
         if let number = value as? NSNumber {
             let isBoolean = CFGetTypeID(number) == CFBooleanGetTypeID()
-            return isBoolean ? types.contains("boolean") : types.contains("number")
+            if isBoolean { return types.contains("boolean") }
+            return types.contains("number") || types.contains("integer") && number.doubleValue == number.doubleValue.rounded()
         }
         return false
     }

@@ -71,10 +71,8 @@ final class StudioLibraryScriptApplication {
         panel.collectionBehavior = [.stationary, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: StudioLibraryView(model: model, activatesBackend: false)
             .preferredColorScheme(.dark).tint(StudioStyle.accent).frame(width: size.width, height: size.height))
-        let right = NSScreen.screens.map(\.frame.maxX).max() ?? 0
-        panel.setFrameOrigin(NSPoint(x: right + size.width + 100, y: 0))
         window = panel
-        panel.orderBack(nil)
+        StudioScriptApplication.show(panel, visible: script.visible)
     }
 
     private func capture(_ snapshot: LibrarySnapshot) throws {

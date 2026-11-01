@@ -213,6 +213,38 @@ public enum EditStep: Codable, Equatable, Sendable {
     }
 }
 
+/// A choice only the person can make, asked before anything changes: one of `QuestionRules`' fixed questions, with
+/// its options and the one recommended.
+public struct EditQuestion: Codable, Equatable, Sendable {
+    /// A short, unique id, such as `costume-coverage`.
+    public var id: String
+    public var question: String
+    public var options: [String]
+    /// The index of the recommended option.
+    public var recommended: Int
+
+    public init(id: String, question: String, options: [String], recommended: Int) {
+        self.id = id
+        self.question = question
+        self.options = options
+        self.recommended = recommended
+    }
+
+    /// The recommended option's text.
+    public var recommendation: String { options.indices.contains(recommended) ? options[recommended] : options.first ?? "" }
+
+    /// The option a reply names: its number from 1, its text in any case, or words only one option contains ("full
+    /// suit" for "A full suit of armour"). Nil when it names none, or several.
+    public func option(matching reply: String) -> String? {
+        let reply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { return nil }
+        if let number = Int(reply) { return options.indices.contains(number - 1) ? options[number - 1] : nil }
+        if let exact = options.first(where: { $0.caseInsensitiveCompare(reply) == .orderedSame }) { return exact }
+        let containing = options.filter { $0.range(of: reply, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        return containing.count == 1 ? containing[0] : nil
+    }
+}
+
 /// What a planner proposes for an instruction: a one-line summary and the steps, in order.
 public struct EditPlan: Codable, Equatable, Sendable {
     public var summary: String

@@ -104,12 +104,17 @@ final class StudioModel {
     private(set) var historyCount = 1
     private(set) var straighteningAngle: Double = 0
     private(set) var batchStraightening: Double?
+    /// What the planner asked before it plans, until it's answered.
+    private(set) var question: EditQuestion?
 
     @ObservationIgnored private var document: (any StudioPhoto)?
     @ObservationIgnored private var originalDocument: (any StudioPhoto)?
     @ObservationIgnored private let makePhoto: (URL) throws -> any StudioPhoto
     @ObservationIgnored private var host: StudioPhotoHost?
     @ObservationIgnored private var agentTask: Task<Void, Never>?
+    @ObservationIgnored private var answerWaiter: CheckedContinuation<String, Never>?
+    /// An answer given as the question arrived, before the agent waited for it.
+    @ObservationIgnored private var earlyAnswer: (id: String, option: String)?
     @ObservationIgnored private var history: [StudioLayerSnapshot] = [StudioLayerSnapshot()]
     @ObservationIgnored private var activeStep: UUID?
     @ObservationIgnored private var regionColors: [String: Int] = [:]
@@ -156,16 +161,24 @@ final class StudioModel {
         }
     }
 
+    /// Why what would change the photo waits while an edit runs.
+    static let busyHelp = "Available when the edit finishes, or after Stop: the agent is working on this photo."
+
     func choosePhoto() {
         guard !isBusy else { return }
+        Self.choosePhotoFile { [weak self] url in self?.open(url) }
+    }
+
+    /// Asks for a photo file and hands it on.
+    static func choosePhotoFile(_ open: @escaping @MainActor @Sendable (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.title = "Open a photo"
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.begin { [weak self] response in
+        panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in self?.open(url) }
+            Task { @MainActor in open(url) }
         }
     }
 
@@ -264,10 +277,10 @@ final class StudioModel {
         await renderPreview(maxLongEdge: renderEdge)
     }
 
-    func run() {
+    func run(using models: StudioModels? = nil) {
         guard canRun, agentTask == nil else { return }
         agentTask = Task {
-            do { try await runEdit() }
+            do { try await runEdit(using: models) }
             catch {
                 if !Task.isCancelled, !(error is CancellationError), (error as? LumenError) != .cancelled {
                     issue = error.localizedDescription
@@ -299,6 +312,8 @@ final class StudioModel {
         revision = 0
         pendingRevision = nil
         regions = []
+        question = nil
+        earlyAnswer = nil
         sidebar = .steps
         var agent: EditAgent?
         var failure: (any Error)?
@@ -308,7 +323,9 @@ final class StudioModel {
             else { models = try await backends.models(allowKeychainInteraction: allowKeychainInteraction) }
             let edit = EditAgent(planner: models.planner, segmenter: models.segmenter, generator: models.generator, host: host)
             agent = edit
-            for try await event in edit.run(instruction, area: requestedArea) {
+            for try await event in edit.run(instruction, area: requestedArea, answer: { [weak self] question in
+                await self?.ask(question) ?? question.recommendation
+            }) {
                 try Task.checkCancellation()
                 await receive(event)
                 try await onEvent(event)
@@ -336,14 +353,46 @@ final class StudioModel {
         photoDidChange?()
         await Task { await renderPreview(maxLongEdge: renderEdge) }.value
         regions = []
+        question = nil
         phase = .idle
         if let failure { throw failure }
+    }
+
+    /// Shows the planner's question and waits for the person's answer.
+    func ask(_ question: EditQuestion) async -> String {
+        guard phase == .running else { return question.recommendation }
+        if let earlyAnswer, earlyAnswer.id == question.id {
+            self.earlyAnswer = nil
+            return earlyAnswer.option
+        }
+        self.question = question
+        return await withCheckedContinuation { answerWaiter = $0 }
+    }
+
+    /// Answers the question shown, and the edit plans with it.
+    func answer(_ option: String) {
+        guard let question, question.options.contains(option) else { return }
+        self.question = nil
+        if let waiter = answerWaiter {
+            answerWaiter = nil
+            waiter.resume(returning: option)
+        } else {
+            earlyAnswer = (question.id, option)
+        }
     }
 
     func stop() {
         guard phase == .running else { return }
         phase = .stopping
         agentTask?.cancel()
+        releaseQuestion()
+    }
+
+    private func releaseQuestion() {
+        guard let waiter = answerWaiter, let question else { return }
+        answerWaiter = nil
+        self.question = nil
+        waiter.resume(returning: question.recommendation)
     }
 
     func chooseBackend(_ backend: StudioScript.Backend) {
@@ -353,6 +402,7 @@ final class StudioModel {
 
     func close() async {
         agentTask?.cancel()
+        releaseQuestion()
         await backends.shutdown()
     }
 
@@ -531,6 +581,18 @@ final class StudioModel {
             steps.append(StudioStep(title: "Edit finished", symbol: "checkmark.seal", detail: reason,
                                     status: .done, kind: .finish))
             regions = []
+        case .question(let question):
+            if phase == .running { self.question = question }
+            if let index = steps.firstIndex(where: { $0.id == activeStep }) {
+                steps[index].title = "Waiting for your answer"
+                steps[index].detail = question.question
+            }
+        case .answered(let question, let answer):
+            if self.question?.id == question.id { self.question = nil }
+            if let index = steps.firstIndex(where: { $0.id == activeStep }) {
+                steps[index].title = "Planning your edit"
+                steps[index].detail = "\(question.question) \(answer)."
+            }
         case .trace(let trace):
             receiveTrace(trace)
         }

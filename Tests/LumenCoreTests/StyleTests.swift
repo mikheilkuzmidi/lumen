@@ -584,10 +584,87 @@ struct StyleTests {
             .style(StyleStep(region: "man", style: "costume", outfit: " ")),
             .style(StyleStep(region: "man", style: "chad", outfit: "a knight")),
         ]).checked()
-        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["hat"], outfit: "a knight")))
+        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["hat"], outfit: "a knight",
+                                                                         coverage: .unsaid)), "a costume that says nothing of its coverage leaves it open")
         #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "chad")), "an outfit only goes with a costume")
         #expect(checked.notes.contains { $0.contains("dropped unknown piece \"cape\"") })
         #expect(checked.notes.contains { $0.contains("dropped the costume style with no outfit") })
+    }
+
+    /// A full costume covers everything worn below the face, down to the feet; armour over the clothes covers only the
+    /// upper body. Bare skin is left to its own redraw either way.
+    @Test func anOutfitCoversEverythingWornBelowTheFace() throws {
+        let outfit = try #require(PersonPieces.outfit(face: Self.face, person: Self.person(), skin: Self.skin))
+        let top = try #require(PersonPieces.top(face: Self.face, person: Self.person(), skin: Self.skin))
+        #expect(outfit[20, 35] == 255 && top[20, 35] == 0, "the legs go with a full costume, not with a top")
+        #expect(outfit[20, 10] == 255 && top[20, 10] == 255)
+        #expect(outfit[20, 3] == 0 && outfit[9, 25] == 0 && outfit[20, 8] == 0, "not the face, the hands or the neck")
+        #expect(outfit[2, 35] == 0, "only the person")
+        let checked = EditPlan(summary: "A knight", steps: [
+            .select(Selection(id: "man", concept: "person")),
+            .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"], outfit: "a knight in a full suit of armour",
+                             coverage: .full)),
+            .style(StyleStep(region: "man", style: "chad", coverage: .full)),
+        ]).checked()
+        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"],
+                                                                         outfit: "a knight in a full suit of armour", coverage: .full)))
+        #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "chad")), "coverage only goes with a costume")
+    }
+
+    /// Lumen asks only where a fixed rule finds a choice the words leave open: a costume that doesn't say what it
+    /// covers, never one that does, nor any other step. The answer is applied to the plan as it is.
+    @Test func onlyACostumeLeftOpenIsAskedAbout() {
+        let open = EditPlan(summary: "A knight", steps: [
+            .select(Selection(id: "man", concept: "person")),
+            .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .unsaid)),
+        ])
+        #expect(QuestionRules.question(for: open) == QuestionRules.costume)
+        #expect(QuestionRules.costume.recommendation == "Full costume")
+        let full = QuestionRules.apply([QuestionRules.costume.id: "Full costume"], to: open)
+        #expect(full.steps.last == .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .full)))
+        #expect(QuestionRules.question(for: full) == nil && QuestionRules.stated(in: full) == [QuestionRules.costume.id: "Full costume"])
+        let over = QuestionRules.apply([QuestionRules.costume.id: "Over their clothes"], to: open)
+        #expect(over.steps.last == .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .over)))
+        #expect(QuestionRules.apply([:], to: open) == open)
+        for plan in [EditPlan(summary: "Navy", steps: [.select(Selection(id: "coat", concept: "coat")),
+                                                       .regenerate(Regeneration(region: "coat", prompt: "a navy coat"))]),
+                     EditPlan(summary: "Shades", steps: [.style(StyleStep(region: "man", style: "shades"))]), full, over] {
+            #expect(QuestionRules.question(for: plan) == nil)
+        }
+    }
+
+    /// Asked about a knight, the answer decides what is redrawn: a full costume down to his feet, or only over his
+    /// upper body. Nobody to answer takes the recommendation; the plan isn't made again either way.
+    @Test(arguments: [("Full costume", true), ("over", false), (nil, true)] as [(String?, Bool)])
+    func theAnswerDecidesWhatACostumeCovers(reply: String?, full: Bool) async throws {
+        let lower = { (mask: MaskData) in
+            MaskData(size: mask.size, coverage: (0..<1600).map { i in i / 40 >= 12 ? mask.coverage[i - 480] : 0 })
+        }
+        let person = lower(Self.person()), face = lower(Self.face)
+        let hair = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (15..<25).contains(i % 40) && (12..<14).contains(i / 40) ? 255 : 0
+        })
+        let planner = StylePlanner(plan: EditPlan(summary: "Knight", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.6)])),
+            .style(StyleStep(region: "man", style: "costume", outfit: "a medieval knight in shining armour", coverage: .unsaid)),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(person)], [Self.segment(face, "face")], [Self.segment(hair, "head")]])
+        let host = StyleHost()
+        let generator = StyleGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
+        var asked: [EditQuestion] = [], answered: [String] = []
+        let stream = reply.map { reply in agent.run("Dress him as a knight", answer: { _ in reply }) } ?? agent.run("Dress him as a knight")
+        for try await event in stream {
+            if case .question(let question) = event { asked.append(question) }
+            if case .answered(_, let answer) = event { answered.append(answer) }
+        }
+        #expect(asked == [QuestionRules.costume])
+        #expect(answered == [full ? "Full costume" : "Over their clothes"])
+        #expect(await planner.plans == 1)
+        let prompt = try #require(await generator.prompts.first)
+        #expect(prompt.contains("everything they wear below the face, down to their feet") == full)
+        let legs = await host.covers(0, x: 20, y: 38)
+        #expect((legs > 200) == full, "the legs go with a full costume only")
     }
 
     /// The neck is the skin joined to the face; skin beside it that isn't (a friend's hand on the shoulder) is not.
@@ -631,8 +708,12 @@ private actor StylePlanner: Planner {
     let modelID = "muse-spark-1.3"
     private let answer: EditPlan
     private(set) var critiqued: [[String]] = []
+    private(set) var plans = 0
     init(plan: EditPlan) { answer = plan }
-    func plan(_ request: PlanRequest) async throws -> EditPlan { answer }
+    func plan(_ request: PlanRequest) async throws -> EditPlan {
+        plans += 1
+        return answer
+    }
     func critique(_ request: CritiqueRequest) async throws -> Critique {
         critiqued.append(request.done)
         return Critique(satisfied: true, notes: "Done.")

@@ -1,6 +1,6 @@
-# Lumen
+# Lumen Agent
 
-Lumen edits photos from a sentence, one photo or a whole shoot. You describe the change: "make the sky moodier and turn his coat navy". Lumen plans the steps, finds each region and makes the change. It then looks at its own result and revises it until the instruction is met.
+Lumen Agent edits photos from a sentence, one photo or a whole shoot. You describe the change: "make the sky moodier and turn his coat navy". Lumen plans the steps, finds each region and makes the change. It then looks at its own result and revises it until the instruction is met.
 
 Or point it at a folder of a thousand photos and say "edit them all, and make everyone's T-shirts blue". Lumen reviews the whole library, flags the misfires, applies auto and straightening, gives the weakest photos a closer look, and plans the instruction across the shoot, asking you only what is yours to decide.
 
@@ -13,15 +13,15 @@ It also restyles a person, redrawing only them: a chad face, Day of the Dead fac
 
 Every step is a separate, non-destructive layer. You can turn any of them off, adjust them or undo them, and the original photo is never changed.
 
-Lumen is a Swift package with a command-line tool (`lumen`) and a small Mac app (Lumen Studio).
+Lumen Agent is a Swift package with a command-line tool (`lumen`) and a small Mac app (Lumen Studio). It opens JPEG, PNG, HEIC and camera RAW; `scripts/get-raw-samples.sh` downloads four public-domain RAW files to try. In the code the package and its modules keep the short name, Lumen.
 
 ![Lumen Studio after "Make his jacket bright yellow": the plan, each step with its model and time, and the result Muse Spark checked](docs/images/studio-finished.jpg)
 
 ## What existed before, and what is new
 
-Lumen is new work, started on October 26, 2026 for the Meta AI Developer Hackathon. Everything in this repository was written during the event.
+Lumen Agent is new work, started on October 26, 2026 for the Meta AI Developer Hackathon. Everything in this repository was written during the event.
 
-Lumen is also the agent inside Photoeditor, a native macOS photo editor that existed before the hackathon. Photoeditor is closed source and is not part of this repository. Photoeditor uses Lumen through the same public interfaces as Lumen Studio.
+Lumen Agent is also the agent inside Lumen, a native macOS photo editor that existed before the hackathon (called Photoeditor until November 1, 2026). The editor is closed source and is not part of this repository. It uses Lumen Agent through the same public interfaces as Lumen Studio.
 
 ## How it works
 
@@ -40,7 +40,7 @@ Lumen is also the agent inside Photoeditor, a native macOS photo editor that exi
 
 Every model call, plan, critique and failure is kept in a trace. [docs/evaluation.md](docs/evaluation.md) has the results on 15 CC0 photos.
 
-An editor can also use the finding step on its own. `AreaSearch` looks for a name only inside a box the person drew, keeping what lies mostly inside it. When nothing by that name is there, it selects what the box frames, or the box itself when that comes back as a few specks. Photoeditor's Masks panel uses it: drag a box, type "cup", and only the cup inside the box is selected.
+An editor can also use the finding step on its own. `AreaSearch` looks for a name only inside a box the person drew, keeping what lies mostly inside it. When nothing by that name is there, it selects what the box frames, or the box itself when that comes back as a few specks. The Lumen editor's Masks panel uses it: drag a box, type "cup", and only the cup inside the box is selected.
 
 ## A whole library
 

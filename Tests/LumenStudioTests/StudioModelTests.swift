@@ -263,7 +263,8 @@ struct StudioModelTests {
         let planner = StudioPlanner(asks: true)
         let models = StudioModels(planner: planner, segmenter: StudioSegmenter(), generator: StudioGenerator())
         let run = Task { try? await model.runEdit(using: models, allowKeychainInteraction: false) }
-        while model.question == nil { try await Task.sleep(for: .milliseconds(10)) }
+        // The agent waits on the answer as the event reaches the window: either may come first.
+        while model.question == nil || model.steps.first?.title != "Waiting for your answer" { try await Task.sleep(for: .milliseconds(10)) }
         #expect(model.question == QuestionRules.costume && model.isRunning)
         #expect(model.steps.first?.title == "Waiting for your answer")
         model.answer("Not an option")

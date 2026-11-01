@@ -64,7 +64,7 @@ The script uses the same edit code as Run. Set `backend` to `meta`, `glimmer` or
 }
 ```
 
-`answers` answers Lumen's question, if it asks one (`{"costume-coverage": "Full costume"}`): by the question's id or, under any key, when it names one of the options, as `--answer` does; otherwise the run takes the recommendation. `"visible": true` puts the window in the middle of the screen, above other windows, still ignoring the mouse and keyboard, so it is drawn at full frame rate for a screen recording; a Library script takes it too.
+`answers` answers Lumen's question, if it asks one (`{"costume-coverage": "Full costume"}`): by the question's id or, under any key, when it names one of the options, as `--answer` does; otherwise the run takes the recommendation. `"visible": true` puts the window in the middle of the screen, above other windows, still ignoring the mouse and keyboard, so it is drawn at full frame rate for a screen recording; a question then stays three seconds before it is answered. A Library script takes it too, and holds its questions and its plan the same way.
 
 In place of `instruction`, `"voice": "said.m4a"` gives a recording of it, relative to the script: Muse Voice Transcribe writes it into the field as if it had been said, and the run goes on from there.
 

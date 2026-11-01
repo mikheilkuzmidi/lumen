@@ -152,10 +152,12 @@ struct StudioLibraryScriptRunner {
                     if reviewed == model.total { try await take(.reviewed) }
                 case .question(let question):
                     try await take(.question)
+                    try await hold()
                     await model.answer(try script.answer(to: question))
                 case .answered: try await take(.question)
                 case .awaitingApproval:
                     try await take(.plan)
+                    try await hold()
                     if script.approve { await model.approve() }
                     else { cancelledPlan = true; model.stop() }
                 case .planned:
@@ -178,6 +180,12 @@ struct StudioLibraryScriptRunner {
             if cancelledPlan, error as? LumenError == .cancelled { return }
             throw error
         }
+    }
+
+    /// On screen for a recording, a question or a plan stays a few seconds before it's answered, as a person would read
+    /// it; offscreen, the script answers at once.
+    private func hold() async throws {
+        if script.visible { try await Task.sleep(for: .seconds(3)) }
     }
 
     private func writeResults() throws {

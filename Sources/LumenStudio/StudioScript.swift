@@ -208,7 +208,11 @@ struct StudioScriptRunner {
                     if snapshot == .finished { finished = true }
                     else { try await capture(snapshot) }
                 }
-                if case .question(let question) = event { model.answer(try script.answer(to: question)) }
+                if case .question(let question) = event {
+                    // On screen for a recording, the question stays a few seconds, as a person would read it.
+                    if script.visible { try await Task.sleep(for: .seconds(3)) }
+                    model.answer(try script.answer(to: question))
+                }
             }
             if let issue = model.issue { throw StudioScriptError.message(issue) }
             guard finished else { throw StudioScriptError.message("The edit ended without a finished event.") }

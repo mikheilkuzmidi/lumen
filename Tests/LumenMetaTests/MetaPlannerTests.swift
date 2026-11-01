@@ -46,13 +46,30 @@ import Testing
     }
 }
 
-/// The planner only says what a costume's words say it covers; it never asks, and never guesses it from the photo.
-@Test func thePlannerSaysWhatACostumeCoversAndNeverAsks() {
-    for rule in ["Its coverage says only what the words say", "full when they say it replaces everything worn",
-                 "over when they say it goes over their own clothes", "unsaid when they don't\nsay", "never guess it from the photo"] {
+/// The planner says what an instruction could mean here, whatever it is about; the person's choice goes back in the
+/// context, only when there is one, so a plan without it sends what it always did.
+@Test func plannerReadsReadingsAndSendsTheChoice() async throws {
+    let transport = ReplayTransport([try .init(file: "plan-question.json"), try .init(file: "plan.json")])
+    let planner = MetaPlanner(configuration: testConfiguration, transport: transport)
+    let plan = try await planner.plan(PlanRequest(instruction: "Give her sunglasses", image: testPhoto))
+    let question = try #require(plan.checked().plan.asking)
+    #expect(question.question == "Which woman should get the sunglasses?")
+    #expect(question.options == ["left woman", "middle woman", "right woman"] && question.recommendation == "right woman")
+    _ = try await planner.plan(PlanRequest(instruction: "Give her sunglasses", image: testPhoto,
+                                           answers: ["Which woman should get the sunglasses?": "middle woman"]))
+    let contexts = try await transport.requests.map { call -> [String: Any] in
+        let body = try json(#require(call.httpBody))
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let content = try #require(messages[1]["content"] as? [[String: Any]])
+        return try json(Data(#require(content.last?["text"] as? String).utf8))
+    }
+    #expect(contexts[0]["answers"] == nil)
+    #expect(contexts[1]["answers"] as? [String: String] == ["Which woman should get the sunglasses?": "middle woman"])
+    for rule in ["First say in readings what the instruction could mean in this photo", "Most instructions\nhave one reading",
+                 "whatever the instruction is about", "Readings never differ only in degree or taste",
+                 "When answers\nholds the person's choice, plan exactly that"] {
         #expect(MetaPlanner.planPrompt.contains(rule), "\(rule)")
     }
-    #expect(!MetaPlanner.planPrompt.contains("ask the person one question"))
 }
 
 @Test func critiqueLabelsBothPhotosAndReadsAnswer() async throws {

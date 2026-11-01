@@ -78,13 +78,6 @@ struct PlanCheck {
                     for piece in with where !known.contains(piece) { notes.append("\(label): dropped unknown piece \"\(piece)\".") }
                     restyle.with = known.isEmpty ? nil : known
                 }
-                // A costume's coverage is one of three; one the words don't settle is asked about (QuestionRules).
-                if restyle.style == "costume" {
-                    restyle.coverage = restyle.coverage.flatMap(StyleStep.Coverage.init(rawValue:))?.rawValue
-                        ?? StyleStep.Coverage.unsaid.rawValue
-                } else {
-                    restyle.coverage = nil
-                }
                 if let outfit = restyle.outfit?.trimmingCharacters(in: .whitespacesAndNewlines) {
                     restyle.outfit = outfit.isEmpty || restyle.style != "costume" ? nil : String(outfit.prefix(200))
                 }
@@ -130,7 +123,31 @@ struct PlanCheck {
             steps.append(.finish(finish))
             if movedFinish { notes.append("Moved the finish step to the end.") }
         }
-        return CheckedPlan(plan: EditPlan(summary: plan.summary, steps: steps), notes: notes)
+        let kept = readings(of: plan)
+        let recommended = kept.map { kept in plan.recommended.flatMap { kept.indices.contains($0) ? $0 : nil } ?? 0 }
+        return CheckedPlan(plan: EditPlan(summary: plan.summary, steps: steps, readings: kept, recommended: recommended,
+                                          question: plan.question?.trimmingCharacters(in: .whitespacesAndNewlines)), notes: notes)
+    }
+
+    /// The plan's readings as options to show: trimmed, each different from the others in more than case, at most four.
+    /// The recommended one keeps its place; with fewer than two left there is nothing to ask.
+    private mutating func readings(of plan: EditPlan) -> [String]? {
+        guard let proposed = plan.readings else { return nil }
+        var kept: [String] = []
+        for reading in proposed {
+            let text = String(reading.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+            guard !text.isEmpty, !kept.contains(where: { $0.caseInsensitiveCompare(text) == .orderedSame }) else { continue }
+            kept.append(text)
+        }
+        if kept.count > 4 { notes.append("Kept the first four of \(kept.count) readings."); kept = Array(kept.prefix(4)) }
+        if kept.count >= 2, !(plan.recommended.map(kept.indices.contains) ?? false) {
+            notes.append("Recommended the first reading: the plan's recommendation wasn't one of them.")
+        }
+        if kept.count >= 2, plan.question?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            notes.append("Took the recommended reading: the plan gave several but no question to ask.")
+            return [kept[plan.recommended.flatMap { kept.indices.contains($0) ? $0 : nil } ?? 0]]
+        }
+        return kept
     }
 
     private mutating func check(_ proposed: Selection, label: String) -> Selection? {

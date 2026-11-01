@@ -236,10 +236,10 @@ public actor EditAgent {
                 try await self.planner.plan(request)
             }
             var next = checked(plan, events: events)
-            // Only a fixed rule asks (QuestionRules), once, before anything changes. The answer is applied to this
-            // plan and to the critic's revisions, and stays with the instruction for follow-ups.
-            var decided = QuestionRules.stated(in: next)
-            if let question = QuestionRules.question(for: next) {
+            // The plan says what the instruction could mean here. Only when it finds clearly different readings that
+            // the words and the photo don't settle is the person asked, once, before anything changes. Its steps carry
+            // out the most likely reading; another one is planned again with the person's choice.
+            if let question = next.asking {
                 events.yield(.question(question))
                 let reply = try await answer?(question)
                 try checkCancellation()
@@ -247,9 +247,19 @@ public actor EditAgent {
                 note(.plan, "Asked \u{201C}\(question.question)\u{201D} and went with \u{201C}\(chosen)\u{201D}.", events: events)
                 events.yield(.answered(question: question, answer: chosen))
                 history[history.count - 1] = "\(instruction) (\(question.question) \(chosen))"
-                decided[question.id] = chosen
+                if chosen != question.recommendation {
+                    var withAnswer = request
+                    withAnswer.answers = [question.question: chosen]
+                    let answered = withAnswer
+                    let replanned = try await call(.plan, model: planner.modelID, detail: instruction, events: events) {
+                        try await self.planner.plan(answered)
+                    }
+                    next = checked(replanned, events: events)
+                }
+                next.readings = [chosen]
+                next.recommended = 0
+                next.question = nil
             }
-            next = QuestionRules.apply(decided, to: next)
             events.yield(.planned(next))
             var revisions = 0
             while true {
@@ -293,7 +303,7 @@ public actor EditAgent {
                     return
                 }
                 revisions += 1
-                next = QuestionRules.apply(decided, to: checked(EditPlan(summary: critique.notes, steps: critique.steps), events: events))
+                next = checked(EditPlan(summary: critique.notes, steps: critique.steps), events: events)
             }
         } catch {
             let error = cancellationError(error)
@@ -795,10 +805,7 @@ public actor EditAgent {
         }
         let held = step.keep.flatMap { regions[$0]?.mask }
         if let style, let person {
-            var pieces = style.pieces.union((step.with ?? []).compactMap(PersonStyle.Piece.init(rawValue:)))
-            // A full costume replaces everything they wear; a costume over their clothes keeps what they wear below.
-            if step.coverage == StyleStep.Coverage.full.rawValue { pieces.insert(.outfit) }
-            else if step.coverage == StyleStep.Coverage.over.rawValue { pieces.remove(.outfit) }
+            let pieces = style.pieces.union((step.with ?? []).compactMap(PersonStyle.Piece.init(rawValue:)))
             // Where a body's shoulders and waist are, and what of it stays as it was: the warp, once, widened the head of
             // a man whose friends' arms covered his shoulders, and a muscle redraw redrew his face and hair. A face's
             // neck and ears, and the rest of their skin, are found from it too.

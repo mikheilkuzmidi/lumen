@@ -47,8 +47,9 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
 
     public func plan(_ request: PlanRequest) async throws -> EditPlan {
         do {
-            let context = PlanContext(instruction: request.instruction, area: request.area, regions: request.regions,
+            var context = PlanContext(instruction: request.instruction, area: request.area, regions: request.regions,
                                       done: request.done, layers: request.layers, history: request.history)
+            if !request.answers.isEmpty { context.answers = request.answers }
             // What stays the same goes first (the rules, then the photo) so Meta's prompt cache can serve it again
             // at its cached-input price; the instruction and what was done, which change, come last.
             return try await answer(EditPlan.self, prompt: Self.planPrompt,
@@ -189,14 +190,11 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         hat, coat and neck), so give with empty unless the instruction asks for more of the person ("his hands too":
         skin; "and a crown": hat; "and a suit": top). A costume the catalogue lacks ("dress me as a knight", "make
         her an astronaut") is the costume style, with the costume in outfit, a few words saying what is worn
-        (a medieval knight in shining armour with a plumed helmet), and in with what it covers: top for clothes,
-        hat for anything worn on the head, neck for make-up or a collar there, skin for gloves, paint or make-up on
-        the hands. Its coverage says only what the words say: full when they say it replaces everything worn ("a
-        full suit of armour", "head to toe", "a spacesuit"), over when they say it goes over their own clothes or is
-        only part of a costume ("armour over his jacket", "a cape", "just the helmet"), and unsaid when they don't
-        say ("dress him as a knight", "make her an astronaut"): never guess it from the photo; Lumen asks the
-        person. History may hold the answer, after the instruction: follow it. Use outfit null and coverage none for
-        every other style.
+        (a medieval knight in shining armour with a plumed helmet), and in with what it covers: top for clothes on
+        the upper body worn over or in place of their own top, outfit for a full costume that replaces everything
+        they wear down to their feet (a full suit of armour, a spacesuit), hat for anything worn on the head, neck
+        for make-up or a collar there, skin for gloves, paint or make-up on the hands. Use outfit null for every
+        other style.
         A style marked adults only is never for someone who looks under 18: plan nothing for them and
         finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
         alone (style none, and the person's region for main character and redCarpet): \(effects). "Black and white
@@ -211,6 +209,15 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
     Plan the fewest steps needed to meet the instruction in the supplied photo. The plan must contain every
     step that makes the change: selecting a region changes nothing by itself, so follow each select with the
     adjust, regenerate or remove that uses it.
+    First say in readings what the instruction could mean in this photo: each distinct edit a reasonable person
+    could mean by it that would look clearly different here, in a few words they can pick from. Most instructions
+    have one reading: give just that one, with question null. Give two to four only when neither the words, the
+    photo nor the history settle it, whatever the instruction is about: which of several people or things it
+    means, how much of something it covers (a costume over their clothes or replacing everything they wear), what
+    goes and what stays. Readings never differ only in degree or taste where there is a usual choice (a colour's
+    shade, how strong a grade is, "a bit warmer"): take the usual one. recommended is the index of the most likely
+    reading, the steps carry it out, and question asks the person to choose in one short sentence. When answers
+    holds the person's choice, plan exactly that, with it as the only reading.
     """
     static let critiquePrompt = editingRules + """
 
@@ -289,6 +296,8 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         var layers: [LayerInfo]
         var history: [String] = []
         var measurements: [Measured]?
+        /// The person's choice of what the instruction means, by the question asked.
+        var answers: [String: String]?
 
         func text() throws -> String {
             let encoder = JSONEncoder()

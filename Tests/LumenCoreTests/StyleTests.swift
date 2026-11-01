@@ -584,8 +584,7 @@ struct StyleTests {
             .style(StyleStep(region: "man", style: "costume", outfit: " ")),
             .style(StyleStep(region: "man", style: "chad", outfit: "a knight")),
         ]).checked()
-        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["hat"], outfit: "a knight",
-                                                                         coverage: .unsaid)), "a costume that says nothing of its coverage leaves it open")
+        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["hat"], outfit: "a knight")))
         #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "chad")), "an outfit only goes with a costume")
         #expect(checked.notes.contains { $0.contains("dropped unknown piece \"cape\"") })
         #expect(checked.notes.contains { $0.contains("dropped the costume style with no outfit") })
@@ -602,41 +601,16 @@ struct StyleTests {
         #expect(outfit[2, 35] == 0, "only the person")
         let checked = EditPlan(summary: "A knight", steps: [
             .select(Selection(id: "man", concept: "person")),
-            .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"], outfit: "a knight in a full suit of armour",
-                             coverage: .full)),
-            .style(StyleStep(region: "man", style: "chad", coverage: .full)),
+            .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"], outfit: "a knight in a full suit of armour")),
         ]).checked()
-        #expect(checked.plan.steps.dropFirst().first == .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"],
-                                                                         outfit: "a knight in a full suit of armour", coverage: .full)))
-        #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "chad")), "coverage only goes with a costume")
+        #expect(checked.plan.steps.last == .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"],
+                                                            outfit: "a knight in a full suit of armour")))
     }
 
-    /// Lumen asks only where a fixed rule finds a choice the words leave open: a costume that doesn't say what it
-    /// covers, never one that does, nor any other step. The answer is applied to the plan as it is.
-    @Test func onlyACostumeLeftOpenIsAskedAbout() {
-        let open = EditPlan(summary: "A knight", steps: [
-            .select(Selection(id: "man", concept: "person")),
-            .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .unsaid)),
-        ])
-        #expect(QuestionRules.question(for: open) == QuestionRules.costume)
-        #expect(QuestionRules.costume.recommendation == "Full costume")
-        let full = QuestionRules.apply([QuestionRules.costume.id: "Full costume"], to: open)
-        #expect(full.steps.last == .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .full)))
-        #expect(QuestionRules.question(for: full) == nil && QuestionRules.stated(in: full) == [QuestionRules.costume.id: "Full costume"])
-        let over = QuestionRules.apply([QuestionRules.costume.id: "Over their clothes"], to: open)
-        #expect(over.steps.last == .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .over)))
-        #expect(QuestionRules.apply([:], to: open) == open)
-        for plan in [EditPlan(summary: "Navy", steps: [.select(Selection(id: "coat", concept: "coat")),
-                                                       .regenerate(Regeneration(region: "coat", prompt: "a navy coat"))]),
-                     EditPlan(summary: "Shades", steps: [.style(StyleStep(region: "man", style: "shades"))]), full, over] {
-            #expect(QuestionRules.question(for: plan) == nil)
-        }
-    }
-
-    /// Asked about a knight, the answer decides what is redrawn: a full costume down to his feet, or only over his
-    /// upper body. Nobody to answer takes the recommendation; the plan isn't made again either way.
-    @Test(arguments: [("Full costume", true), ("over", false), (nil, true)] as [(String?, Bool)])
-    func theAnswerDecidesWhatACostumeCovers(reply: String?, full: Bool) async throws {
+    /// The planner finds two readings of a knight: a full suit down to his feet (recommended, planned at once) or armour
+    /// over his jacket. The recommendation needs no second plan; the other reading is planned again with the answer.
+    @Test(arguments: [("Full suit of armour", true), ("over", false), (nil, true)] as [(String?, Bool)])
+    func aChosenReadingDecidesWhatACostumeCovers(reply: String?, full: Bool) async throws {
         let lower = { (mask: MaskData) in
             MaskData(size: mask.size, coverage: (0..<1600).map { i in i / 40 >= 12 ? mask.coverage[i - 480] : 0 })
         }
@@ -644,10 +618,15 @@ struct StyleTests {
         let hair = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
             (15..<25).contains(i % 40) && (12..<14).contains(i / 40) ? 255 : 0
         })
-        let planner = StylePlanner(plan: EditPlan(summary: "Knight", steps: [
-            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.6)])),
-            .style(StyleStep(region: "man", style: "costume", outfit: "a medieval knight in shining armour", coverage: .unsaid)),
-        ]))
+        let knight = { (with: [String]) in
+            [EditStep.select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.6)])),
+             .style(StyleStep(region: "man", style: "costume", with: with, outfit: "a medieval knight in shining armour"))]
+        }
+        let planner = StylePlanner(plan: EditPlan(summary: "Knight", steps: knight(["outfit", "hat"]),
+                                                  readings: ["Full suit of armour", "Armour over his jacket"], recommended: 0,
+                                                  question: "A full suit of armour, or armour over his jacket?"),
+                                   answered: EditPlan(summary: "Armour over his jacket", steps: knight(["top", "hat"]),
+                                                      readings: ["Armour over his jacket"], recommended: 0))
         let segmenter = StyleSegmenter(answers: [[Self.segment(person)], [Self.segment(face, "face")], [Self.segment(hair, "head")]])
         let host = StyleHost()
         let generator = StyleGenerator()
@@ -658,9 +637,9 @@ struct StyleTests {
             if case .question(let question) = event { asked.append(question) }
             if case .answered(_, let answer) = event { answered.append(answer) }
         }
-        #expect(asked == [QuestionRules.costume])
-        #expect(answered == [full ? "Full costume" : "Over their clothes"])
-        #expect(await planner.plans == 1)
+        #expect(asked.map(\.options) == [["Full suit of armour", "Armour over his jacket"]])
+        #expect(answered == [full ? "Full suit of armour" : "Armour over his jacket"])
+        #expect(await planner.plans == (full ? 1 : 2), "only another reading is planned again")
         let prompt = try #require(await generator.prompts.first)
         #expect(prompt.contains("everything they wear below the face, down to their feet") == full)
         let legs = await host.covers(0, x: 20, y: 38)
@@ -707,12 +686,16 @@ struct StyleTests {
 private actor StylePlanner: Planner {
     let modelID = "muse-spark-1.3"
     private let answer: EditPlan
+    private let answered: EditPlan?
     private(set) var critiqued: [[String]] = []
     private(set) var plans = 0
-    init(plan: EditPlan) { answer = plan }
+    init(plan: EditPlan, answered: EditPlan? = nil) {
+        answer = plan
+        self.answered = answered
+    }
     func plan(_ request: PlanRequest) async throws -> EditPlan {
         plans += 1
-        return answer
+        return request.answers.isEmpty ? answer : answered ?? answer
     }
     func critique(_ request: CritiqueRequest) async throws -> Critique {
         critiqued.append(request.done)

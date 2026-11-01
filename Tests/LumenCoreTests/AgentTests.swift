@@ -635,6 +635,65 @@ struct AgentTests {
     }
 }
 
+/// An instruction the planner finds open: it gives its readings and asks; the recommended reading is planned at once,
+/// another one again with the person's choice, and nobody to answer takes the recommendation.
+extension AgentTests {
+    static let readings = ["The man on the left", "The man on the right"]
+
+    @Test(arguments: [("right", 2), ("left", 1), (nil, 1)] as [(String?, Int)])
+    func anOpenInstructionAsksAndPlansTheChosenReading(reply: String?, plans: Int) async throws {
+        let planner = ReadingPlanner()
+        let agent = EditAgent(planner: planner, segmenter: AgentSegmenter(segments: []), generator: AgentGenerator(), host: AgentHost())
+        let stream = reply.map { reply in agent.run("Brighten his face", answer: { _ in reply }) } ?? agent.run("Brighten his face")
+        let events = try await collect(stream)
+        let chosen = reply == "right" ? Self.readings[1] : Self.readings[0]
+        #expect(events.questions.map(\.options) == [Self.readings])
+        #expect(events.answers == [chosen])
+        let requests = await planner.plans
+        #expect(requests.count == plans, "only another reading is planned again")
+        #expect(requests.last?.answers == (plans == 2 ? ["Which man?": chosen] : [:]))
+        let order = events.compactMap { event -> String? in
+            switch event {
+            case .question: "question"
+            case .answered: "answered"
+            case .planned: "planned"
+            default: nil
+            }
+        }
+        #expect(order == ["question", "answered", "planned"], "nothing is planned before the answer")
+        #expect(events.traces.contains { $0.detail.contains("went with \u{201C}\(chosen)\u{201D}") })
+
+        _ = try await collect(agent.run("A bit more"))
+        #expect(await planner.plans.last?.history == ["Brighten his face (Which man? \(chosen))"], "the choice stays with the instruction")
+    }
+
+    @Test func aClearInstructionAsksNothing() async throws {
+        let planner = AgentPlanner(plan: EditPlan(summary: "Warmer", steps: [.adjust(Adjustment(values: [.temperature: 15]))],
+                                                  readings: ["A warmer photo"], recommended: 0))
+        let events = try await collect(EditAgent(planner: planner, segmenter: AgentSegmenter(segments: []), generator: AgentGenerator(),
+                                                 host: AgentHost()).run("Make it warmer", answer: { _ in Issue.record("asked"); return "" }))
+        #expect(events.questions.isEmpty && events.answers.isEmpty)
+    }
+}
+
+/// Finds two readings until the person has chosen; then plans the one chosen.
+private actor ReadingPlanner: Planner {
+    let modelID = "muse-spark-1.3"
+    private(set) var plans: [PlanRequest] = []
+
+    func plan(_ request: PlanRequest) async throws -> EditPlan {
+        plans.append(request)
+        if let chosen = request.answers.values.first {
+            return EditPlan(summary: chosen, steps: [.adjust(Adjustment(values: [.exposure: 0.2]))], readings: [chosen], recommended: 0)
+        }
+        if !request.history.isEmpty { return EditPlan(summary: "More", steps: [.adjust(Adjustment(values: [.exposure: 0.1]))]) }
+        return EditPlan(summary: "Brighten the man on the left", steps: [.adjust(Adjustment(values: [.exposure: 0.2]))],
+                        readings: AgentTests.readings, recommended: 0, question: "Which man?")
+    }
+
+    func critique(_ request: CritiqueRequest) async throws -> Critique { Critique(satisfied: true, notes: "Done.") }
+}
+
 private func collect(_ stream: AsyncThrowingStream<AgentEvent, Error>) async throws -> [AgentEvent] {
     var events: [AgentEvent] = []
     for try await event in stream { events.append(event) }
@@ -649,6 +708,8 @@ private extension Array where Element == AgentEvent {
     var critiques: [Critique] { compactMap { if case .critiqued(let critique) = $0 { critique } else { nil } } }
     var reasons: [String] { compactMap { if case .finished(let reason) = $0 { reason } else { nil } } }
     var traces: [TraceEvent] { compactMap { if case .trace(let trace) = $0 { trace } else { nil } } }
+    var questions: [EditQuestion] { compactMap { if case .question(let question) = $0 { question } else { nil } } }
+    var answers: [String] { compactMap { if case .answered(_, let answer) = $0 { answer } else { nil } } }
 }
 
 private actor AgentPlanner: Planner {

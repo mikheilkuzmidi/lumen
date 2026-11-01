@@ -265,15 +265,15 @@ struct StudioModelTests {
         let run = Task { try? await model.runEdit(using: models, allowKeychainInteraction: false) }
         // The agent waits on the answer as the event reaches the window: either may come first.
         while model.question == nil || model.steps.first?.title != "Waiting for your answer" { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(model.question == QuestionRules.costume && model.isRunning)
+        #expect(model.question?.options == StudioPlanner.readings && model.isRunning)
         #expect(model.steps.first?.title == "Waiting for your answer")
         model.answer("Not an option")
-        #expect(model.question == QuestionRules.costume, "only one of its options answers it")
-        model.answer("Over their clothes")
+        #expect(model.question?.options == StudioPlanner.readings, "only one of its options answers it")
+        model.answer("The jacket and its hood")
         await run.value
         #expect(model.question == nil && model.phase == .idle)
-        #expect(await planner.plans == 1, "the answer is applied to the plan, not planned again")
-        #expect(model.steps.first?.detail == "Full costume, or over their own clothes? Over their clothes.")
+        #expect(await planner.plans == 2, "the other reading is planned again")
+        #expect(model.steps.first?.detail == "The jacket, or the jacket and its hood? The jacket and its hood.")
     }
 
     /// Stopped while it waits, the edit ends without planning again.
@@ -299,10 +299,11 @@ struct StudioModelTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let photo = try makePhoto(in: folder)
         let json: [String: Any] = ["photo": photo.path, "instruction": "Make the jacket yellow", "backend": "meta",
-                                   "window": ["width": 1440, "height": 900], "answers": ["coverage": "over"], "visible": false]
+                                   "window": ["width": 1440, "height": 900], "answers": ["anything": "hood"], "visible": false]
         let script = try StudioScript.parse(JSONSerialization.data(withJSONObject: json))
-        #expect(script.answers == ["coverage": "over"] && !script.visible)
-        #expect(try script.answer(to: QuestionRules.costume) == "Over their clothes", "an answer naming an option is taken under any key")
+        #expect(script.answers == ["anything": "hood"] && !script.visible)
+        let question = EditQuestion(id: "reading", question: "The jacket, or the jacket and its hood?", options: StudioPlanner.readings, recommended: 0)
+        #expect(try script.answer(to: question) == "The jacket and its hood", "an answer naming an option is taken under any key")
         let model = StudioModel(makePhoto: { try StudioTestPhoto(url: $0) })
         let planner = StudioPlanner(asks: true)
         let models = StudioModels(planner: planner, segmenter: StudioSegmenter(), generator: StudioGenerator())
@@ -310,12 +311,12 @@ struct StudioModelTests {
         var snapshots: [StudioSnapshot] = []
         try await runner.run(using: models) { snapshot in
             snapshots.append(snapshot)
-            if snapshot == .question { #expect(model.question == QuestionRules.costume) }
+            if snapshot == .question { #expect(model.question == question) }
         }
-        #expect(snapshots.prefix(4) == [.opened, .question, .planned, .selected])
-        #expect(await planner.plans == 1)
-        let wrong = try StudioScript.parse(JSONSerialization.data(withJSONObject: json.merging(["answers": ["costume-coverage": "teal"]]) { $1 }))
-        #expect(throws: (any Error).self) { try wrong.answer(to: QuestionRules.costume) }
+        #expect(snapshots == [.opened, .question, .planned, .selected, .redrawn, .finished, .compare, .layers])
+        #expect(await planner.plans == 2)
+        let wrong = try StudioScript.parse(JSONSerialization.data(withJSONObject: json.merging(["answers": ["reading": "teal"]]) { $1 }))
+        #expect(throws: (any Error).self) { try wrong.answer(to: question) }
     }
 
     private func makeScript(photo: URL, area: Bool) throws -> StudioScript {
@@ -332,6 +333,7 @@ private actor StudioPlanner: Planner {
     let steps: [EditStep]
     let fails: Bool
     let asks: Bool
+    static let readings = ["The jacket", "The jacket and its hood"]
     private(set) var requestedArea: NormalizedRect?
     private(set) var plans = 0
 
@@ -348,11 +350,10 @@ private actor StudioPlanner: Planner {
         if fails { throw LumenError.invalidResponse("recorded failure") }
         plans += 1
         requestedArea = request.area
-        // A costume whose words don't say what it covers: Lumen asks.
-        if asks {
-            return EditPlan(summary: "Dress him as a knight", steps: steps + [
-                .style(StyleStep(region: "jacket", style: "costume", outfit: "a knight", coverage: .unsaid)),
-            ])
+        // An instruction the planner finds open: two readings, and a question.
+        if asks, request.answers.isEmpty {
+            return EditPlan(summary: "Turn the jacket yellow", steps: steps, readings: Self.readings, recommended: 0,
+                            question: "The jacket, or the jacket and its hood?")
         }
         return EditPlan(summary: "Turn the jacket yellow", steps: steps)
     }

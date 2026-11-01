@@ -45,9 +45,11 @@ public struct PlanRequest: Sendable {
     public var layers: [LayerInfo]
     /// Earlier instructions for this photo, oldest first.
     public var history: [String]
+    /// The person's choice of what the instruction means, by the question asked.
+    public var answers: [String: String]
 
     public init(instruction: String, image: EncodedImage, area: NormalizedRect? = nil, regions: [RegionInfo] = [],
-                done: [String] = [], layers: [LayerInfo] = [], history: [String] = []) {
+                done: [String] = [], layers: [LayerInfo] = [], history: [String] = [], answers: [String: String] = [:]) {
         self.instruction = instruction
         self.image = image
         self.area = area
@@ -55,6 +57,7 @@ public struct PlanRequest: Sendable {
         self.done = done
         self.layers = layers
         self.history = history
+        self.answers = answers
     }
 }
 

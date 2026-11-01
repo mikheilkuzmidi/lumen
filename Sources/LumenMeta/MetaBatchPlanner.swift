@@ -170,15 +170,16 @@ public struct MetaBatchPlanner: BatchPlanner {
     more: auto tone, colour and straightening are already done for every photo, so never ask the agent to
     straighten, crop, smooth, tidy or otherwise improve anything the instruction did not mention. The agent sees only its own photo,
     so describe its edit directly without referring to other photo numbers. Use null if the base pass is enough.
-    Ask only these questions, each with two to four short options and a recommendation, and no others:
-    - A near match: when a description shows something close to what the instruction names but not quite it (a
-      sweatshirt, hoodie, polo or long-sleeved top for "T-shirts"; a cardigan for "jackets"), never leave that photo
-      out or put it in silently: put such photos in a group of their own, its instruction written as if they are
-      included, and ask whether to include them, naming the near match ("Include the woman's red sweatshirt too?"),
-      with that group in the question's groups. One question per near match. Answered no, leave the group out.
-    - Small or hidden: whether to include photos where the subject is small or partly hidden.
-    Everything else takes its usual reading, never a question: a colour named is a clear, true shade of it; each
-    person keeps their own clothes' style, cut and folds in the new colour; a change is visible but natural.
+    Ask what is truly the person's choice, whatever the instruction is about: where the plan could go clearly
+    different ways and neither the instruction nor the reviews settle it. Each question has two to four short
+    options and a recommendation. For example, when a description shows something close to what the instruction
+    names but not quite it (a sweatshirt, hoodie, polo or long-sleeved top for "T-shirts"; a cardigan for
+    "jackets"), never leave that photo out or put it in silently: put such photos in a group of their own, its
+    instruction written as if they are included, and ask whether to include them, naming the near match ("Include
+    the woman's red sweatshirt too?"), with that group in the question's groups; answered no, leave the group out.
+    Or whether to include photos where the subject is small or partly hidden. Never ask about degree or taste where
+    there is a usual choice: a colour named is a clear, true shade of it; each person keeps their own clothes'
+    style, cut and folds in the new colour; a change is visible but natural.
     Never ask what the photos themselves can answer. Use a zero-based recommended option index and
     list the group ids each question affects. Give each question a short unique id.
     Apply every supplied answer. Never repeat a question whose id is already answered.

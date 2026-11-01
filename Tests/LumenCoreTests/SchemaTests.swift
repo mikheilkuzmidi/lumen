@@ -31,7 +31,8 @@ struct SchemaTests {
     @Test func nullableFieldsAndAdjustmentUnitsAreDescribed() throws {
         let root = try #require(JSONSerialization.jsonObject(with: EditPlan.jsonSchema()) as? [String: Any])
         let properties = try #require(root["properties"] as? [String: Any])
-        #expect(Set(properties.keys) == ["summary", "steps"])
+        #expect(Set(properties.keys) == ["summary", "steps", "readings", "recommended", "question"])
+        #expect((properties["question"] as? [String: Any])?["type"] as? [String] == ["string", "null"])
         let steps = try #require(properties["steps"] as? [String: Any])
         let items = try #require(steps["items"] as? [String: Any])
         let choices = try #require(items["anyOf"] as? [[String: Any]])
@@ -61,7 +62,7 @@ struct SchemaTests {
     @Test func aStrictPlanAnswerWithNullsDecodes() throws {
         let data = Data(Self.planAnswer.utf8)
         let plan = try JSONDecoder().decode(EditPlan.self, from: data)
-        let expected = EditPlan(summary: "Darker sky and navy coat", steps: [
+        var expected = EditPlan(summary: "Darker sky and navy coat", steps: [
             .select(Selection(id: "sky", concept: "sky",
                               gradient: Gradient(from: NormalizedPoint(x: 1, y: 0.3), to: NormalizedPoint(x: 0.3, y: 0.7)),
                               every: true, colours: ["orange", "yellow"])),
@@ -74,11 +75,34 @@ struct SchemaTests {
             .crop(Crop(rect: .whole)),
             .finish(Finish(reason: "The requested changes are complete.")),
         ])
+        expected.readings = ["Darker sky and navy coat"]
+        expected.recommended = 0
         #expect(plan == expected)
         #expect(plan.checked().notes.isEmpty)
         #expect(try JSONDecoder().decode(EditPlan.self, from: JSONEncoder().encode(plan)) == expected)
         let schema = try #require(JSONSerialization.jsonObject(with: EditPlan.jsonSchema()) as? [String: Any])
         #expect(matches(try JSONSerialization.jsonObject(with: data), schema: schema))
+    }
+
+    /// A plan says what the instruction could mean: with two or more readings and a question, the person is asked;
+    /// with one, or with no question, the recommended reading is planned as it is.
+    @Test func readingsBecomeAQuestionOnlyWhenThereAreSeveral() throws {
+        let data = Data(#"{"summary":"Sunglasses on one woman","steps":[],"readings":["Left woman"," middle woman ","Middle woman","Right woman"],"recommended":2,"question":"Which woman should get the sunglasses?"}"#.utf8)
+        let schema = try #require(JSONSerialization.jsonObject(with: EditPlan.jsonSchema()) as? [String: Any])
+        #expect(matches(try JSONSerialization.jsonObject(with: data), schema: schema))
+        let checked = try JSONDecoder().decode(EditPlan.self, from: data).checked().plan
+        let question = try #require(checked.asking)
+        #expect(question.options == ["Left woman", "middle woman", "Right woman"], "trimmed, and the same reading once")
+        #expect(question.recommended == 2 && question.recommendation == "Right woman")
+        #expect(question.option(matching: "middle") == "middle woman")
+        #expect(EditPlan(summary: "Warmer", steps: [], readings: ["Warmer whole photo"], recommended: 0).checked().plan.asking == nil)
+        #expect(EditPlan(summary: "Old plan", steps: []).checked().plan.asking == nil, "a plan without readings asks nothing")
+        let silent = EditPlan(summary: "Shirts", steps: [], readings: ["Left", "Right"], recommended: 1).checked()
+        #expect(silent.plan.asking == nil && silent.plan.readings == ["Right"], "no question: the recommended reading is planned")
+        let outside = EditPlan(summary: "Shirts", steps: [], readings: ["Left", "Right"], recommended: 7, question: "Which?").checked()
+        #expect(outside.plan.asking?.recommended == 0 && outside.notes.contains { $0.contains("Recommended the first reading") })
+        let many = EditPlan(summary: "Shirts", steps: [], readings: ["A", "B", "C", "D", "E"], recommended: 0, question: "Which?").checked()
+        #expect(many.plan.asking?.options == ["A", "B", "C", "D"])
     }
 
     @Test func aStrictCritiqueAnswerDecodes() throws {
@@ -94,7 +118,8 @@ struct SchemaTests {
 
     @Test func aStrictRevertMatchesThePlanAndCritiqueSchemas() throws {
         let id = UUID().uuidString
-        let plan: [String: Any] = ["summary": "Undo the sky", "steps": [["type": "revert", "layer": id]]]
+        let plan: [String: Any] = ["summary": "Undo the sky", "steps": [["type": "revert", "layer": id]],
+                                   "readings": ["Undo the sky"], "recommended": 0, "question": NSNull()]
         let critique: [String: Any] = ["satisfied": false, "notes": "Undo the sky", "steps": plan["steps"]!]
         for (answer, data) in [(plan, EditPlan.jsonSchema()), (critique, Critique.jsonSchema())] {
             let schema = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -183,7 +208,10 @@ struct SchemaTests {
         {"type":"remove","region":"sky"},
         {"type":"crop","rect":{"x":0,"y":0,"width":1,"height":1}},
         {"type":"finish","reason":"The requested changes are complete."}
-      ]
+      ],
+      "readings": ["Darker sky and navy coat"],
+      "recommended": 0,
+      "question": null
     }
     """#
 }

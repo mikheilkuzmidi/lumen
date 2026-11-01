@@ -39,7 +39,7 @@ struct Edit: AsyncParsableCommand {
     @Option(help: "Grade the photo with this effect (see lumen styles).")
     var effect: String?
 
-    @Option(help: "Your answer if Lumen asks first (a costume that doesn't say whether it replaces the clothes): one of the options, or its number. Without it you're asked in a terminal; otherwise the recommended option is taken.")
+    @Option(help: "Your answer if Lumen asks first, when the instruction could mean clearly different edits in the photo: one of the options, words only one of them contains, or its number. Without it you're asked in a terminal; otherwise the recommended option is taken.")
     var answer: String?
 
     @Option(help: "Keep every Meta answer of this run in a file, to replay it later with --replay.")

@@ -214,10 +214,8 @@ actor BatchTestPlanner: Planner {
         await gate?.leave()
         if index == failingPlanAt { throw LumenError.refused("Cannot edit this photo.") }
         if asks {
-            return EditPlan(summary: "Dress him as a knight", steps: [
-                .select(Selection(id: "man", concept: "person")),
-                .style(StyleStep(region: "man", style: "costume", outfit: "a knight", coverage: .unsaid)),
-            ])
+            return EditPlan(summary: "Improve exposure", steps: [.adjust(Adjustment(values: [.exposure: 0.3]))],
+                            readings: ["The whole photo", "Only the people"], recommended: 0, question: "The whole photo, or only the people?")
         }
         if noChange { return EditPlan(summary: "Keep it", steps: []) }
         if redraw {

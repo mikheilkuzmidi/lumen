@@ -54,11 +54,11 @@ public struct GlimmerChatTransport: MetaTransport {
 }
 
 /// llama.cpp's grammar writes an object's keys in the order the schema lists them, so a step's type has to come
-/// before its other fields, a plan's summary and question before its steps, and a review's photo number before what it says about
+/// before its other fields, a plan's summary and readings before its steps, and a review's photo number before what it says about
 /// the photo: otherwise the model commits to fields before it has said what they are about. JSON text with keys in
 /// that order, the rest alphabetical.
 enum OrderedJSON {
-    private static let leading = ["type", "summary", "question", "notes", "satisfied", "id", "number", "region", "layer", "concept"]
+    private static let leading = ["type", "summary", "readings", "question", "notes", "satisfied", "id", "number", "region", "layer", "concept"]
 
     static func text(_ value: Any) -> String {
         switch value {

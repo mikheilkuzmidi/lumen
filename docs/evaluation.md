@@ -248,19 +248,20 @@ Each of these runs found something, and each was fixed and run again:
 | After the portrait rule below, the reviewer called the tilted lake and street level: an October 27 run left both crooked. A rule that water is always level fixed three review-only runs, but not a run with an instruction. | The reviewer also names the line that should be level: horizon, water, building or none. A contact sheet shows that plainly where a 3° tilt is hard to see. A measured tilt with a horizon or water line is straightened; with none, it is not. |
 | Muse Wonder planned the T-shirts on one photo of four. It decided from the reviewer's few-word descriptions, which left the shirts out. | Photos the reviewer matched from the image stay in unless their description rules the instruction out. |
 | The boys' shirts in the black-and-white photo were redrawn blue but exported grey: the export kept the source's grey colour space. | A greyscale photo that an edit gives colour is exported in sRGB. |
-## November 1: questions by fixed rules, and plan-first mode tested
+## November 1: asking when it's unclear, and plan-first mode tested
 
-**One photo.** The planner used to decide by itself when to ask, and asked about the same knight one time and not the next. Lumen now asks only where a fixed rule finds a choice the words leave open; the planner only reports what the words say. The one rule today is a costume that doesn't say whether it replaces the clothes. On the photo of the man in a denim jacket, with Muse Spark:
+**One photo.** The planner used to have an optional question, and asked about the same knight one time and not the next. Now every plan must say what the instruction could mean in the photo: one reading when it's clear, two to four when the words and the photo leave clearly different edits open, and Lumen asks only then. Nothing in it is about a particular kind of instruction. With Muse Spark:
 
-| Instruction | Coverage the planner reported | Asked? |
-| --- | --- | --- |
-| Dress the man up as a medieval knight (twice) | unsaid | Yes, both times: "Full costume, or over their own clothes?" |
-| Make him an astronaut | unsaid | Yes |
-| Dress him in a full suit of armour, head to toe | full | No |
-| Put knight armour over his jacket | over | No |
-| Make his jacket navy; Give the man aviator sunglasses | no costume | No |
+| Photo | Instruction | Readings | Asked? |
+| --- | --- | --- | --- |
+| Four men on a hill, from behind | Make his shirt red | One per man | Yes: "Which man's shirt should turn red?" |
+| Three women by the grain elevators (twice) | Give her sunglasses | Left, middle, right woman | Yes, both times: "Which woman should get the sunglasses?" |
+| A man in front of a busy street | Remove the people | Keep the man in front, or remove everyone | Yes: "Should I keep the man in front?" |
+| The man in a denim jacket (twice) | Dress the man up as a medieval knight | A knight in full armour | No; the plan covers everything he wears down to his feet |
+| The man with headphones | Make him an astronaut | A full spacesuit | No |
+| The man in a denim jacket | Dress him in a full suit of armour, head to toe; Make his jacket navy; Make it warmer | One each | No |
 
-Answered "Full costume", the knight was redrawn in a full suit of armour down past his hips (7 calls, $0.06); before, the armour stopped there and his denim sleeves showed.
+Before this, the knight's armour stopped at his hips over his jeans; a full costume now redraws everything worn below the face.
 
 **A whole library, plan first.** `lumen batch Fixtures/library "<instruction>" --mode plan`, declined at the approval, so nothing changed. Muse Spark reviewed, Muse Wonder planned:
 
@@ -275,7 +276,7 @@ Answered "Full costume", the knight was redrawn in a full suit of armour down pa
 | Problem found | Change |
 | --- | --- |
 | Muse Wonder left the woman in the red sweatshirt out of "T-shirts" without asking (the October 31 library recording). | A near match gets its own group and a question: "Include the woman's red sweatshirt too?" |
-| The first T-shirt run then also asked which blue, and whether everyone gets the same shirt: questions with a usual answer. | Muse Wonder asks only about near matches and photos where the subject is small or hidden; a colour named is a clear, true shade, and each person keeps their own style. The next run asked only about the sweatshirt and the silhouettes. |
+| The first T-shirt run then also asked which blue, and whether everyone gets the same shirt: questions with a usual answer. | Muse Wonder still asks whatever is truly the person's choice, but never about degree or taste with a usual answer: a colour named is a clear, true shade, and each person keeps their own style. The next run asked only about the sweatshirt and the silhouettes. |
 
 The same T-shirt instruction in Lumen Studio's Library on Muse Glimmer, on this Mac (an M4 Max), reviewed and planned with no Meta call: 2 model calls in 16 minutes, the straighten question, and a plan for the T-shirts on three photos and the base pass on eleven. It asked nothing about the red sweatshirt and marked the café photo for attention. Glimmer works for a library, slowly; Muse Spark and Muse Wonder review and plan it better.
 

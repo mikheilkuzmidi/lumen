@@ -213,10 +213,10 @@ public enum EditStep: Codable, Equatable, Sendable {
     }
 }
 
-/// A choice only the person can make, asked before anything changes: one of `QuestionRules`' fixed questions, with
-/// its options and the one recommended.
+/// A choice only the person can make, asked before anything changes: what an instruction means here, when the planner
+/// finds it could mean clearly different edits. The options are its readings, the most likely recommended.
 public struct EditQuestion: Codable, Equatable, Sendable {
-    /// A short, unique id, such as `costume-coverage`.
+    /// A short, unique id, such as `reading`.
     public var id: String
     public var question: String
     public var options: [String]
@@ -245,14 +245,31 @@ public struct EditQuestion: Codable, Equatable, Sendable {
     }
 }
 
-/// What a planner proposes for an instruction: a one-line summary and the steps, in order.
+/// What a planner proposes for an instruction: a one-line summary and the steps, in order, with what it takes the
+/// instruction to mean. Every plan gives its readings, the distinct edits the instruction could mean in this photo:
+/// one when it's clear, two to four when neither the words nor the photo settle it, and then the person is asked.
 public struct EditPlan: Codable, Equatable, Sendable {
     public var summary: String
     public var steps: [EditStep]
+    /// What the instruction could mean here, in a few words each; the steps carry out the recommended one.
+    public var readings: [String]?
+    /// The index of the most likely reading.
+    public var recommended: Int?
+    /// The question that asks the person to choose between the readings.
+    public var question: String?
 
-    public init(summary: String, steps: [EditStep]) {
+    public init(summary: String, steps: [EditStep], readings: [String]? = nil, recommended: Int? = nil, question: String? = nil) {
         self.summary = summary
         self.steps = steps
+        self.readings = readings
+        self.recommended = recommended
+        self.question = question
+    }
+
+    /// The question to put to the person: only when the plan found two or more readings.
+    public var asking: EditQuestion? {
+        guard let readings, readings.count >= 2, let question, !question.isEmpty else { return nil }
+        return EditQuestion(id: "reading", question: question, options: readings, recommended: recommended ?? 0)
     }
 }
 

@@ -451,21 +451,9 @@ public struct StyleStep: Codable, Equatable, Sendable {
     public var with: [String]?
     /// The costume style's costume, in a few words.
     public var outfit: String?
-    /// For the costume style, what the words say it covers (a `Coverage`): a costume they leave open is asked about.
-    public var coverage: String?
-
-    /// What a costume's words say it covers.
-    public enum Coverage: String, CaseIterable, Sendable {
-        /// Everything they wear, down to their feet: "a full suit of armour", "head to toe".
-        case full
-        /// Over their own clothes, or only part of them: "armour over his jacket", "a cape", "just the helmet".
-        case over
-        /// The words don't say: "dress him as a knight".
-        case unsaid
-    }
 
     public init(region: String? = nil, style: String? = nil, effect: String? = nil, keep: String? = nil,
-                wears: String? = nil, with: [String]? = nil, outfit: String? = nil, coverage: Coverage? = nil) {
+                wears: String? = nil, with: [String]? = nil, outfit: String? = nil) {
         self.region = region
         self.style = style
         self.effect = effect
@@ -473,7 +461,6 @@ public struct StyleStep: Codable, Equatable, Sendable {
         self.wears = wears
         self.with = with
         self.outfit = outfit
-        self.coverage = coverage?.rawValue
     }
 }
 

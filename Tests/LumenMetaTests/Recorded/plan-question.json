@@ -1,0 +1,14 @@
+{
+  "id": "plan-question",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"summary\": \"Give the right woman sunglasses\", \"readings\": [\"left woman\", \"middle woman\", \"right woman\"], \"question\": \"Which woman should get the sunglasses?\", \"recommended\": 2, \"steps\": [{\"type\": \"select\", \"id\": \"woman\", \"concept\": \"person\", \"box\": null, \"points\": [{\"x\": 0.7, \"y\": 0.5}], \"invert\": false}, {\"type\": \"style\", \"region\": \"woman\", \"style\": \"shades\", \"effect\": \"none\", \"keep\": null, \"wears\": \"unknown\", \"with\": [], \"outfit\": null}]}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

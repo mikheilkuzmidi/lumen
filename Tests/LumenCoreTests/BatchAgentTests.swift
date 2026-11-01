@@ -230,8 +230,9 @@ struct BatchAgentTests {
         let answered = events.compactMap { event -> String? in
             if case .edit(_, .answered(_, let answer)) = event { answer } else { nil }
         }
-        #expect(answered == [QuestionRules.costume.recommendation])
-        #expect(await planner.plans.count == 1, "the answer is applied to the plan, not planned again")
+        #expect(answered == ["The whole photo"])
+        #expect(await planner.plans.count == 1, "the recommended reading is already planned")
+        #expect(await library.saved == [PhotoID("photo-0")])
     }
 
     @Test func askModeWaitsAndReplansWithThePersonsAnswer() async throws {

@@ -5,6 +5,10 @@ enum PlanSchema {
     static func plan() -> Data {
         data(object([
             "summary": string("A one-line description of the proposed edit."),
+            "readings": ["type": "array", "description": "What the instruction could mean in this photo, in a few words each, as options the person can pick: one when it's clear; two to four distinct edits only when neither the words nor the photo settle it.",
+                         "items": string("One reading, in a few words.")],
+            "recommended": ["type": "integer", "description": "The zero-based index of the most likely reading; the steps carry it out."],
+            "question": string("With two or more readings, one short question asking the person to choose; null with one.", nullable: true),
             "steps": steps(),
         ]))
     }
@@ -64,8 +68,6 @@ enum PlanSchema {
                              "items": ["type": "string", "enum": PersonStyle.Piece.allCases.map(\.rawValue),
                                        "description": "neck (neck and ears), skin (their other bare skin: hands, arms), top (the clothes on their upper body) or hat (room above the head for what is worn on it)."]],
                     "outfit": string("For the costume style, the costume in a few words; null otherwise.", nullable: true),
-                    "coverage": ["type": "string", "enum": StyleStep.Coverage.allCases.map(\.rawValue) + ["none"],
-                                 "description": "For the costume style, what the words say it covers: full (everything they wear, down to their feet: a full suit of armour, head to toe), over (over their own clothes, or only part of them: armour over his jacket, a cape, just the helmet) or unsaid (the words don't say: dress him as a knight); none for every other style."],
                 ]),
                 step("crop", properties: ["rect": rect()]),
                 step("revert", properties: ["layer": string("The id of an applied layer to take off the photo.")]),

@@ -18,7 +18,7 @@ protocol StudioStraighteningPhoto: StudioPhoto {
 
 extension PhotoDocument: StudioStraighteningPhoto {}
 
-struct StudioLayerSnapshot: Equatable {
+struct StudioLayerSnapshot: Equatable, Sendable {
     var layers: [Layer] = []
     var straightening: Double = 0
 }

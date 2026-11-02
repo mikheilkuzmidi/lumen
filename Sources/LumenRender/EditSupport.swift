@@ -7,6 +7,42 @@ import LumenCore
 /// own document and an app's editor get the same masks and measurements from it: a recolour held to the photo's edges
 /// and grown over the thing's own colours, and the colour and detail numbers the critic reads.
 public enum EditSupport {
+    /// Physical edge preparation for explicit colour-only replacements. This
+    /// preserves background/skin and returns its pixel crop and support as one.
+    /// Fits support from the original semantic selection, before fitted/extended
+    /// opacity. The generated photograph's pixels stay intact.
+    public static func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) throws -> PreparedPatch? {
+        try RecolourEdges.prepare(generated, over: original, within: mask)
+    }
+
+    /// Places a finished opaque crop, clamping its edge before Lanczos scaling.
+    public static func placedPatch(_ patch: CIImage, in bounds: CGRect) -> CIImage {
+        PhotoCompositor.resized(patch, to: bounds)
+    }
+
+    /// Places physical selection opacity or support for an already-matted crop.
+    /// Prepared support uses nearest sampling so scaling does not matte it twice.
+    public static func placedMask(_ mask: CIImage, in bounds: CGRect, precompositedEdges: Bool = false) -> CIImage {
+        PhotoCompositor.scaledMask(mask, to: bounds, precomposited: precompositedEdges)
+    }
+
+    /// Corrects the crop's overall drift, then restores retained source texture.
+    /// Finished recolour edges are excluded from source-detail restoration.
+    public static func matchedPatch(_ patch: CIImage, to photo: CIImage, within mask: CIImage,
+                                    enlargement: CGFloat, restoresDetail: Bool = true,
+                                    precompositedEdges: Bool = false, context: CIContext) -> CIImage {
+        let corrected = PhotoCompositor.colorMatched(patch, to: photo, mask: mask, context: context)
+        let matched = restoresDetail ? PhotoCompositor.restoringDetail(corrected, from: photo, enlargement: enlargement,
+                                                                       support: precompositedEdges ? mask : nil) : corrected
+        guard precompositedEdges else { return matched }
+        // Source-detail/color correction can undershoot black. A finished
+        // photograph cannot have negative radiance: bound it before opacity,
+        // consistently with persisted crop assets. Keep HDR values above one.
+        return matched.applyingFilter("CIMaximumCompositing", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .black).cropped(to: patch.extent),
+        ])
+    }
+
     /// `mask` held to the photo's own edges. `photo` is the photo as rendered now, cut to the mask's region.
     /// Masks under 64 px on a side carry no edge detail worth fitting and are kept as they are.
     public static func fitted(_ mask: MaskData, photo: CIImage, context: CIContext) -> MaskData {

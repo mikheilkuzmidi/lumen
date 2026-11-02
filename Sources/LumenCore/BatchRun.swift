@@ -23,9 +23,14 @@ actor BatchRun {
     private var waitingQuestions: [String: BatchQuestion] = [:]
     private var questionWaiters: [String: CheckedContinuation<String, Error>] = [:]
     private var approved: Bool
-    private var approvalWaiter: CheckedContinuation<Void, Error>?
+    private var pendingPlan: BatchPlan?
+    private var acceptedPlan: BatchPlan?
+    private var excludedPhotos: Set<PhotoID> = []
+    private var approvalWaiter: CheckedContinuation<BatchPlan, Error>?
     private var traces: [TraceEvent] = []
     private var cancelled = false
+    private let started = Date()
+    private var settledSnapshot: BatchSnapshot?
 
     private let closerLook = "Improve this photo naturally: fix exposure, colour and contrast where they are off, and nothing else."
 
@@ -45,8 +50,7 @@ actor BatchRun {
         self.approved = approved
     }
 
-    func execute(onFinish: @Sendable () async -> Void) async {
-        let started = Date()
+    func execute(onFinish: @Sendable (BatchSnapshot) async -> Void) async {
         do {
             try checkCancellation()
             let found = try await host.photos()
@@ -62,14 +66,17 @@ actor BatchRun {
             if options.mode == .planFirst {
                 let straighten = try await decideStraightening(kept)
                 plan = try await instructionPlan(kept)
-                let estimate = estimate(plan, kept: kept)
-                if let pricing = planner as? any PhotoCostEstimating {
-                    let edits = estimatedEdits(plan, kept: kept)
-                    let measured = BatchSummary(photos: Array(results.values), answers: [], modelCalls: 0, duration: 0)
-                    plan.estimatedCost = measured.estimatedCost(for: edits, defaultCostPerPhoto: pricing.estimatedCostPerPhoto)
+                plan.approvalToken = UUID()
+                plan.targetPhotos = photos
+                plan.photoActions = plannedActions(kept, straighten: straighten)
+                plan = estimated(plan, kept: kept)
+                pendingPlan = plan
+                events.yield(.awaitingApproval(plan, estimatedModelCalls: plan.estimatedModelCalls ?? 0))
+                plan = try await waitForApproval()
+                for photo in photos where excludedPhotos.contains(photo) {
+                    note("Skipped: excluded from the approved plan.", for: photo)
+                    complete(photo)
                 }
-                events.yield(.awaitingApproval(plan, estimatedModelCalls: estimate))
-                try await waitForApproval()
                 try await flagMisfires()
                 try await basePass(kept, straighten: straighten)
                 try await closerLook(kept)
@@ -98,14 +105,38 @@ actor BatchRun {
             let summary = BatchSummary(photos: photos.compactMap { results[$0] }, answers: answers,
                                        modelCalls: await calls.count, duration: max(0, Date().timeIntervalSince(started)), events: traces)
             try checkCancellation()
-            await onFinish()
+            await onFinish(await snapshot(settled: true))
             try checkCancellation()
             events.yield(.finished(summary))
             events.finish()
         } catch {
-            await onFinish()
+            await onFinish(await snapshot(settled: true, cancelled: isCancellation(error)))
             events.finish(throwing: isCancellation(error) ? LumenError.cancelled : error)
         }
+    }
+
+    func snapshot(settled: Bool = false, cancelled requested: Bool = false) async -> BatchSnapshot {
+        if let settledSnapshot { return settledSnapshot }
+        var completedIDs: [PhotoID] = [], excludedIDs: [PhotoID] = [], flaggedIDs: [PhotoID] = []
+        var failedIDs: [PhotoID] = [], skippedIDs: [PhotoID] = [], unfinishedIDs: [PhotoID] = []
+        for photo in photos {
+            if excludedPhotos.contains(photo) { excludedIDs.append(photo) }
+            else if results[photo]?.failed == true { failedIDs.append(photo) }
+            else if results[photo]?.flagged != nil { flaggedIDs.append(photo) }
+            else if (results[photo]?.outcome?.split(separator: "\n").contains {
+                $0.hasPrefix("Skipped:") || $0.hasPrefix("Edit skipped:") || $0.hasPrefix("Instruction skipped:") || $0 == "Model call limit reached."
+            }) == true { skippedIDs.append(photo) }
+            else if completed.contains(photo) { completedIDs.append(photo) }
+            else { unfinishedIDs.append(photo) }
+        }
+        let summary = BatchSummary(photos: photos.compactMap { results[$0] }, answers: answers,
+                                   modelCalls: await calls.count, duration: max(0, Date().timeIntervalSince(started)), events: traces)
+        let snapshot = BatchSnapshot(summary: summary, completedPhotoIDs: completedIDs, excludedPhotoIDs: excludedIDs,
+                                     flaggedPhotoIDs: flaggedIDs, failedPhotoIDs: failedIDs, skippedPhotoIDs: skippedIDs, unfinishedPhotoIDs: unfinishedIDs,
+                                     cancelled: cancelled || requested || Task.isCancelled, settled: settled,
+                                     startedModelCalls: await calls.attemptedCount)
+        if settled { settledSnapshot = snapshot }
+        return snapshot
     }
 
     func answer(_ id: String, with answer: String) {
@@ -122,9 +153,53 @@ actor BatchRun {
 
     func approve() {
         guard !cancelled else { return }
+        if let token = pendingPlan?.approvalToken {
+            _ = try? approve(BatchApproval(approvalToken: token))
+            return
+        }
         approved = true
-        approvalWaiter?.resume()
+    }
+
+    func previewApproval(_ approval: BatchApproval) throws -> BatchPlan {
+        try checkCancellation()
+        guard let plan = pendingPlan else { throw BatchApprovalError.noPendingPlan }
+        guard plan.approvalToken == approval.approvalToken else { throw BatchApprovalError.staleToken }
+        let targets = Set(photos)
+        var excluded: Set<PhotoID> = []
+        for photo in approval.excludedPhotoIDs {
+            guard targets.contains(photo) else { throw BatchApprovalError.unknownPhoto(photo) }
+            guard excluded.insert(photo).inserted else { throw BatchApprovalError.duplicateExcludedPhoto(photo) }
+        }
+        let groupIDs = Set(plan.groups.map(\.id))
+        for (id, instruction) in approval.instructionOverrides {
+            guard groupIDs.contains(id) else { throw BatchApprovalError.unknownGroup(id) }
+            guard !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw BatchApprovalError.emptyInstruction(id)
+            }
+        }
+        var draft = plan
+        draft.groups = plan.groups.compactMap { group in
+            var group = group
+            group.photos.removeAll { excluded.contains($0) }
+            if let instruction = approval.instructionOverrides[group.id] {
+                group.instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return group.photos.isEmpty ? nil : group
+        }
+        draft.photoActions = plan.photoActions?.filter { !excluded.contains($0.photo) }
+        let kept = photos.filter { !excluded.contains($0) && results[$0]?.failed == false && reviews[$0] != nil && !isMisfire($0) }
+        return estimated(draft, kept: kept, revisedInstructions: !approval.instructionOverrides.isEmpty)
+    }
+
+    func approve(_ approval: BatchApproval) throws -> BatchPlan {
+        let draft = try previewApproval(approval)
+        excludedPhotos = Set(approval.excludedPhotoIDs)
+        pendingPlan = nil
+        acceptedPlan = draft
+        approved = true
+        approvalWaiter?.resume(returning: draft)
         approvalWaiter = nil
+        return draft
     }
 
     func cancel() async {
@@ -133,6 +208,7 @@ actor BatchRun {
         for waiter in questionWaiters.values { waiter.resume(throwing: LumenError.cancelled) }
         questionWaiters.removeAll()
         waitingQuestions.removeAll()
+        pendingPlan = nil
         approvalWaiter?.resume(throwing: LumenError.cancelled)
         approvalWaiter = nil
         events.finish(throwing: LumenError.cancelled)
@@ -257,7 +333,7 @@ actor BatchRun {
 
     private func flagMisfires() async throws {
         guard options.flagMisfires else { return }
-        for photo in photos where isMisfire(photo) {
+        for photo in photos where !excludedPhotos.contains(photo) && isMisfire(photo) {
             let reason = reviews[photo]?.misfireReason ?? "The shot misfired."
             do {
                 try checkCancellation()
@@ -285,7 +361,7 @@ actor BatchRun {
     }
 
     private func auto(_ photo: PhotoID) async throws {
-        guard results[photo]?.failed == false else { return }
+        guard !excludedPhotos.contains(photo), results[photo]?.failed == false else { return }
         do {
             try checkCancellation()
             let label = try await host.applyAuto(photo)
@@ -336,7 +412,7 @@ actor BatchRun {
     }
 
     private func straighten(_ photo: PhotoID) async throws {
-        guard results[photo]?.failed == false, let tilt = facts[photo]?.tilt else { return }
+        guard !excludedPhotos.contains(photo), results[photo]?.failed == false, let tilt = facts[photo]?.tilt else { return }
         do {
             try checkCancellation()
             try await host.straighten(photo, degrees: -tilt)
@@ -350,7 +426,7 @@ actor BatchRun {
     }
 
     private func closerLook(_ kept: [PhotoID]) async throws {
-        let low = kept.filter { (reviews[$0]?.quality ?? 1) < options.qualityThreshold }
+        let low = kept.filter { !excludedPhotos.contains($0) && (reviews[$0]?.quality ?? 1) < options.qualityThreshold }
         try await batchForEach(low, limit: options.concurrency) { photo in
             try await self.edit(photo, instruction: self.closerLook)
         }
@@ -404,8 +480,12 @@ actor BatchRun {
     private func checked(_ plan: BatchPlan, kept: [PhotoID], matching: Set<PhotoID>) -> BatchPlan {
         var plan = plan
         var seen: Set<PhotoID> = []
+        var groupIDs: Set<String> = []
         plan.groups = plan.groups.compactMap { group in
             var group = group
+            let baseID = group.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            group.id = baseID.isEmpty ? "group" : baseID
+            while !groupIDs.insert(group.id).inserted { group.id += "-group" }
             var inGroup: Set<PhotoID> = []
             group.photos = group.photos.filter { matching.contains($0) && inGroup.insert($0).inserted }
             seen.formUnion(group.photos)
@@ -453,14 +533,45 @@ actor BatchRun {
         return text
     }
 
-    private func waitForApproval() async throws {
+    private func waitForApproval() async throws -> BatchPlan {
         try checkCancellation()
-        if !approved { try await withCheckedThrowingContinuation { approvalWaiter = $0 } }
+        if approved, let token = pendingPlan?.approvalToken {
+            _ = try approve(BatchApproval(approvalToken: token))
+        }
+        let plan: BatchPlan
+        if let acceptedPlan { plan = acceptedPlan }
+        else { plan = try await withCheckedThrowingContinuation { approvalWaiter = $0 } }
         try checkCancellation()
+        return plan
     }
 
-    private func estimate(_ plan: BatchPlan, kept: [PhotoID]) -> Int {
-        estimatedEdits(plan, kept: kept) * 5
+    private func plannedActions(_ kept: [PhotoID], straighten: Bool) -> [BatchPhotoActions] {
+        let kept = Set(kept)
+        let tilted = Set(straighten ? tilted(Array(kept)) : [])
+        return photos.compactMap { photo in
+            guard results[photo]?.failed == false, reviews[photo] != nil else { return nil }
+            if isMisfire(photo) {
+                return BatchPhotoActions(photo: photo, flagReason: reviews[photo]?.misfireReason ?? "The shot misfired.")
+            }
+            guard kept.contains(photo) else { return nil }
+            return BatchPhotoActions(photo: photo, auto: options.auto,
+                                     straightenDegrees: tilted.contains(photo) ? facts[photo]?.tilt.map { -$0 } : nil,
+                                     closerLook: (reviews[photo]?.quality ?? 1) < options.qualityThreshold)
+        }
+    }
+
+    private func estimated(_ plan: BatchPlan, kept: [PhotoID], revisedInstructions: Bool = false) -> BatchPlan {
+        var plan = plan
+        let edits = estimatedEdits(plan, kept: kept)
+        // New wording can require another pass. This remains a planning estimate, never a spending limit.
+        let rounds = revisedInstructions ? max(1, configuration.maxRevisions + 1) : 1
+        let (calls, overflow) = edits.multipliedReportingOverflow(by: 5 * rounds)
+        plan.estimatedModelCalls = overflow ? Int.max : calls
+        if let pricing = planner as? any PhotoCostEstimating {
+            let measured = BatchSummary(photos: Array(results.values), answers: [], modelCalls: 0, duration: 0)
+            plan.estimatedCost = measured.estimatedCost(for: edits, defaultCostPerPhoto: pricing.estimatedCostPerPhoto) * Double(rounds)
+        }
+        return plan
     }
 
     private func estimatedEdits(_ plan: BatchPlan, kept: [PhotoID]) -> Int {
@@ -470,7 +581,7 @@ actor BatchRun {
     }
 
     private func edit(_ photo: PhotoID, instruction: String) async throws {
-        guard results[photo]?.failed == false else { return }
+        guard !excludedPhotos.contains(photo), results[photo]?.failed == false else { return }
         try checkCancellation()
         guard let reservation = await calls.reserve(5) else {
             note("Edit skipped: model call limit reached.", for: photo)
@@ -539,6 +650,7 @@ actor BatchRun {
     }
 
     private func save(_ photo: PhotoID) async throws {
+        guard !excludedPhotos.contains(photo) else { return }
         do {
             try checkCancellation()
             if changed.contains(photo) { try await host.save(photo) }

@@ -10,22 +10,34 @@ public protocol MetaTransport: Sendable {
 /// Connects model requests to a URL session.
 public struct URLSessionMetaTransport: MetaTransport {
     public let session: URLSession
+    private let budgetEnvironment: [String: String]
 
-    public init(session: URLSession = .shared) { self.session = session }
+    public init(session: URLSession = .shared, budgetEnvironment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.session = session
+        self.budgetEnvironment = budgetEnvironment
+    }
 
     public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let attempt = try await TestSpendGuard.prepare(request, environment: budgetEnvironment)
         do {
-            let (data, response) = try await session.data(for: request)
+            let delegate = attempt.guardrail == nil ? nil : TestBudgetRedirectBlocker()
+            let (data, response) = try await session.data(for: attempt.request, delegate: delegate)
             guard let response = response as? HTTPURLResponse else {
                 throw LumenError.invalidResponse("Expected an HTTP response.")
             }
+            try await attempt.finish(status: response.statusCode, data: data)
             return (data, response)
-        } catch { throw MetaHTTP.error(error) }
+        } catch {
+            await attempt.uncertain(outcome: Task.isCancelled ? "cancelled" : "network_error")
+            throw MetaHTTP.error(error)
+        }
     }
 
     public func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
+        let attempt = try await TestSpendGuard.prepare(request, environment: budgetEnvironment)
         do {
-            let (bytes, response) = try await session.bytes(for: request)
+            let delegate = attempt.guardrail == nil ? nil : TestBudgetRedirectBlocker()
+            let (bytes, response) = try await session.bytes(for: attempt.request, delegate: delegate)
             guard let response = response as? HTTPURLResponse else {
                 throw LumenError.invalidResponse("Expected an HTTP response.")
             }
@@ -55,13 +67,20 @@ public struct URLSessionMetaTransport: MetaTransport {
                             if firstLine && line.starts(with: [239, 187, 191]) { line.removeFirst(3) }
                             continuation.yield(String(decoding: line, as: UTF8.self))
                         }
+                        try await attempt.finish(status: response.statusCode, data: Data())
                         continuation.finish()
-                    } catch { continuation.finish(throwing: MetaHTTP.error(error)) }
+                    } catch {
+                        await attempt.uncertain(outcome: Task.isCancelled ? "cancelled" : "stream_error")
+                        continuation.finish(throwing: MetaHTTP.error(error))
+                    }
                 }
                 continuation.onTermination = { @Sendable _ in task.cancel() }
             }
             return (lines, response)
-        } catch { throw MetaHTTP.error(error) }
+        } catch {
+            await attempt.uncertain(outcome: Task.isCancelled ? "cancelled" : "network_error")
+            throw MetaHTTP.error(error)
+        }
     }
 }
 

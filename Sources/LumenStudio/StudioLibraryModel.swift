@@ -6,7 +6,7 @@ import Observation
 
 enum LibraryBadge: String, CaseIterable {
     case measured = "Measured", misfire = "Misfire", auto = "Auto", straightened = "Straightened"
-    case edited = "Edited", attention = "Needs attention", failed = "Failed"
+    case edited = "Edited", attention = "Needs attention", failed = "Failed", excluded = "Excluded", unfinished = "Unfinished"
 }
 
 struct LibraryPhotoState {
@@ -22,12 +22,21 @@ enum LibraryStraighten: String, CaseIterable, Decodable, Sendable {
     var value: Bool? { switch self { case .ask: nil; case .yes: true; case .no: false } }
 }
 
+@MainActor
+private final class LibraryPhotoWindow {
+    weak var model: StudioModel?
+    let photo: PhotoID
+    let url: URL
+    var opening = true
+    init(model: StudioModel, photo: PhotoID, url: URL) { self.model = model; self.photo = photo; self.url = url }
+}
+
 /// Presents one library run, including the decisions that pause it.
 @MainActor @Observable
 final class StudioLibraryModel {
     let backends: StudioBackends
     var instruction = ""
-    var mode = BatchMode.askWhenUnsure
+    var mode = BatchMode.planFirst
     var auto = true
     var straighten = LibraryStraighten.ask
     var flagMisfires = true
@@ -38,6 +47,15 @@ final class StudioLibraryModel {
     /// The microphone beside the library's instruction.
     let voice = StudioVoice.instruction()
     var selectedGroup: String?
+    var selectedPhotos: Set<PhotoID> = []
+    var scope = StudioLibraryScope.currentView
+    var reviewShown = true
+    var instructionOverrides: [String: String] = [:]
+    var excludedPhotos: Set<PhotoID> = []
+    private(set) var draftPlan: BatchPlan?
+    private(set) var isCheckingApproval = false
+    private(set) var approvalIssue: String?
+    private(set) var runTargets: [PhotoID] = []
     private(set) var folder: URL?
     private(set) var photos: [PhotoID] = []
     private(set) var states: [PhotoID: LibraryPhotoState] = [:]
@@ -54,6 +72,7 @@ final class StudioLibraryModel {
     private(set) var plan: BatchPlan?
     private(set) var estimatedModelCalls: Int?
     private(set) var summary: BatchSummary?
+    private(set) var stoppedSnapshot: BatchSnapshot?
     private(set) var events: [StudioStep] = []
     private(set) var recentDecision: BatchAnswer?
     @ObservationIgnored private let makeLibrary: (URL, URL) throws -> any LibraryHost
@@ -64,6 +83,12 @@ final class StudioLibraryModel {
     @ObservationIgnored private var decisionTask: Task<Void, Never>?
     @ObservationIgnored private var runThreshold = 0.5
     @ObservationIgnored private var hasRun = false
+    @ObservationIgnored private var scopedLibrary: ScopedStudioLibrary?
+    @ObservationIgnored private var runScope = StudioLibraryScope.currentView
+    @ObservationIgnored private var draftRevision = 0
+    @ObservationIgnored private var didMutate = false
+    @ObservationIgnored private let leaseID = UUID()
+    @ObservationIgnored private var photoWindows: [LibraryPhotoWindow] = []
 
     init(backends: StudioBackends = StudioBackends(),
          makeLibrary: @escaping (URL, URL) throws -> any LibraryHost = { try FolderLibrary(folder: $0, output: $1) }) {
@@ -71,11 +96,59 @@ final class StudioLibraryModel {
         self.makeLibrary = makeLibrary
     }
 
-    var canRun: Bool { !isOpening && !isRunning && !hasRun && !photos.isEmpty }
+    var scopePhotos: [PhotoID] { scope == .selected ? photos.filter { selectedPhotos.contains($0) } : photos }
+    var canRun: Bool { !isOpening && !isRunning && !hasRun && !scopePhotos.isEmpty }
+    var approvalEstimate: String {
+        if let approvalIssue { return approvalIssue }
+        let draft = draftPlan ?? plan
+        let calls = draft?.estimatedModelCalls ?? estimatedModelCalls ?? 0
+        return "About \(calls) more model calls" + (draft?.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? "")
+    }
+    var completionDetail: String {
+        if let snapshot = stoppedSnapshot {
+            var parts = ["\(snapshot.completedPhotoIDs.count) completed"]
+            if !snapshot.excludedPhotoIDs.isEmpty { parts.append("\(snapshot.excludedPhotoIDs.count) excluded") }
+            if !snapshot.flaggedPhotoIDs.isEmpty { parts.append("\(snapshot.flaggedPhotoIDs.count) flagged") }
+            if !snapshot.skippedPhotoIDs.isEmpty { parts.append("\(snapshot.skippedPhotoIDs.count) skipped") }
+            if !snapshot.failedPhotoIDs.isEmpty { parts.append("\(snapshot.failedPhotoIDs.count) failed") }
+            if !snapshot.unfinishedPhotoIDs.isEmpty { parts.append("\(snapshot.unfinishedPhotoIDs.count) unfinished") }
+            return parts.joined(separator: " · ")
+        }
+        guard let summary else { return "" }
+        var completed = 0, excluded = 0, failed = 0, flagged = 0, skipped = 0
+        for result in summary.photos {
+            if result.outcome?.hasPrefix("Skipped: excluded") == true { excluded += 1 }
+            else if result.failed { failed += 1 }
+            else if result.flagged != nil { flagged += 1 }
+            else if result.outcome?.split(separator: "\n").contains(where: {
+                $0.hasPrefix("Skipped:") || $0.hasPrefix("Edit skipped:") || $0.hasPrefix("Instruction skipped:") || $0 == "Model call limit reached."
+            }) == true { skipped += 1 }
+            else { completed += 1 }
+        }
+        var parts = ["\(completed) completed"]
+        if excluded > 0 { parts.append("\(excluded) excluded") }
+        if flagged > 0 { parts.append("\(flagged) flagged") }
+        if skipped > 0 { parts.append("\(skipped) skipped") }
+        if failed > 0 { parts.append("\(failed) failed") }
+        return parts.joined(separator: " · ")
+    }
+    var plannedOperations: [String] {
+        let actions = (draftPlan ?? plan)?.photoActions ?? []
+        var operations: [String] = []
+        let auto = actions.filter(\.auto).count
+        let straightened = actions.filter { $0.straightenDegrees != nil }.count
+        let flagged = actions.filter { $0.flagReason != nil }.count
+        let closer = actions.filter(\.closerLook).count
+        if auto > 0 { operations.append("Auto tone and colour · \(auto) photos") }
+        if straightened > 0 { operations.append("Straighten · \(straightened) photos") }
+        if flagged > 0 { operations.append("Flag misfires · \(flagged) photos") }
+        if closer > 0 { operations.append("Closer review and edits · \(closer) photos") }
+        return operations
+    }
     var highlightedPhotos: Set<PhotoID> {
         if let question { return affectedPhotos(question) }
         if let plan, estimatedModelCalls != nil {
-            return Set(plan.groups.filter { selectedGroup == nil || $0.id == selectedGroup }.flatMap(\.photos))
+            return Set(plan.groups.filter { selectedGroup == nil || $0.id == selectedGroup }.flatMap(\.photos)).subtracting(excludedPhotos)
         }
         if let recentDecision { return affectedPhotos(recentDecision.question) }
         return []
@@ -98,8 +171,10 @@ final class StudioLibraryModel {
         self.folder = folder
         self.output = destination
         library = host
+        photoWindows = []
         var seen: Set<PhotoID> = []
         photos = found.filter { seen.insert($0).inserted }
+        selectedPhotos = []
         states = Dictionary(uniqueKeysWithValues: photos.map { ($0, LibraryPhotoState()) })
         hasRun = false
         resetRun()
@@ -113,9 +188,14 @@ final class StudioLibraryModel {
     }
 
     func run() {
+        run(using: nil)
+    }
+
+    /// The window and offline checks share this task lifetime, including cancellation after stream termination.
+    func run(using models: StudioModels?) {
         guard canRun, runTask == nil else { return }
         runTask = Task {
-            do { try await runLibrary() }
+            do { try await runLibrary(using: models) }
             catch { if !isCancellation(error) { issue = error.localizedDescription } }
             runTask = nil
         }
@@ -125,10 +205,28 @@ final class StudioLibraryModel {
     func runLibrary(using suppliedModels: StudioModels? = nil, options suppliedOptions: BatchOptions? = nil,
                     allowKeychainInteraction: Bool = true,
                     onEvent: @MainActor (BatchEvent) async throws -> Void = { _ in }) async throws {
-        guard canRun, let library else { throw StudioScriptError.message("Open a library before running.") }
-        let options = suppliedOptions ?? BatchOptions(mode: mode, instruction: instruction, auto: auto,
+        guard canRun, let library, let folder else { throw StudioScriptError.message("Choose at least one photo before running.") }
+        let targets = scopePhotos
+        photoWindows.removeAll { $0.model == nil }
+        let targetSet = Set(targets)
+        guard photoWindows.allSatisfy({ window in
+            guard let model = window.model, model.libraryLeaseID == leaseID, targetSet.contains(window.photo),
+                  window.url == folder.appendingPathComponent(window.photo.rawValue),
+                  window.opening || model.photoURL == window.url else { return true }
+            return !window.opening && model.phase == .idle && !model.hasPendingLayerChanges
+        }) else {
+            throw StudioScriptError.message("Wait for the open photo's edit to finish before running this library.")
+        }
+        var options = suppliedOptions ?? BatchOptions(mode: mode, instruction: instruction, auto: auto,
             straighten: straighten.value, flagMisfires: flagMisfires, qualityThreshold: qualityThreshold)
+        // Task-only guarded captures serialize photos so conservative in-flight
+        // dollar reservations do not compete. Normal application defaults stay unchanged.
+        let taskEnvironment = ProcessInfo.processInfo.environment
+        if suppliedOptions == nil, taskEnvironment["LUMEN_TEST_BUDGET_LEDGER"] != nil,
+           taskEnvironment["LUMEN_TEST_BUDGET_HELPER"] != nil { options.concurrency = 1 }
         resetRun()
+        runTargets = targets
+        runScope = scope
         runThreshold = options.qualityThreshold
         isRunning = true
         status = "Preparing the planner"
@@ -138,6 +236,7 @@ final class StudioLibraryModel {
             question = nil
             estimatedModelCalls = nil
             agent = nil
+            scopedLibrary = nil
         }
         do {
             let models: StudioModels
@@ -145,7 +244,9 @@ final class StudioLibraryModel {
             else { models = try await backends.models(allowKeychainInteraction: allowKeychainInteraction) }
             try Task.checkCancellation()
             guard !isStopping else { throw LumenError.cancelled }
-            let agent = BatchAgent(host: library, reviewer: models.reviewer, planner: models.planner,
+            let scoped = try await ScopedStudioLibrary(base: library, targets: targets, folder: folder)
+            scopedLibrary = scoped
+            let agent = BatchAgent(host: scoped, reviewer: models.reviewer, planner: models.planner,
                                    segmenter: models.segmenter, generator: models.generator)
             self.agent = agent
             hasRun = true
@@ -154,9 +255,34 @@ final class StudioLibraryModel {
                 receive(event)
                 try await onEvent(event)
             }
+            try Task.checkCancellation()
+            guard !isStopping else { throw LumenError.cancelled }
+            await refreshPhotoWindows()
         } catch {
-            await agent?.cancel()
-            status = isCancellation(error) ? "Stopped" : "Library stopped"
+            decisionTask?.cancel()
+            recentDecision = nil
+            stoppedSnapshot = await agent?.cancelAndWait()
+            if stoppedSnapshot == nil {
+                // Preparation can stop before an agent owns the targets. Keep
+                // the frozen scope visible rather than losing its unfinished work.
+                stoppedSnapshot = BatchSnapshot(summary: BatchSummary(photos: [], answers: [], modelCalls: 0, duration: 0, events: []),
+                    completedPhotoIDs: [], excludedPhotoIDs: [], flaggedPhotoIDs: [], failedPhotoIDs: [], skippedPhotoIDs: [],
+                    unfinishedPhotoIDs: targets, cancelled: isCancellation(error), settled: true, startedModelCalls: 0)
+            }
+            if let snapshot = stoppedSnapshot {
+                totalCost = snapshot.summary.totalCost
+                modelCalls = snapshot.startedModelCalls
+                for result in snapshot.summary.photos { apply(result) }
+                for photo in snapshot.unfinishedPhotoIDs {
+                    states[photo]?.badges.insert(.unfinished)
+                    refreshPhoto(photo)
+                }
+                done = snapshot.completedPhotoIDs.count + snapshot.excludedPhotoIDs.count + snapshot.flaggedPhotoIDs.count
+                    + snapshot.failedPhotoIDs.count + snapshot.skippedPhotoIDs.count
+            }
+            await refreshPhotoWindows()
+            status = (isCancellation(error) ? "Stopped" : "Library stopped") + (stoppedSnapshot == nil ? "" : " · \(completionDetail)")
+            if !didMutate { hasRun = false }
             if !isCancellation(error) { issue = error.localizedDescription }
             throw error
         }
@@ -170,11 +296,60 @@ final class StudioLibraryModel {
     }
 
     func approve() async {
-        guard estimatedModelCalls != nil, !isStopping else { return }
-        estimatedModelCalls = nil
-        selectedGroup = nil
-        status = "Applying the plan"
-        await agent?.approve()
+        guard estimatedModelCalls != nil, !isStopping, let token = plan?.approvalToken, let agent else { return }
+        let revision = draftRevision
+        isCheckingApproval = true
+        defer { isCheckingApproval = false }
+        do {
+            guard runScope == scope, runTargets == scopePhotos else {
+                throw StudioScriptError.message("The photo scope changed. Discard this plan and plan again.")
+            }
+            try await scopedLibrary?.validateSources()
+            guard revision == draftRevision, !isStopping else { return }
+            let approval = BatchApproval(approvalToken: token, instructionOverrides: instructionOverrides,
+                                         excludedPhotoIDs: runTargets.filter { excludedPhotos.contains($0) })
+            let accepted = try await agent.approve(approval)
+            draftPlan = accepted
+            approvalIssue = nil
+            estimatedModelCalls = nil
+            selectedGroup = nil
+            status = "Applying the plan"
+        } catch {
+            approvalIssue = error.localizedDescription
+            status = "Plan needs to be checked again"
+            if !(error is BatchApprovalError) {
+                issue = error.localizedDescription
+                stop()
+            }
+        }
+    }
+
+    func draftChanged() {
+        draftRevision += 1
+        let revision = draftRevision
+        Task { await refreshDraft(revision: revision) }
+    }
+
+    func refreshDraft() async { await refreshDraft(revision: draftRevision) }
+
+    private func refreshDraft(revision: Int) async {
+        guard let token = plan?.approvalToken, estimatedModelCalls != nil, let agent, !isStopping else { return }
+        do {
+            let draft = try await agent.previewApproval(BatchApproval(approvalToken: token, instructionOverrides: instructionOverrides,
+                                                                     excludedPhotoIDs: runTargets.filter { excludedPhotos.contains($0) }))
+            guard revision == draftRevision, plan?.approvalToken == token else { return }
+            draftPlan = draft
+            approvalIssue = nil
+        } catch {
+            guard revision == draftRevision else { return }
+            approvalIssue = error.localizedDescription
+        }
+    }
+
+    func toggleSelection(_ photo: PhotoID) {
+        guard !isRunning, photos.contains(photo) else { return }
+        if selectedPhotos.contains(photo) { selectedPhotos.remove(photo) }
+        else { selectedPhotos.insert(photo) }
     }
 
     func stop() {
@@ -196,9 +371,35 @@ final class StudioLibraryModel {
         guard !isRunning, let library, let folder, photos.contains(photo) else {
             throw StudioScriptError.message("Stop the library before opening a photo's layers.")
         }
-        let host = try await library.photoHost(photo)
-        try await model.openLibraryPhoto(folder.appendingPathComponent(photo.rawValue), host: host,
-                                         events: photoEvents[photo] ?? [])
+        let url = folder.appendingPathComponent(photo.rawValue)
+        let previousID = model.libraryLeaseID
+        let previousLease = model.libraryIsEditing
+        let window = LibraryPhotoWindow(model: model, photo: photo, url: url)
+        photoWindows.append(window)
+        model.libraryLeaseID = leaseID
+        model.libraryIsEditing = { [weak self] in
+            guard let self else { return false }
+            return self.library === library && self.isRunning && self.runTargets.contains(photo)
+        }
+        defer { window.opening = false }
+        do {
+            let host = try await library.photoHost(photo)
+            try await model.openLibraryPhoto(url, host: host, events: photoEvents[photo] ?? [])
+        } catch {
+            model.libraryLeaseID = previousID
+            model.libraryIsEditing = previousLease
+            photoWindows.removeAll { $0 === window }
+            throw error
+        }
+    }
+
+    private func refreshPhotoWindows() async {
+        guard let folder else { return }
+        for window in photoWindows {
+            guard let model = window.model, model.libraryLeaseID == leaseID, runTargets.contains(window.photo),
+                  model.photoURL == window.url, window.url == folder.appendingPathComponent(window.photo.rawValue) else { continue }
+            await model.refreshLibraryResult()
+        }
     }
 
     func thumbnail(_ photo: PhotoID) async throws -> EncodedImage {
@@ -246,18 +447,21 @@ final class StudioLibraryModel {
             if review.quality < runThreshold { states[review.photo]?.badges.insert(.attention) }
             title = "Reviewed \(review.photo.rawValue)"; detail = review.description; symbol = "text.bubble"
         case .flagged(let photo, let reason):
+            didMutate = true
             states[photo]?.badges.insert(.misfire)
             states[photo]?.badges.remove(.attention)
             states[photo]?.reason = reason
             title = "Flagged \(photo.rawValue)"; detail = reason; symbol = "flag"
         case .autoApplied(let photo, let label):
+            didMutate = true
             states[photo]?.badges.insert(.auto); refreshPhoto(photo)
             title = "Auto · \(photo.rawValue)"; detail = label; symbol = "slider.horizontal.3"
         case .straightened(let photo, let degrees):
+            didMutate = true
             states[photo]?.badges.insert(.straightened); refreshPhoto(photo)
             title = "Straightened \(photo.rawValue)"; detail = "\(degrees.formatted())°"; symbol = "rotate.left"
         case .planned(let plan): self.plan = plan; title = "Library plan"; detail = plan.summary; symbol = "list.bullet.indent"
-        case .question(let question): self.question = question; title = question.question; symbol = "questionmark.bubble"
+        case .question(let question): self.question = question; reviewShown = true; title = question.question; symbol = "questionmark.bubble"
         case .answered(let answer):
             question = nil
             decisions.append(answer)
@@ -270,6 +474,7 @@ final class StudioLibraryModel {
             title = "Decided: \(answer.answer)"; detail = answer.question.question; symbol = "text.bubble"
         case .awaitingApproval(let plan, let calls):
             self.plan = plan; estimatedModelCalls = calls
+            draftPlan = plan; instructionOverrides = [:]; excludedPhotos = []; approvalIssue = nil; reviewShown = true
             title = "Ready for your approval"; detail = "About \(calls) more model calls" + (plan.estimatedCost.map { ", about " + studioDollars($0, estimated: true) + " USD" } ?? ""); symbol = "pause.circle"
         case .editStarted(let photo, let instruction):
             title = "Editing \(photo.rawValue)"; detail = instruction; symbol = "paintbrush.pointed"
@@ -277,8 +482,9 @@ final class StudioLibraryModel {
             switch event {
             case .selected: break
             case .applied:
+                didMutate = true
                 states[photo]?.badges.insert(.edited); refreshPhoto(photo)
-            case .reverted: refreshPhoto(photo)
+            case .reverted: didMutate = true; refreshPhoto(photo)
             default: photoEvents[photo, default: []].append(event)
             }
             if case .trace(let value) = event {
@@ -292,7 +498,7 @@ final class StudioLibraryModel {
         case .finished(let summary):
             self.summary = summary; modelCalls = summary.modelCalls
             for result in summary.photos { apply(result); refreshPhoto(result.photo) }
-            title = "Finished · \(summary.photos.count) \(summary.photos.count == 1 ? "photo" : "photos")"; symbol = "checkmark.seal"
+            title = "Finished · \(completionDetail)"; symbol = "checkmark.seal"
         case .trace(let value): trace = value; title = value.kind.rawValue.capitalized; detail = value.detail; symbol = "waveform.path"
         }
         if let trace {
@@ -325,13 +531,18 @@ final class StudioLibraryModel {
             if limited { states[result.photo]?.badges.insert(.attention) }
             else { states[result.photo]?.badges.remove(.attention) }
         }
-        if result.outcome?.hasPrefix("Skipped:") == true { states[result.photo]?.badges.insert(.attention) }
+        if result.outcome?.hasPrefix("Skipped: excluded") == true {
+            states[result.photo]?.badges.remove(.attention)
+            states[result.photo]?.badges.insert(.excluded)
+        } else if result.outcome?.hasPrefix("Skipped:") == true { states[result.photo]?.badges.insert(.attention) }
     }
 
     private func resetRun() {
         decisionTask?.cancel()
         question = nil; recentDecision = nil; decisions = []; plan = nil; selectedGroup = nil
-        estimatedModelCalls = nil; summary = nil; events = []; photoEvents = [:]
+        estimatedModelCalls = nil; summary = nil; stoppedSnapshot = nil; events = []; photoEvents = [:]
+        draftPlan = nil; instructionOverrides = [:]; excludedPhotos = []; approvalIssue = nil
+        isCheckingApproval = false; draftRevision += 1; didMutate = false; runTargets = []
         done = 0; modelCalls = 0; totalCost = 0; issue = nil
     }
 

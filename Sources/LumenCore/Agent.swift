@@ -170,6 +170,8 @@ public actor EditAgent {
         /// Whether SAM found it only by where it is, nothing answering to its name, so a redraw of it can't be found
         /// again by name either.
         var byLocation = false
+        /// A deliberately drawn gradient/shadow is strength, not an object matte.
+        var intentionalFalloff = false
     }
 
     private struct AppliedLayer {
@@ -596,7 +598,7 @@ public actor EditAgent {
         let segment = Segment(label: selection.concept ?? label, box: box, mask: mask, score: score)
         events.yield(.selected(region: selection.id, segment: segment))
         return Region(info: RegionInfo(id: selection.id, concept: selection.concept, box: box, area: mask.area),
-                      mask: mask, asset: asset)
+                      mask: mask, asset: asset, intentionalFalloff: selection.gradient != nil || selection.shadowTip != nil)
     }
 
     /// The segments in one of the selection's colours, as the host measures them on `image`; all of them when it names
@@ -774,9 +776,13 @@ public actor EditAgent {
         // the edge's last pixels. Then it takes in the rim or shade of the same colour SAM stopped short of, which the
         // redraw recoloured too: a teal fender's edge and its shaded underside, left teal beside the new red.
         mask = try await host.extended(try await host.fitted(original, region: rect), region: rect)
+        let colourOnly = Self.isRecolourPrompt(prompt) && !region.intentionalFalloff
         if let overlap = attempt.overlap {
             if overlap >= 0.5, let object = attempt.object {
-                mask = mask.union(object)
+                // A colour replacement retains the original garment geometry.
+                // The generator's check can validate overlap without importing
+                // its shifted outline or background speckles as new support.
+                if !colourOnly { mask = mask.union(object) }
             } else {
                 let value = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), overlap)
                 notes.append("The redraw moved or resized the \(region.info.id) (overlap \(value)).")
@@ -790,8 +796,15 @@ public actor EditAgent {
             mask = mask.union(pockets.mask)
             attempt.image = pockets.image
         }
+        var preparedEdges = false
+        if colourOnly, mask.followsPhoto,
+           let prepared = try await host.recolourEdges(attempt.image, over: image, within: original) {
+            attempt.image = prepared.image
+            mask = prepared.mask
+            preparedEdges = true
+        }
         return try await place(attempt.image, mask: mask, rect: rect, label: label, region: region.info.id,
-                               kind: kind, notes: notes, redraws: &redraws, events: events)
+                               kind: kind, notes: notes, precompositedEdges: preparedEdges, redraws: &redraws, events: events)
     }
 
     /// Restyles a person: redraws their face, head or body in a catalogue style, with the other pieces of them it
@@ -1522,14 +1535,14 @@ public actor EditAgent {
 
     /// Puts a redrawn crop on the photo as a layer.
     private func place(_ generated: EncodedImage, mask: MaskData, rect: NormalizedRect, label: String, region: String,
-                       kind: TraceEvent.Kind, notes: [String], drawsNew: Bool = false, redraws: inout [String: Layer.ID],
+                       kind: TraceEvent.Kind, notes: [String], drawsNew: Bool = false, precompositedEdges: Bool = false, redraws: inout [String: Layer.ID],
                        events: Events) async throws -> [String] {
         for detail in notes { note(kind, detail, events: events) }
         let imageAsset = await assets.put(.image(generated))
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
             let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect),
-                              drawsNew: drawsNew ? true : nil)
+                              drawsNew: drawsNew ? true : nil, precompositedEdges: precompositedEdges ? true : nil)
             try await apply(layer, kind: kind.rawValue, region: region, events: events)
             redraws[region] = layer.id
         } catch {
@@ -1560,6 +1573,21 @@ public actor EditAgent {
             return "\(ended) This is for all \(count) of these \(things) in the picture: change every one of them fully, and nothing else."
         }
         return "\(ended) Change only the \(thing) \(place) of this picture, and nothing else."
+    }
+
+    /// Conservative purpose gate. Old plans have no purpose discriminator;
+    /// only explicit recolouring, with no additional geometry/material edit,
+    /// uses physical edge preparation. Other regeneration retains its path.
+    static func isRecolourPrompt(_ prompt: String?) -> Bool {
+        guard let prompt else { return false }
+        let text = prompt.lowercased()
+        guard text.range(of: "\\b(recolou?r|dye|dyed)\\b", options: .regularExpression) != nil else { return false }
+        let instruction = text.components(separatedBy: "keeping")[0]
+            .components(separatedBy: "preserving")[0].components(separatedBy: "retaining")[0]
+        guard instruction.range(of: "\\b(replace|reshape|dress|costume|transform|add|remove|resize|enlarge|lengthen|shorten)\\b",
+                                options: .regularExpression) == nil else { return false }
+        return instruction.range(of: "\\b(new|different)\\s+(pattern|logo|texture|material)\\b|\\bmake\\b[^.,;]*\\b(wooden|metallic|leather|bigger|smaller|longer|shorter)\\b",
+                                 options: .regularExpression) == nil
     }
 
     /// Where `box` sits in `rect`, in words: "in the centre", "on the left", "at the top right".

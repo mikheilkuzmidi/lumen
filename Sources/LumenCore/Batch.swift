@@ -228,12 +228,77 @@ public struct BatchPlan: Codable, Equatable, Sendable {
     public var questions: [BatchQuestion]
     /// The estimated remaining charge in US dollars, set when approval is requested.
     public var estimatedCost: Double?
+    /// Identifies this particular pending plan. Older plans and plans not awaiting approval have no token.
+    public var approvalToken: UUID?
+    /// The frozen library scope, including misfires that do not belong to an instruction group.
+    public var targetPhotos: [PhotoID]?
+    /// Every proposed base-pass mutation, not just the groups that have an instruction.
+    public var photoActions: [BatchPhotoActions]?
+    /// The remaining estimate for this draft; the event's associated value is retained for older clients.
+    public var estimatedModelCalls: Int?
 
-    public init(summary: String, groups: [BatchGroup], questions: [BatchQuestion] = [], estimatedCost: Double? = nil) {
+    public init(summary: String, groups: [BatchGroup], questions: [BatchQuestion] = [], estimatedCost: Double? = nil,
+                approvalToken: UUID? = nil, targetPhotos: [PhotoID]? = nil, photoActions: [BatchPhotoActions]? = nil,
+                estimatedModelCalls: Int? = nil) {
         self.summary = summary
         self.groups = groups
         self.questions = questions
         self.estimatedCost = estimatedCost
+        self.approvalToken = approvalToken
+        self.targetPhotos = targetPhotos
+        self.photoActions = photoActions
+        self.estimatedModelCalls = estimatedModelCalls
+    }
+}
+
+/// Base-pass work shown for approval. Instructions remain in `BatchPlan.groups`.
+public struct BatchPhotoActions: Codable, Equatable, Sendable {
+    public var photo: PhotoID
+    public var flagReason: String?
+    public var auto: Bool
+    public var straightenDegrees: Double?
+    public var closerLook: Bool
+
+    public init(photo: PhotoID, flagReason: String? = nil, auto: Bool = false,
+                straightenDegrees: Double? = nil, closerLook: Bool = false) {
+        self.photo = photo
+        self.flagReason = flagReason
+        self.auto = auto
+        self.straightenDegrees = straightenDegrees
+        self.closerLook = closerLook
+    }
+}
+
+/// The person's changes to one pending plan. Exclusions apply to every stage, even across overlapping groups.
+public struct BatchApproval: Codable, Equatable, Sendable {
+    public var approvalToken: UUID
+    public var instructionOverrides: [String: String]
+    public var excludedPhotoIDs: [PhotoID]
+
+    public init(approvalToken: UUID, instructionOverrides: [String: String] = [:], excludedPhotoIDs: [PhotoID] = []) {
+        self.approvalToken = approvalToken
+        self.instructionOverrides = instructionOverrides
+        self.excludedPhotoIDs = excludedPhotoIDs
+    }
+}
+
+public enum BatchApprovalError: Error, Equatable, Sendable, LocalizedError {
+    case noPendingPlan
+    case staleToken
+    case unknownGroup(String)
+    case emptyInstruction(String)
+    case unknownPhoto(PhotoID)
+    case duplicateExcludedPhoto(PhotoID)
+
+    public var errorDescription: String? {
+        switch self {
+        case .noPendingPlan: "There is no plan waiting for approval."
+        case .staleToken: "This plan is no longer waiting for approval. Plan the edit again."
+        case .unknownGroup(let id): "The plan has no group named \(id)."
+        case .emptyInstruction(let id): "The instruction for \(id) cannot be blank."
+        case .unknownPhoto(let photo): "Photo \(photo) is outside this plan's scope."
+        case .duplicateExcludedPhoto(let photo): "Photo \(photo) was excluded more than once."
+        }
     }
 }
 
@@ -323,6 +388,38 @@ public struct BatchSummary: Codable, Equatable, Sendable {
         self.modelCalls = modelCalls
         self.duration = duration
         self.events = events
+    }
+}
+
+/// A live or retained account of a run, including work left unfinished by cancellation.
+/// The ID lists are disjoint. A photo is completed only after its final save stage, not just an in-memory edit.
+public struct BatchSnapshot: Codable, Equatable, Sendable {
+    public var summary: BatchSummary
+    public var completedPhotoIDs: [PhotoID]
+    public var excludedPhotoIDs: [PhotoID]
+    public var flaggedPhotoIDs: [PhotoID]
+    public var failedPhotoIDs: [PhotoID]
+    public var skippedPhotoIDs: [PhotoID]
+    public var unfinishedPhotoIDs: [PhotoID]
+    public var cancelled: Bool
+    /// False while model calls and host operations may still be unwinding. `cancelAndWait()` returns a settled view.
+    public var settled: Bool
+    /// Includes attempts that started but were cancelled before their final trace could be delivered.
+    public var startedModelCalls: Int
+
+    public init(summary: BatchSummary, completedPhotoIDs: [PhotoID], excludedPhotoIDs: [PhotoID],
+                flaggedPhotoIDs: [PhotoID], failedPhotoIDs: [PhotoID], skippedPhotoIDs: [PhotoID], unfinishedPhotoIDs: [PhotoID],
+                cancelled: Bool, settled: Bool, startedModelCalls: Int) {
+        self.summary = summary
+        self.completedPhotoIDs = completedPhotoIDs
+        self.excludedPhotoIDs = excludedPhotoIDs
+        self.flaggedPhotoIDs = flaggedPhotoIDs
+        self.failedPhotoIDs = failedPhotoIDs
+        self.skippedPhotoIDs = skippedPhotoIDs
+        self.unfinishedPhotoIDs = unfinishedPhotoIDs
+        self.cancelled = cancelled
+        self.settled = settled
+        self.startedModelCalls = startedModelCalls
     }
 }
 

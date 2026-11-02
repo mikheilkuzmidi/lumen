@@ -4,6 +4,21 @@ import Testing
 
 @Suite("Redraw shape", .timeLimit(.minutes(1)))
 struct RedrawTests {
+    @Test(arguments: [true, false]) func onlyAColourReplacementPreparesItsFinishedEdge(recolour: Bool) async throws {
+        let host = RedrawHost(preparesEdges: true)
+        let prompt = recolour ? "Recolour the cup bright yellow, keeping its shape" : "Replace the cup with a wooden bowl"
+        let planner = RedrawPlanner(plan: EditPlan(summary: "Change cup", steps: [
+            .select(Selection(id: "cup", concept: "cup")),
+            .regenerate(Regeneration(region: "cup", prompt: prompt)), .finish(Finish(reason: "Ready")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: RedrawSegmenter(), generator: RedrawGenerator(), host: host)
+        let events = try await redrawEvents(agent.run(prompt))
+        let layer = try #require(events.redrawLayers.last)
+        let patch = try await redrawPatch(layer, agent: agent)
+        #expect(await host.recolourCalls == (recolour ? 1 : 0))
+        #expect(layer.precompositedEdges == (recolour ? true : nil))
+        #expect((String(data: patch.image.data, encoding: .utf8) == "prepared edge crop") == recolour)
+    }
     @Test func acceptedObjectExtendsThePatchAndUsesTheBestOverlap() async throws {
         let object = RedrawPhoto.mask(x: 3..<49, y: 6..<46)
         let decoy = RedrawPhoto.mask(x: 0..<2, y: 0..<2)
@@ -444,11 +459,19 @@ private actor RedrawHost: EditHost {
     private let failRemoval: Bool
     private let foundPockets: MaskData?
     private(set) var pocketCalls = 0
+    private let preparesEdges: Bool
+    private(set) var recolourCalls = 0
 
-    init(failAdjustment: Bool = false, failRemoval: Bool = false, pockets: MaskData? = nil) {
+    init(failAdjustment: Bool = false, failRemoval: Bool = false, pockets: MaskData? = nil, preparesEdges: Bool = false) {
         self.failAdjustment = failAdjustment
         self.failRemoval = failRemoval
         foundPockets = pockets
+        self.preparesEdges = preparesEdges
+    }
+    func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch? {
+        recolourCalls += 1
+        guard preparesEdges else { return nil }
+        return PreparedPatch(image: EncodedImage(data: Data("prepared edge crop".utf8), format: .png, size: generated.size), mask: mask)
     }
     func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) async throws -> Pockets? {
         pocketCalls += 1

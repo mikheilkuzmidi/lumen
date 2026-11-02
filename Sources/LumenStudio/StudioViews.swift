@@ -1,5 +1,6 @@
 import SwiftUI
 import LumenCore
+import LumenUI
 
 /// Photoeditor's design tokens, so Lumen Studio and the app read as one product: black, graphite greys and white, so
 /// the chrome never biases how a photo's colour reads, and the orange-red accent kept for Lumen's own actions and the
@@ -21,8 +22,10 @@ enum StudioStyle {
     static let track = Color(hex: 0x3A3A3E)
     static let regionColors: [Color] = [accent, .cyan, .mint, .pink, .yellow, .purple]
 
-    static let radius: CGFloat = 6
-    static let promptRadius: CGFloat = 14
+    static let radius = LumenRadii.control
+    static let photoRadius = LumenRadii.photo
+    static let cardRadius = LumenRadii.panel
+    static let promptRadius = cardRadius
     static let topBarHeight: CGFloat = 44
     static let bottomBarHeight: CGFloat = 36
     static let control: CGFloat = 24
@@ -240,8 +243,8 @@ struct StudioView: View {
             StudioIconButton(symbol: "xmark", help: "Dismiss error") { model.issue = nil; model.backends.issue = nil }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: StudioStyle.radius).fill(StudioStyle.raised))
-        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.danger.opacity(0.5)) }
+        .background(RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).fill(StudioStyle.raised))
+        .overlay { RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).strokeBorder(StudioStyle.danger.opacity(0.5)) }
         .accessibilityElement(children: .contain)
     }
 }
@@ -268,7 +271,7 @@ struct PromptBar: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(model.isRunning)
+            .disabled(model.isBusy)
             .accessibilityLabel("Styles")
             .help(model.isRunning ? StudioModel.busyHelp : "Restyle a person, or grade the photo")
             if model.area != nil {
@@ -285,11 +288,11 @@ struct PromptBar: View {
             TextField(model.voice.isRecording ? "Listening…" : "Describe what you want to change", text: $model.prompt)
                 .textFieldStyle(.plain)
                 .font(StudioStyle.title)
-                .disabled(model.isRunning || model.voice.isRecording)
+                .disabled(model.isBusy || model.voice.isRecording)
                 .help(model.isRunning ? StudioModel.busyHelp : "")
                 .onSubmit { model.run() }
                 .accessibilityLabel("Edit instruction")
-            StudioMicButton(voice: model.voice, disabled: model.isRunning, heard: model.hear) { model.issue = $0 }
+            StudioMicButton(voice: model.voice, disabled: model.isBusy, heard: model.hear) { model.issue = $0 }
             if model.modelCalls > 0 {
                 Text("\(model.modelCalls) \(model.modelCalls == 1 ? "call" : "calls") · \(studioDollars(model.totalCost))")
                     .font(StudioStyle.label).monospacedDigit().foregroundStyle(StudioStyle.textSecondary)
@@ -486,8 +489,8 @@ struct StudioSidebar: View {
                             Spacer(minLength: 0)
                         }
                         .disabled(model.isBusy)
-                        .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
-                        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
+                        .padding(12).background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous))
+                        .overlay { RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).strokeBorder(StudioStyle.line) }
                     }
                 }
                 if model.photoURL != nil {
@@ -498,8 +501,8 @@ struct StudioSidebar: View {
                         Image(systemName: "lock").font(StudioStyle.caption).foregroundStyle(StudioStyle.textTertiary)
                     }
                     .padding(12)
-                    .background(StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
-                    .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
+                    .background(StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).strokeBorder(StudioStyle.line) }
                 }
             }
             .padding(.horizontal, StudioStyle.gutter).padding(.bottom, 24)
@@ -622,8 +625,8 @@ private struct LayerRow: View {
             }
         }
         .padding(12)
-        .background(layer.isEnabled ? StudioStyle.raised : StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.radius))
-        .overlay { RoundedRectangle(cornerRadius: StudioStyle.radius).strokeBorder(StudioStyle.line) }
+        .background(layer.isEnabled ? StudioStyle.raised : StudioStyle.panel, in: RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).strokeBorder(StudioStyle.line) }
         .disabled(model.isBusy)
     }
 }

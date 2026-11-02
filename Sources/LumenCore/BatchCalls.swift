@@ -8,6 +8,7 @@ actor BatchCalls {
     private var reservations: [UUID: Int] = [:]
     private var attempts: [UUID: [Bool]] = [:]
     private var stopped = false
+    var attemptedCount: Int { started }
 
     init(limit: Int?) { self.limit = limit.map { max(0, $0) } }
 

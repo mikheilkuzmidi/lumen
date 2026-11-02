@@ -98,6 +98,10 @@ public actor PhotoDocument: EditHost {
         EditSupport.extended(mask, photo: try photo(in: region), context: context)
     }
 
+    public func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch? {
+        try EditSupport.recolourEdges(generated, over: original, within: mask)
+    }
+
     /// The photo as it is now, framed, over `region`.
     private func photo(in region: NormalizedRect) throws -> CIImage {
         rendered(scale: 1).cropped(to: try Self.bounds(of: region, in: cropBounds()))
@@ -307,20 +311,24 @@ public actor PhotoDocument: EditHost {
                 guard let patch = patches[layer.id], let mask = masks[layer.id],
                       let bounds = try? Self.bounds(of: rect, in: canvas.extent) else { continue }
                 let patchBounds = bounds.applying(transform)
-                let placed = PhotoCompositor.resized(patch, to: patchBounds)
+                let placed = EditSupport.placedPatch(patch, in: patchBounds)
                 // A patch's mask is the size of its own crop, so it is placed on the patch, not stretched over the photo.
-                let coverage = PhotoCompositor.scaledMask(mask, to: patchBounds)
+                let coverage = EditSupport.placedMask(mask, in: patchBounds, precompositedEdges: layer.precompositedEdges == true)
                 let enlargement = min(patchBounds.width / patch.extent.width, patchBounds.height / patch.extent.height)
-                let corrected = PhotoCompositor.colorMatched(placed, to: image, mask: coverage, context: context)
-                let matched = layer.drawsNew == true
-                    ? corrected : PhotoCompositor.restoringDetail(corrected, from: image, enlargement: enlargement)
-                // A patch's mask carries its own edge: a recolour's is held to the photo's edges, a removal's is
-                // softened outside the thing. A wider blend here would let the old colour show along the edge (a red
-                // sweater redrawn green kept a red rim), so it only smooths the mask's pixel steps, as wide as they are
-                // placed: one a share of the patch wide faded a 4000 px coat's last 10 px back toward red.
-                let step = max(patchBounds.width / mask.extent.width, patchBounds.height / mask.extent.height)
-                let feathered = PhotoCompositor.feather(coverage, radius: max(0.5, step * 0.7))
-                image = PhotoCompositor.blend(matched, over: image, mask: feathered, opacity: layer.opacity)
+                let matched = EditSupport.matchedPatch(placed, to: image, within: coverage, enlargement: enlargement,
+                                                      restoresDetail: layer.drawsNew != true,
+                                                      precompositedEdges: layer.precompositedEdges == true, context: context)
+                // A prepared recolour already carries a physical object edge;
+                // inward feathering would matte it twice. Other patch kinds
+                // retain their existing, explicitly softened blending path.
+                let matte: CIImage
+                if layer.precompositedEdges == true {
+                    matte = coverage
+                } else {
+                    let step = max(patchBounds.width / mask.extent.width, patchBounds.height / mask.extent.height)
+                    matte = PhotoCompositor.feather(coverage, radius: max(0.5, step * 0.7))
+                }
+                image = PhotoCompositor.blend(matched, over: image, mask: matte, opacity: layer.opacity)
             case .crop:
                 continue
             }

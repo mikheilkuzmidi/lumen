@@ -7,4 +7,10 @@ DerivedData/
 /traces/
 *.local.json
 .env
+.env.*
+!.env.example
 /Fixtures/raw/
+
+# Python QA runtime caches
+__pycache__/
+*.pyc

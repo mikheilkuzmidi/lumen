@@ -81,7 +81,7 @@ enum MaskRefinement {
     }
 
     /// Mean over a square window, shrunk at the borders so the edges of the photo are not darkened.
-    private static func boxMean(_ values: [Double], width: Int, height: Int, radius: Int) -> [Double] {
+    static func boxMean(_ values: [Double], width: Int, height: Int, radius: Int) -> [Double] {
         let stride = width + 1
         var sums = [Double](repeating: 0, count: stride * (height + 1))
         for y in 0..<height {

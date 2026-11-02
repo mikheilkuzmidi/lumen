@@ -14,6 +14,8 @@ public actor BatchAgent {
     private var runID: UUID?
     private var earlyAnswers: [String: String] = [:]
     private var earlyApproval = false
+    private var cancellationRequested = false
+    private var lastSnapshot: BatchSnapshot?
 
     /// Without a reviewer, quality is the mean of sharpness, exposure balance (1 − |2 × exposure − 1|),
     /// and unclipped coverage (1 − clipped shadows − clipped highlights), each clamped to 0...1.
@@ -38,10 +40,12 @@ public actor BatchAgent {
                            answers: earlyAnswers, approved: earlyApproval)
         earlyAnswers.removeAll()
         earlyApproval = false
+        cancellationRequested = false
+        lastSnapshot = nil
         current = run
         runID = id
         let task = Task {
-            await run.execute { await self.didFinish(id) }
+            await run.execute { snapshot in await self.didFinish(id, snapshot: snapshot) }
         }
         self.task = task
         events.onTermination = { @Sendable termination in
@@ -71,13 +75,47 @@ public actor BatchAgent {
         }
     }
 
+    /// Validates the edited draft and recalculates its estimates without approving or changing any photo.
+    public func previewApproval(_ approval: BatchApproval) async throws -> BatchPlan {
+        guard !cancellationRequested else { throw LumenError.cancelled }
+        guard let current else { throw BatchApprovalError.noPendingPlan }
+        return try await current.previewApproval(approval)
+    }
+
+    /// Approves exactly one pending draft. The host must cancel and replan if its source photos changed.
+    @discardableResult
+    public func approve(_ approval: BatchApproval) async throws -> BatchPlan {
+        guard !cancellationRequested else { throw LumenError.cancelled }
+        guard let current else { throw BatchApprovalError.noPendingPlan }
+        return try await current.approve(approval)
+    }
+
     public func cancel() {
+        cancellationRequested = true
         task?.cancel()
         if let current { Task { await current.cancel() } }
     }
 
-    private func didFinish(_ id: UUID) {
+    /// Current progress, or the final retained progress after a successful, failed or cancelled run.
+    public func snapshot() async -> BatchSnapshot? {
+        if let current { return await current.snapshot(cancelled: cancellationRequested) }
+        return lastSnapshot
+    }
+
+    /// Stops the run and waits for its model and host operations to unwind before returning its final progress.
+    public func cancelAndWait() async -> BatchSnapshot? {
+        if let current, let task {
+            cancel()
+            await task.value
+            // A different run may have started while this caller was waiting. Return the run we stopped.
+            return await current.snapshot()
+        }
+        return lastSnapshot
+    }
+
+    private func didFinish(_ id: UUID, snapshot: BatchSnapshot) {
         guard runID == id else { return }
+        lastSnapshot = snapshot
         current = nil
         task = nil
         runID = nil

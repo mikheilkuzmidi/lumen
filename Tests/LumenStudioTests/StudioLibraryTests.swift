@@ -100,7 +100,8 @@ struct StudioLibraryTests {
         }
         #expect(await fixture.host.autoCount == 0)
         #expect(await fixture.host.saved.isEmpty)
-        #expect(model.status == "Stopped" && !model.isRunning)
+        #expect(model.status == "Stopped · 0 completed · 2 unfinished" && !model.isRunning)
+        #expect(model.stoppedSnapshot?.settled == true)
         #expect(model.estimatedModelCalls == nil && model.summary == nil)
     }
 
@@ -269,7 +270,11 @@ struct LibraryFixture {
     }
 
     func remove() { try? FileManager.default.removeItem(at: folder) }
-    @MainActor func model() -> StudioLibraryModel { StudioLibraryModel(makeLibrary: { _, _ in host }) }
+    @MainActor func model() -> StudioLibraryModel {
+        let model = StudioLibraryModel(makeLibrary: { _, _ in host })
+        model.mode = .askWhenUnsure
+        return model
+    }
     func models(reviewer: (any BatchPlanner)? = nil, patch: Bool = false) -> StudioModels {
         StudioModels(planner: LibraryPhotoPlanner(patch: patch), segmenter: LibrarySegmenter(), generator: LibraryGenerator(), reviewer: reviewer)
     }

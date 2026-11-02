@@ -328,6 +328,12 @@ public protocol EditHost: Sendable {
     /// `mask`, over `region` at its own size, grown a little over neighbouring pixels of the colour it covers, as the
     /// photo is now: the rim or shaded part of a thing its mask stopped short of.
     func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData
+    /// Prepares the narrow physical edge of a colour-only replacement. The
+    /// generated crop already includes a background matte; return pixels and
+    /// selection support together so hosts do not matte that edge twice.
+    /// `mask` is the original semantic selection at the crop's size, before
+    /// fitted/extended opacity; its full support and exterior define seeds.
+    func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch?
     /// The colour most of `image` has, a render of the photo as it is framed now, where `mask` (over the whole photo)
     /// covers it; all of it when `mask` is nil. Nil when nothing is covered.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement?
@@ -377,6 +383,13 @@ public struct Pockets: Equatable, Sendable {
     }
 }
 
+/// A finished colour-only crop and the support through which it is placed.
+public struct PreparedPatch: Equatable, Sendable {
+    public var image: EncodedImage
+    public var mask: MaskData
+    public init(image: EncodedImage, mask: MaskData) { self.image = image; self.mask = mask }
+}
+
 /// A crop with a person reshaped, and where its pixels changed.
 public struct Reshaped: Equatable, Sendable {
     public var image: EncodedImage
@@ -396,6 +409,7 @@ public extension EditHost {
     /// A host that can't look at its pixels uses the mask as it is.
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
     func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
+    func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch? { nil }
     /// A host that can't look at its pixels measures nothing, and the critic judges by eye alone.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { nil }
     /// A host that can't look at its pixels finds no lost detail, and the critic looks at the close-ups alone.

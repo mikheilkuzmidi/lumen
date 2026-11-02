@@ -88,8 +88,8 @@ private struct WindowButtonsReveal: NSViewRepresentable {
     }
 }
 
-/// A question asked before planning, with its options as chips and the recommended one marked. In the library it is a
-/// band across the top; over a photo it floats above the prompt bar, shaped like it.
+/// A question asked before planning, with its options as chips and the recommended one marked. Library questions
+/// live in the side review; over a photo they float above the instruction field.
 struct StudioQuestionCard: View {
     let question: String
     let options: [String]
@@ -110,12 +110,9 @@ struct StudioQuestionCard: View {
             }
         }
         .padding(floating ? 14 : StudioStyle.gutter).frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: floating ? StudioStyle.promptRadius : 0))
+        .background(StudioStyle.raised, in: RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous))
         .overlay {
-            if floating { RoundedRectangle(cornerRadius: StudioStyle.promptRadius).strokeBorder(StudioStyle.line) }
-        }
-        .overlay(alignment: .bottom) {
-            if !floating { Rectangle().fill(StudioStyle.line).frame(height: 1) }
+            RoundedRectangle(cornerRadius: StudioStyle.cardRadius, style: .continuous).strokeBorder(StudioStyle.line)
         }
         .shadow(color: .black.opacity(floating ? 0.35 : 0), radius: 14, y: 4)
         .accessibilityElement(children: .contain)

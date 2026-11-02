@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "LumenRender", targets: ["LumenRender"]),
         .library(name: "LumenOpen", targets: ["LumenOpen"]),
         .library(name: "LumenVoice", targets: ["LumenVoice"]),
+        .library(name: "LumenUI", targets: ["LumenUI"]),
         .executable(name: "lumen", targets: ["lumen"]),
         .executable(name: "LumenStudio", targets: ["LumenStudio"]),
     ],
@@ -30,11 +31,12 @@ let package = Package(
         .target(name: "LumenOpen", dependencies: ["LumenCore", "LumenMeta"]),
         // Spoken instructions: the Mac's microphone, and Muse Voice Transcribe writing down what was said.
         .target(name: "LumenVoice", dependencies: ["LumenCore", "LumenMeta"]),
+        .target(name: "LumenUI", dependencies: ["LumenCore"]),
         .executableTarget(name: "lumen", dependencies: [
             "LumenCore", "LumenMeta", "LumenRender", "LumenOpen", "LumenVoice",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
-        .executableTarget(name: "LumenStudio", dependencies: ["LumenCore", "LumenMeta", "LumenRender", "LumenOpen", "LumenVoice"]),
+        .executableTarget(name: "LumenStudio", dependencies: ["LumenCore", "LumenMeta", "LumenRender", "LumenOpen", "LumenVoice", "LumenUI"]),
         .testTarget(name: "LumenCoreTests", dependencies: ["LumenCore"]),
         .testTarget(name: "LumenMetaTests", dependencies: ["LumenMeta"], resources: [.copy("Recorded")]),
         .testTarget(name: "LumenSAMMaskTests", dependencies: ["LumenSAMMask"]),

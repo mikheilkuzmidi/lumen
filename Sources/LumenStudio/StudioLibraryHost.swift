@@ -24,6 +24,17 @@ actor StudioLibraryHost: LibraryHost {
     func save(_ photo: PhotoID) async throws { try await library.save(photo) }
     func editHost(_ photo: PhotoID) async throws -> any EditHost { try await photoHost(photo) }
 
+    /// Only documents already opened in a photo window need an in-memory revision check. Reading a whole
+    /// library's stamps must not decode every full-resolution photo just to show a plan.
+    func revisionSnapshot(_ photos: [PhotoID]) async -> [PhotoID: StudioLayerSnapshot] {
+        var snapshots: [PhotoID: StudioLayerSnapshot] = [:]
+        for photo in photos {
+            guard let host = hosts[photo] else { continue }
+            snapshots[photo] = await StudioLayerSnapshot(layers: host.layers(), straightening: host.straightening())
+        }
+        return snapshots
+    }
+
     func photoHost(_ photo: PhotoID) async throws -> StudioPhotoHost {
         if let host = hosts[photo] { return host }
         guard let document = try await library.editHost(photo) as? any StudioPhoto else {

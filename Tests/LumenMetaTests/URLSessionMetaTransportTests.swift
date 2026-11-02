@@ -42,7 +42,7 @@ private final class RecordedURLProtocol: URLProtocol, @unchecked Sendable {
     let session = URLSession(configuration: configuration)
     defer { session.invalidateAndCancel() }
     let segmenter = MetaSegmenter(configuration: MetaConfiguration(apiKey: "recorded-key", baseURL: URL(string: "https://recorded.example")!),
-                                  transport: URLSessionMetaTransport(session: session))
+                                  transport: URLSessionMetaTransport(session: session, budgetEnvironment: [:]))
     let segments = try await segmenter.segment(SegmentRequest(image: testPhoto, concept: "coat"))
     #expect(segments.count == 1)
     #expect(segments.first?.label == "coat")
@@ -54,7 +54,9 @@ private final class RecordedURLProtocol: URLProtocol, @unchecked Sendable {
     configuration.protocolClasses = [RecordedURLProtocol.self]
     let session = URLSession(configuration: configuration)
     defer { session.invalidateAndCancel() }
-    let transport = URLSessionMetaTransport(session: session)
+    // RecordedURLProtocol handles every request in memory. The task's real
+    // budget environment is exercised separately by TestSpendGuardTests.
+    let transport = URLSessionMetaTransport(session: session, budgetEnvironment: [:])
     let (data, response) = try await transport.data(for: URLRequest(url: URL(string: "https://recorded.example/json")!))
     #expect(data == Data("{}".utf8))
     #expect(response.statusCode == 200)
@@ -70,7 +72,7 @@ private final class RecordedURLProtocol: URLProtocol, @unchecked Sendable {
     configuration.protocolClasses = [RecordedURLProtocol.self]
     let session = URLSession(configuration: configuration)
     defer { session.invalidateAndCancel() }
-    let transport = URLSessionMetaTransport(session: session)
+    let transport = URLSessionMetaTransport(session: session, budgetEnvironment: [:])
     for (path, expected) in [("timeout", LumenError.timedOut), ("cancel", .cancelled)] {
         let call = URLRequest(url: URL(string: "https://recorded.example/\(path)")!)
         await #expect(throws: expected) { try await transport.data(for: call) }

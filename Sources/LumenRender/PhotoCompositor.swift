@@ -2,8 +2,11 @@ import CoreImage
 
 /// Masked blending and local colour matching for generated regions.
 enum PhotoCompositor {
-    static func scaledMask(_ mask: CIImage, to rect: CGRect) -> CIImage {
-        mask.samplingLinear()
+    static func scaledMask(_ mask: CIImage, to rect: CGRect, precomposited: Bool = false) -> CIImage {
+        // A prepared mask is placement support for a finished antialiased
+        // photograph. Linear interpolation would create a second soft matte.
+        let sampled = precomposited ? mask.samplingNearest() : mask.samplingLinear()
+        return sampled
             .transformed(by: CGAffineTransform(translationX: -mask.extent.minX, y: -mask.extent.minY))
             .transformed(by: CGAffineTransform(scaleX: rect.width / mask.extent.width,
                                                y: rect.height / mask.extent.height))
@@ -57,7 +60,8 @@ enum PhotoCompositor {
     /// and less any shift the two share over a wider area (a recolour's), stays within a few percent. Where the patch
     /// drew something new, the old detail stayed off: added back everywhere, a jacket's logo showed through the
     /// pirate's coat and the vampire's cape drawn over it.
-    static func restoringDetail(_ patch: CIImage, from photo: CIImage, enlargement: CGFloat, strength: CGFloat = 0.7) -> CIImage {
+    static func restoringDetail(_ patch: CIImage, from photo: CIImage, enlargement: CGFloat, strength: CGFloat = 0.7,
+                                support: CIImage? = nil) -> CIImage {
         guard enlargement > 1.2 else { return patch }
         let base = photo.cropped(to: patch.extent)
         let sigma = min(8, max(0.8, enlargement * 0.6))
@@ -102,7 +106,16 @@ enum PhotoCompositor {
             "inputBVector": CIVector(x: 0, y: 0, z: -100, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
             "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
         ]).applyingFilter("CIColorClamp")
-        return sum(scaled(patch, 1), scaled(product(detail, kept), strength))
+        let useful: CIImage
+        if let support {
+            // Restore weave inside the garment, never the old silhouette or
+            // its camera antialiasing. The margin is measured in crop pixels.
+            let interior = support.clampedToExtent()
+                .applyingFilter("CIMorphologyMinimum", parameters: ["inputRadius": max(2, enlargement * 6)])
+                .cropped(to: patch.extent)
+            useful = product(kept, interior)
+        } else { useful = kept }
+        return sum(scaled(patch, 1), scaled(product(detail, useful), strength))
     }
 
     /// Moves a redrawn patch's overall light and colour back to the photo's, measured in a ring just outside its mask.

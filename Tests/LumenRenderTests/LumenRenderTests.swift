@@ -377,8 +377,8 @@ struct PhotoPixelTests {
 
     /// A red coat redrawn blue would get red ripples back: its detail is nearly all in the red channel, and was added back
     /// as it was. Only its lightness comes back, the same in every channel.
-    @Test
-    func anEnlargedRecolourGetsTheDetailButNotTheOldColourBack() async throws {
+    @Test(arguments: [false, true])
+    func anEnlargedRecolourGetsTheDetailButNotTheOldColourBack(preparedEdges: Bool) async throws {
         let folder = try PhotoFolder()
         defer { folder.remove() }
         let document = try PhotoDocument(contentsOf: folder.photo { x, _ in x % 4 < 2 ? RGB(220, 30, 30) : RGB(150, 20, 20) })
@@ -388,7 +388,8 @@ struct PhotoPixelTests {
         let imageID = await assets.put(.image(EncodedImage(data: try Data(contentsOf: patchURL), format: .png, size: PixelSize(width: 16, height: 12))))
         let maskID = await assets.put(.mask(MaskData(size: PixelSize(width: 16, height: 12), filledWith: 255)))
         try await document.apply(Layer(label: "Coat", content: .patch(image: imageID, mask: maskID,
-                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))), assets: assets)
+                                                                       rect: NormalizedRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)),
+                                       precompositedEdges: preparedEdges ? true : nil), assets: assets)
         let after = try await folder.pixels(document)
         let light = after[64, 48], dark = after[66, 48]
         let red = linear(light.red) - linear(dark.red), green = linear(light.green) - linear(dark.green)

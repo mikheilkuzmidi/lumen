@@ -126,6 +126,9 @@ final class StudioModel {
     @ObservationIgnored private var originalEdge = 0
     @ObservationIgnored private var photoVersion = UUID()
     @ObservationIgnored var photoDidChange: (() -> Void)?
+    /// A library owns mutation while its batch runs; the window can still compare and inspect the photo.
+    @ObservationIgnored var libraryLeaseID: UUID?
+    @ObservationIgnored var libraryIsEditing: @MainActor () -> Bool = { false }
 
     init(backends: StudioBackends = StudioBackends(), voice: VoiceInstruction = StudioVoice.instruction(),
          makePhoto: @escaping (URL) throws -> any StudioPhoto = { try PhotoDocument(contentsOf: $0) }) {
@@ -137,19 +140,22 @@ final class StudioModel {
     /// Puts what was said after the instruction already typed, to read and run.
     func hear(_ words: String) { prompt = StudioVoice.adding(words, to: prompt) }
 
-    var isBusy: Bool { phase != .idle }
+    var isLibraryReadOnly: Bool { libraryIsEditing() }
+    var isBusy: Bool { phase != .idle || isLibraryReadOnly }
     var isRunning: Bool { phase == .running || phase == .stopping }
     var showsOriginal: Bool { compare || holdingCompare }
     var canRun: Bool { document != nil && preview != nil && !isBusy && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var canUndo: Bool { !isBusy && historyPosition > 0 }
     var canRedo: Bool { !isBusy && historyPosition + 1 < historyCount }
     var canExport: Bool { document != nil && preview != nil && !isBusy }
+    var hasPendingLayerChanges: Bool { snapshot != history[historyPosition] }
     var modelCalls: Int { steps.flatMap(\.traces).filter { $0.model != nil }.count }
     var totalCost: Double { steps.flatMap(\.traces).reduce(0) { $0 + ($1.cost ?? 0) } }
 
     var timelineFocus: UUID? { activeStep ?? steps.last(where: { $0.status != .waiting })?.id }
 
     var status: String {
+        if isLibraryReadOnly { return "The library is editing this photo" }
         if let status = backends.status, backends.isLoading || phase == .idle { return status }
         switch phase {
         case .opening: return "Opening photo"
@@ -190,7 +196,7 @@ final class StudioModel {
         }
     }
 
-    func openPhoto(_ url: URL) async throws {
+    func openPhoto(_ url: URL, retainingLibraryLease: Bool = false) async throws {
         guard !isBusy, url.isFileURL else { throw StudioScriptError.message("A photo can't be opened right now.") }
         phase = .opening
         issue = nil
@@ -227,6 +233,10 @@ final class StudioModel {
             history = [StudioLayerSnapshot()]
             historyPosition = 0
             historyCount = 1
+            if !retainingLibraryLease {
+                libraryLeaseID = nil
+                libraryIsEditing = { false }
+            }
         } catch { issue = error.localizedDescription; throw error }
     }
 
@@ -258,7 +268,7 @@ final class StudioModel {
 
     /// Opens the library's retained document with its layers and reversible history.
     func openLibraryPhoto(_ url: URL, host: StudioPhotoHost, events: [AgentEvent]) async throws {
-        try await openPhoto(url)
+        try await openPhoto(url, retainingLibraryLease: true)
         document = host.photo
         self.host = host
         photoSize = await host.size()
@@ -275,6 +285,24 @@ final class StudioModel {
         }
         sidebar = .layers
         await renderPreview(maxLongEdge: renderEdge)
+    }
+
+    /// Refreshes an already-open window before the library releases its edit lease. Its next Undo restores
+    /// the state before the batch, rather than replaying a stale window history over the new layers.
+    func refreshLibraryResult() async {
+        guard let host else { return }
+        let updated = await StudioLayerSnapshot(layers: host.layers(), straightening: host.straightening())
+        guard updated != snapshot else { return }
+        phase = .updating
+        defer { phase = .idle }
+        layers = updated.layers
+        straighteningAngle = updated.straightening
+        photoSize = await host.size()
+        batchStraightening = straighteningAngle == 0 ? nil : straighteningAngle
+        remember(layers)
+        completion = "Updated by the library"
+        await renderPreview(maxLongEdge: renderEdge)
+        photoDidChange?()
     }
 
     func run(using models: StudioModels? = nil) {
@@ -473,7 +501,7 @@ final class StudioModel {
     private var snapshot: StudioLayerSnapshot { StudioLayerSnapshot(layers: layers, straightening: straighteningAngle) }
 
     private func restore(_ snapshot: StudioLayerSnapshot, historyTarget: Int?) {
-        guard let host else { return }
+        guard !isLibraryReadOnly, let host else { return }
         phase = .updating
         issue = nil
         Task {

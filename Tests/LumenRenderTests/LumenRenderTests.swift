@@ -338,6 +338,25 @@ struct PhotoPixelTests {
         #expect(after[5, 60].distance(to: RGB(30, 30, 32)) < 0.02, "no grass where the redraw changed the colour")
     }
 
+    /// A person's own face is laid into a costume's redraw where its mask covers it, blended by its coverage, for the
+    /// costume to be drawn again around it.
+    @Test
+    func aFaceIsLaidIntoARedrawByItsMask() throws {
+        let folder = try PhotoFolder()
+        defer { folder.remove() }
+        let face = try folder.photo(width: 40, height: 20) { _, _ in RGB(220, 170, 140) }
+        let helmet = try folder.photo(width: 40, height: 20) { _, _ in RGB(150, 150, 160) }
+        func encoded(_ url: URL) throws -> EncodedImage {
+            EncodedImage(data: try Data(contentsOf: url), format: .png, size: PixelSize(width: 40, height: 20))
+        }
+        let mask = MaskData(size: PixelSize(width: 40, height: 20), coverage: (0..<800).map { $0 % 40 < 10 ? 255 : $0 % 40 < 20 ? 128 : 0 })
+        let laid = try #require(try EditSupport.laid(try encoded(face), over: try encoded(helmet), within: mask))
+        let after = try Pixels(data: laid.data)
+        #expect(after[5, 10].distance(to: RGB(220, 170, 140)) < 0.02, "the face where the mask covers it")
+        #expect(after[15, 10].distance(to: RGB(185, 160, 150)) < 0.02, "half of each under half the mask")
+        #expect(after[30, 10].distance(to: RGB(150, 150, 160)) < 0.02, "the redraw elsewhere")
+    }
+
     /// The jacket's seams and grain showed through a vampire's cape drawn over it, dark on dark. A patch that draws
     /// something new takes none of the photo's detail back.
     @Test

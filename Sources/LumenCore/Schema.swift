@@ -66,7 +66,7 @@ enum PlanSchema {
                               "description": "For a body style, what the person wears on their upper body: bare (no top), fitted (a T-shirt, tank top or thin shirt the body shows through) or loose (a jacket, coat, hoodie or sweater); unknown otherwise."],
                     "with": ["type": "array", "description": "More of the person to redraw with the style than it covers by itself; empty for none.",
                              "items": ["type": "string", "enum": PersonStyle.Piece.allCases.map(\.rawValue),
-                                       "description": "neck (neck and ears), skin (their other bare skin: hands, arms), top (the clothes on their upper body) or hat (room above the head for what is worn on it)."]],
+                                       "description": "neck (neck and ears), skin (their other bare skin: hands, arms), top (the clothes on their upper body), outfit (everything worn below the face, down to the feet), hat (room above the head for what is worn on it) or face (the face itself, only for a costume that paints, masks or covers it)."]],
                     "outfit": string("For the costume style, the costume in a few words; null otherwise.", nullable: true),
                 ]),
                 step("crop", properties: ["rect": rect()]),

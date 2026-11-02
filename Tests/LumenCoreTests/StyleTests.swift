@@ -646,6 +646,94 @@ struct StyleTests {
         #expect((legs > 200) == full, "the legs go with a full costume only")
     }
 
+    /// A costume keeps the person's own face: Muse Image is told to draw the helmet around it, and the photo's own face
+    /// is laid back over the costume. A redraw whose face came out smaller has their face laid into it and the costume
+    /// drawn again around it, or, where the host can't lay pixels, is drawn again from the photo, told so. A costume
+    /// that paints or covers the face (`face` in with) redraws it.
+    @Test(arguments: [(false, true), (false, false), (true, true)])
+    func aCostumeKeepsTheirOwnFace(paintsIt: Bool, lays: Bool) async throws {
+        // Seven rows lower: room above the head for the helmet, and a crop that is the whole photo.
+        let lower = { (mask: MaskData) in
+            MaskData(size: mask.size, coverage: (0..<1600).map { i in i / 40 >= 7 ? mask.coverage[i - 280] : 0 })
+        }
+        let person = lower(Self.person()), face = lower(Self.face)
+        let hair = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (15..<25).contains(i % 40) && (7..<9).contains(i / 40) ? 255 : 0
+        })
+        // The redraw's face, a third smaller inside the helmet the first time and where it was the second.
+        let smaller = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (18..<22).contains(i % 40) && (9..<12).contains(i / 40) ? 255 : 0
+        })
+        let with = paintsIt ? ["outfit", "hat", "face"] : ["outfit", "hat"]
+        let planner = StylePlanner(plan: EditPlan(summary: "Knight", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.6)])),
+            .style(StyleStep(region: "man", style: "costume", with: with, outfit: "a medieval knight with a plumed helmet")),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(person)], [Self.segment(face, "face")], [Self.segment(hair, "head")],
+                                                 [Self.segment(smaller, "face")], [Self.segment(face, "face")]])
+        let host = StyleHost(lays: lays)
+        let generator = StyleGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
+        for try await _ in agent.run("Dress him as a knight") {}
+        let prompts = await generator.prompts
+        let concepts = await segmenter.requests.map(\.concept)
+        let rect = try #require(await host.patchRects.first)
+        #expect(rect == NormalizedRect(x: 0, y: 0, width: 1, height: 1), "the crop is the photo, so its faces are the photo's")
+        if paintsIt {
+            #expect(prompts.count == 1 && !prompts[0].contains("Keep their face itself"))
+            #expect(concepts == ["person", "face", "head"], "a face redrawn on purpose isn't compared")
+            #expect(await host.covers(0, x: 20, y: 10) > 200, "the face is redrawn with the costume")
+        } else {
+            #expect(prompts.count == 2)
+            #expect(prompts[0].contains("Keep their face itself exactly as it is, the same size and in the same place")
+                    && prompts[0].contains("their hair and head around their face"))
+            #expect(lays ? prompts[1].contains("Redraw what they wear on their head and around their neck so it fits naturally around that face")
+                         : prompts[1].contains("the last try drew it smaller"))
+            #expect(await host.laidMasks.count == (lays ? 1 : 0), "their face laid into the first redraw")
+            #expect(concepts == ["person", "face", "head", "face", "face"])
+            // A face five rows tall is mostly its softened edge; the middle of a real one is the photo's alone.
+            let (middle, edge) = (await host.covers(0, x: 20, y: 10), await host.covers(0, x: 14, y: 10))
+            #expect(middle < 100 && edge > 240, "the photo's own face shows over the costume, and the helmet around it")
+            let (chest, feet) = (await host.covers(0, x: 20, y: 20), await host.covers(0, x: 20, y: 38))
+            #expect(chest > 200 && feet > 200, "the armour, down to his feet")
+            #expect(await planner.critiqued.joined().contains {
+                $0.contains("keeps their own face") && $0.contains("shows 100% of it, fitted again after the first showed 30%")
+            })
+        }
+        #expect(PersonStyle.named("pirate")!.keepsFace(with: [.neck, .top, .hat]) == false, "a pirate's eye patch and beard are on the face")
+    }
+
+    /// A helmet drawn over the brow leaves most of the face showing: it isn't drawn again, and the person's own face is
+    /// laid only where the redraw shows a face, so the helmet's rim over the brow stays. A host that can look at pixels
+    /// finds the face by its skin; otherwise SAM looks for it.
+    @Test(arguments: [true, false])
+    func aHelmetOverTheBrowKeepsItsRim(bySkin: Bool) async throws {
+        let lower = { (mask: MaskData) in
+            MaskData(size: mask.size, coverage: (0..<1600).map { i in i / 40 >= 7 ? mask.coverage[i - 280] : 0 })
+        }
+        let person = lower(Self.person()), face = lower(Self.face)
+        let hair = MaskData(size: PixelSize(width: 40, height: 40), coverage: (0..<1600).map { i in
+            (15..<25).contains(i % 40) && (7..<9).contains(i / 40) ? 255 : 0
+        })
+        // The face under the helmet's brow: all but its top row.
+        let underBrow = MaskData(size: face.size, coverage: (0..<1600).map { i in i / 40 >= 9 ? face.coverage[i] : 0 })
+        let planner = StylePlanner(plan: EditPlan(summary: "Knight", steps: [
+            .select(Selection(id: "man", concept: "person", points: [NormalizedPoint(x: 0.5, y: 0.6)])),
+            .style(StyleStep(region: "man", style: "costume", with: ["outfit", "hat"], outfit: "a medieval knight")),
+        ]))
+        let segmenter = StyleSegmenter(answers: [[Self.segment(person)], [Self.segment(face, "face")], [Self.segment(hair, "head")]]
+                                           + (bySkin ? [] : [[Self.segment(underBrow, "face")]]))
+        let host = StyleHost(skin: bySkin ? underBrow : nil, lays: true)
+        let generator = StyleGenerator()
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: generator, host: host)
+        for try await _ in agent.run("Dress him as a knight") {}
+        #expect(await generator.prompts.count == 1, "four fifths of the face shows: not drawn again")
+        #expect(await segmenter.requests.count == (bySkin ? 3 : 4), "SAM looks for the face only where skin can't tell")
+        let (brow, middle) = (await host.covers(0, x: 20, y: 8), await host.covers(0, x: 20, y: 11))
+        #expect(brow > middle + 60, "the helmet's brow stays over the forehead")
+        #expect(await planner.critiqued.joined().contains { $0.contains("shows 80% of it.") })
+    }
+
     /// The neck is the skin joined to the face; skin beside it that isn't (a friend's hand on the shoulder) is not.
     @Test func aNeckIsTheSkinJoinedToTheFace() throws {
         let neck = try #require(PersonPieces.neck(face: Self.face, person: Self.person(), skin: Self.skin))
@@ -795,9 +883,20 @@ private actor ArmsDecliningGenerator: Generator {
 private actor StyleHost: EditHost {
     private(set) var patchMasks: [MaskData] = []
     private(set) var patchRects: [NormalizedRect] = []
+    private(set) var laidMasks: [MaskData] = []
     /// The person's bare skin, as a host that can look at its pixels finds it; nil for one that can't.
     private let bare: MaskData?
-    init(skin: MaskData? = nil) { bare = skin }
+    /// Whether it can lay one image over another.
+    private let lays: Bool
+    init(skin: MaskData? = nil, lays: Bool = false) {
+        bare = skin
+        self.lays = lays
+    }
+    func laid(_ top: EncodedImage, over base: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
+        guard lays else { return nil }
+        laidMasks.append(mask)
+        return base
+    }
     /// Says a redraw drew over the whole crop, as a costume bigger than its room does.
     func drawn(_ generated: EncodedImage, over original: EncodedImage, beyond mask: MaskData, reach: Int) async throws -> MaskData? {
         MaskData(size: mask.size, filledWith: 255)

@@ -825,7 +825,7 @@ public actor EditAgent {
                     case .top: PersonPieces.top(face: face, person: person.mask, skin: skin)
                     case .outfit: PersonPieces.outfit(face: face, person: person.mask, skin: skin)
                     case .hat: PersonPieces.hat(face: face, head: style.part == .head ? part.mask : nil)
-                    case .skin: nil
+                    case .skin, .face: nil
                     }
                     if let found { near = near.map { $0.union(found) } ?? found }
                 }
@@ -860,7 +860,8 @@ public actor EditAgent {
                 do {
                     notes += try await redraw(body ?? part, as: body == nil ? style : built!, label: label,
                                               face: style.part == .body ? face?.mask : nil, keeping: held, adding: near,
-                                              pieces: pieces, wears: attire, optional: reshaped, redraws: &redraws, events: events)
+                                              pieces: pieces, wears: attire, ownFace: style.keepsFace(with: pieces) ? face?.mask : nil,
+                                              optional: reshaped, redraws: &redraws, events: events)
                 } catch {
                     // A body already reshaped keeps its new shape when the image model can't add to it: it declined a
                     // gym-built redraw of a man beside his wife, twice.
@@ -872,7 +873,7 @@ public actor EditAgent {
             if let attire {
                 notes.append("The \(person.info.id) wears \(attire.words), so \(attire.showsBuild ? "their build was redrawn as well as their outline moved" : "only their outline moved").")
             }
-            let covered = PersonStyle.Piece.allCases.filter { $0 != .skin && pieces.contains($0) }.map(\.words)
+            let covered = PersonStyle.Piece.allCases.filter { ![.skin, .face].contains($0) && pieces.contains($0) }.map(\.words)
             if near != nil, !covered.isEmpty {
                 notes.append("Redrawn with the \(style.part.rawValue): \(covered.joined(separator: "; ")).")
             }
@@ -989,9 +990,11 @@ public actor EditAgent {
     /// A body with its `face` known is redrawn only below the chin, and measured from it.
     /// The `near` pieces of the person (over the photo, at the part's mask size) are redrawn with the part, in the same
     /// close-up, and the prompt names each of `pieces`; what a body `wears` says how its new build shows.
+    /// A costume is drawn around the person's `ownFace` (over the photo), which is laid back over the redraw.
     private func redraw(_ region: Region, as style: PersonStyle, label: String, face: MaskData? = nil, keeping held: MaskData? = nil,
                         adding near: MaskData? = nil, pieces: Set<PersonStyle.Piece> = [], wears attire: Attire? = nil,
-                        optional: Bool = false, redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+                        ownFace: MaskData? = nil, optional: Bool = false, redraws: inout [String: Layer.ID],
+                        events: Events) async throws -> [String] {
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
         let whole = near?.boundingBox.map { box.union($0) } ?? box
@@ -1087,6 +1090,42 @@ public actor EditAgent {
                 best = next
             }
         }
+        // The face is laid back from the photo, so the costume around it must fit it: a knight's helmet drawn the size of
+        // his head held a face a third smaller. The face is found in the redraw, and where it is off theirs, their own
+        // face is laid into the redraw and the costume drawn again around it: drawn again from the photo and told to
+        // keep the face's size, the helmet came back as small, and with his face laid over it, its cheek guards showed
+        // faintly across his cheeks. A host that can't lay pixels draws it again from the photo.
+        let keptFace = ownFace.map { $0.cropped(to: rect).resized(to: image.size) }
+        var faceDrawn: MaskData?
+        if let keptFace {
+            var fit = try await faceFit(of: best.image, to: keptFace, region: region.info.id, events: events)
+            let firstShown = fit?.shown
+            if let first = fit, first.shown < Self.faceShown {
+                var next: RedrawAttempt?
+                if let shown = Self.faceLaid(keptFace), let laid = try await host.laid(image, over: best.image, within: shown) {
+                    let request = GenerateRequest(image: laid, mask: mask, prompt: asked.refitPrompt(person: "person", place: position))
+                    do {
+                        next = try await redrawAttempt(request, original: original, concept: nil, region: region.info.id,
+                                                       kind: .style, events: events)
+                    } catch {
+                        let error = cancellationError(error)
+                        if error as? LumenError == .cancelled { throw error }
+                        notes.append("Could not fit the \(style.title.lowercased()) around the face of \(region.info.id): \(error.localizedDescription)")
+                    }
+                } else {
+                    let retry = try await retried(.sameFace)
+                    if let note = retry.note { notes.append(note) }
+                    next = retry.attempt
+                }
+                if let next, let second = try await faceFit(of: next.image, to: keptFace, region: region.info.id, events: events),
+                   second.shown > first.shown {
+                    best = next
+                    fit = second
+                }
+            }
+            faceDrawn = fit?.found
+            notes.append(Self.ownFaceNote(shown: fit?.shown, first: firstShown))
+        }
         // Asked for a build on a man whose arms were hidden behind his friends, Muse Image drew him bare forearms crossed
         // in front of his T-shirt, and an arm at his side across the outline's edge, which showed half see-through. A
         // build that adds bare skin, or draws anything clearly past the outline, is drawn once more, told to keep the
@@ -1171,10 +1210,85 @@ public actor EditAgent {
         }
         // Softened past the part, like a removal's, so the new outline and the background beside it blend in.
         // A build's mask is already softened inside the outline; softened again it reached back out to the edge.
-        let soft = style.keepsOutline ? placed : placed.blurred(by: short * (style.part == .body || style.dressesUp ? 0.015 : 0.01))
+        var soft = style.keepsOutline ? placed : placed.blurred(by: short * (style.part == .body || style.dressesUp ? 0.015 : 0.01))
+        // Their own face shows only where the redraw drew a face too, so a helmet's rim over their brow or cheeks stays.
+        if let keptFace, let face = Self.faceLaid(faceDrawn.map { keptFace.multiplied(by: $0) } ?? keptFace) {
+            soft = soft.multiplied(by: face.inverted())
+        }
         return try await place(best.image, mask: frame.map { Self.below($0, soft) } ?? soft, rect: rect, label: label,
                                region: region.info.id, kind: .style, notes: notes, drawsNew: style.dressesUp || style.keepsOutline,
                                redraws: &redraws, events: events)
+    }
+
+    /// Where a redraw shows the person's own `face` (both the crop's size), and how much of it: the skin of their face's
+    /// colour inside it, each row filled across so the eyes, brows and mouth count, as a host that can look at pixels
+    /// finds it; otherwise the face SAM finds that lies most over theirs. SAM found a third of a knight's face inside
+    /// his helmet, and laid only there, his own face came out smeared. Nil when neither finds one.
+    private func faceFit(of redraw: EncodedImage, to face: MaskData, region: String,
+                         events: Events) async throws -> (found: MaskData, shown: Double)? {
+        guard face.area > 0 else { return nil }
+        if let core = Self.faceCore(face), let skin = try await host.skin(redraw, face: core, person: face) {
+            let found = Self.rowsFilled(skin.resized(to: face.size)).multiplied(by: face)
+            return (found, found.area / face.area)
+        }
+        do {
+            let segments = try await call(.select, model: segmenter.modelID, detail: "Check the face of \(region) in the redraw",
+                                          events: events) {
+                try await self.segmenter.segment(SegmentRequest(image: redraw, concept: "face"))
+            }
+            let found = segments.map { $0.mask.resized(to: face.size) }
+            guard let closest = found.max(by: { face.intersectionOverUnion($0) < face.intersectionOverUnion($1) }),
+                  face.area > 0 else { return nil }
+            return (closest, face.multiplied(by: closest).area / face.area)
+        } catch {
+            let error = cancellationError(error)
+            if error as? LumenError == .cancelled { throw error }
+            return nil
+        }
+    }
+
+    /// The middle of a face, a fifth of its height in from its edge, where a redraw that kept it shows skin even inside a
+    /// helmet; nil for a face too small to measure.
+    static func faceCore(_ face: MaskData) -> MaskData? {
+        guard let height = BodyFrame(face: face)?.face else { return nil }
+        let core = face.inverted().grown(by: max(1, Int((height * 0.2).rounded()))).inverted()
+        return core.area > 0 ? core : nil
+    }
+
+    /// `mask` with each row covered from its first covered pixel to its last.
+    static func rowsFilled(_ mask: MaskData) -> MaskData {
+        var out = mask
+        let width = mask.size.width
+        for y in 0..<mask.size.height {
+            let row = y * width
+            guard let first = (0..<width).first(where: { mask.coverage[row + $0] >= 128 }),
+                  let last = (0..<width).last(where: { mask.coverage[row + $0] >= 128 }) else { continue }
+            for x in first...last { out.coverage[row + x] = 255 }
+        }
+        return out
+    }
+
+    /// Below this share of the person's own face showing, a costume's redraw drew the face smaller or elsewhere: a
+    /// helmet over the brow and cheeks leaves about three quarters of it, a face drawn three quarters of its size
+    /// little over half.
+    static let faceShown = 0.6
+
+    /// What of the person's own face is laid over a costume's redraw: the face a little in from its edge, softened, so
+    /// the rim of a helmet drawn around it stays. Nil for a face too small to measure.
+    static func faceLaid(_ face: MaskData) -> MaskData? {
+        guard let height = BodyFrame(face: face)?.face else { return nil }
+        let inset = max(1, Int((height * 0.04).rounded()))
+        return face.inverted().grown(by: inset).inverted().blurred(by: Double(inset))
+    }
+
+    /// Says the person keeps their face, and how much of it the costume shows: `shown` in the redraw kept, `first` in
+    /// the first one when it was drawn again.
+    static func ownFaceNote(shown: Double?, first: Double?) -> String {
+        let kept = "The person keeps their own face; the costume is drawn around it"
+        guard let shown else { return kept + "." }
+        func percent(_ share: Double) -> String { "\(Int((share * 100).rounded()))%" }
+        let again = first.flatMap { $0 < faceShown ? $0 : nil }.map { ", fitted again after the first showed \(percent($0))" } ?? ""
+        return kept + " and shows \(percent(shown)) of it\(again)."
     }
 
     /// How much bare skin `after` shows within `area` (the crop's size) that `before` didn't, as a share of `area`, both

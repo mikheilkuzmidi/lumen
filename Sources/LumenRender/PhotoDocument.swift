@@ -138,6 +138,10 @@ public actor PhotoDocument: EditHost {
         try EditSupport.shaded(generated, onto: original, within: mask)
     }
 
+    public func laid(_ top: EncodedImage, over base: EncodedImage, within mask: MaskData) async throws -> EncodedImage? {
+        try EditSupport.laid(top, over: base, within: mask)
+    }
+
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?

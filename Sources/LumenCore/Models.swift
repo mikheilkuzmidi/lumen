@@ -360,6 +360,9 @@ public protocol EditHost: Sendable {
     /// size) covers it: only its broad lightness, never its edges, prints or colours, and nothing where it changed the
     /// colour. Nil when the host can't.
     func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage?
+    /// `base`, a crop, with `top` (the same crop drawn otherwise) laid over it where `mask` (the crop's size) covers it,
+    /// in proportion to its coverage. Nil when the host can't.
+    func laid(_ top: EncodedImage, over base: EncodedImage, within mask: MaskData) async throws -> EncodedImage?
 }
 
 /// The pockets of a region a redraw also turned into the new look, and the redraw to show through them.
@@ -410,4 +413,6 @@ public extension EditHost {
     func pockets(_ generated: EncodedImage, over original: EncodedImage, outside mask: MaskData, reach: Int) async throws -> Pockets? { nil }
     /// A host that can't change its pixels places the redraw as it is.
     func shaded(_ generated: EncodedImage, onto original: EncodedImage, within mask: MaskData) async throws -> EncodedImage? { nil }
+    /// A host that can't change its pixels lays nothing.
+    func laid(_ top: EncodedImage, over base: EncodedImage, within mask: MaskData) async throws -> EncodedImage? { nil }
 }

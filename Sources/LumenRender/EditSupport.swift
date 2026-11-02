@@ -78,6 +78,28 @@ public enum EditSupport {
         try ShadeTransfer.shaded(generated, onto: original, within: mask)
     }
 
+    /// `base` with `top` laid over it under `mask`, in proportion to its coverage (`EditHost.laid`).
+    public static func laid(_ top: EncodedImage, over base: EncodedImage, within mask: MaskData) throws -> EncodedImage? {
+        var pixels = try RGBAPixels(base)
+        let over = try RGBAPixels(top)
+        let width = pixels.width, height = pixels.height
+        guard width > 0, height > 0, over.width > 0, over.height > 0 else { return nil }
+        let weights = mask.resized(to: PixelSize(width: width, height: height))
+        for y in 0..<height {
+            let row = min(over.height - 1, y * over.height / height)
+            for x in 0..<width {
+                let weight = Int(weights.coverage[y * width + x])
+                guard weight > 0 else { continue }
+                let at = (y * width + x) * 4, from = (row * over.width + min(over.width - 1, x * over.width / width)) * 4
+                for channel in 0..<3 {
+                    let a = Int(pixels.bytes[at + channel]), b = Int(over.bytes[from + channel])
+                    pixels.bytes[at + channel] = UInt8((a * (255 - weight) + b * weight + 127) / 255)
+                }
+            }
+        }
+        return try pixels.encoded()
+    }
+
     /// `photo` at `size`, in CIELAB, rows from the top.
     static func sampledColours(_ photo: CIImage, size: PixelSize, context: CIContext) -> [ColourMeasurement] {
         let sample = PhotoCompositor.resized(photo, to: CGRect(x: 0, y: 0, width: size.width, height: size.height))

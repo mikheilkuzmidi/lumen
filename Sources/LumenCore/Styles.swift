@@ -46,6 +46,10 @@ public struct PersonStyle: Equatable, Sendable {
     public var buildChange: String?
     /// Whether the redraw keeps the part's outline where it is: it is placed only inside it, a little in from its edge.
     public var keepsOutline = false
+    /// Whether the person's own face stays exactly as it is, the costume drawn around it, unless the plan redraws the
+    /// `face` too. A knight's helmet drawn the size of his head held a face a third smaller, and a spacesuit's helmet
+    /// took an astronaut's beard.
+    public var ownFace = false
     /// The change in milder words, asked for once when Meta's content filter turns `change` down: zombie make-up with
     /// sunken eyes and painted scars was let through one day and filtered the next.
     public var gentler: String?
@@ -62,6 +66,8 @@ public struct PersonStyle: Equatable, Sendable {
         case hat
         /// Everything they wear below the face, down to their feet: a full costume in place of their clothes.
         case outfit
+        /// Their face itself, for a costume that paints, masks or covers it; a costume keeps their own face otherwise.
+        case face
 
         /// The piece in the words of a prompt.
         var words: String {
@@ -71,6 +77,7 @@ public struct PersonStyle: Equatable, Sendable {
             case .top: "the clothes on their upper body"
             case .hat: "the space just above their head, for what they wear on it"
             case .outfit: "everything they wear below the face, down to their feet"
+            case .face: "their face"
             }
         }
     }
@@ -87,8 +94,10 @@ public struct PersonStyle: Equatable, Sendable {
 
     public init(id: String, title: String, part: Part, change: String, adultsOnly: Bool, limits: ShapeLimits? = nil,
                 effect: String? = nil, reshape: Reshape? = nil, redraws: Bool = true, pieces: Set<Piece> = [],
-                skinChange: String? = nil, buildChange: String? = nil, gentler: String? = nil, example: String = "") {
+                skinChange: String? = nil, buildChange: String? = nil, gentler: String? = nil, ownFace: Bool = false,
+                example: String = "") {
         self.id = id
+        self.ownFace = ownFace
         self.gentler = gentler
         self.example = example
         self.pieces = pieces
@@ -220,7 +229,7 @@ public struct PersonStyle: Equatable, Sendable {
                     adultsOnly: false, pieces: [.neck, .top],
                     skinChange: "Make the bare skin of this person's hands and arms match their costume, {outfit}, "
                         + "only where the costume changes skin.",
-                    example: "Dress the person up as a medieval knight"),
+                    ownFace: true, example: "Dress the person up as a medieval knight"),
         PersonStyle(id: "athletic", title: "Athletic build", part: .body,
                     change: "Make this person clearly more athletic, as after a few months of training: shoulders about 10% "
                         + "broader and waist about 10% narrower for a visible V-shaped torso, a firmer chest and more "
@@ -246,9 +255,10 @@ public struct PersonStyle: Equatable, Sendable {
     /// shows.
     public func prompt(person: String, place: String, firmer: Firmness = .asked, pieces: Set<Piece> = [],
                        wears attire: Attire? = nil) -> String {
+        let ownFace = keepsFace(with: pieces)
         let part = switch self.part {
         case .face: "face"
-        case .head: "head and hair"
+        case .head: ownFace ? "hair and head around their face" : "head and hair"
         case .body: "body"
         }
         var text = change
@@ -259,20 +269,34 @@ public struct PersonStyle: Equatable, Sendable {
         case .stronger: text += " Make the change clearly visible: it was too slight to see."
         case .sameTone: text += " Keep the skin exactly the photo's own tone, light and colour cast: the last try came out a different tone, which shows as a seam."
         case .samePose: text += " Keep their pose and outline exactly: the last try drew arms or hands that aren't in the photo, or moved the body's edge. Draw none where none show, and keep every edge where it is."
+        case .sameFace: text += " Keep their face exactly the size it is and where it is: the last try drew it smaller or moved it inside what they wear on their head."
         }
         // Told to keep exactly the photo's skin tone, a face asked to age greyed its hair and kept its young skin.
         let stays = self.part == .body
             ? "Keep their face, pose and clothes and the background the same."
             : dressesUp ? "The costume replaces what they wore there completely, with no trace of the old clothes, their "
                 + "logos or prints. Keep the same person, clearly recognisable, in their own pose and the photo's own light."
+                + (ownFace ? " Keep their face itself exactly as it is, the same size and in the same place, uncovered: "
+                    + "draw what they wear on their head (a helmet, a hood, a hat) around it, larger than their head "
+                    + "where it needs to be." : "")
             : keepsTone ? "Keep the same person, clearly recognisable, with exactly the photo's skin tone, colours and light."
             : "Keep the same person, clearly recognisable, in the photo's own light."
-        let parts = ["their \(part)"] + Piece.allCases.filter { $0 != .skin && pieces.contains($0) }.map(\.words)
+        let parts = ["their \(part)"] + Piece.allCases.filter { ![.skin, .face].contains($0) && pieces.contains($0) }.map(\.words)
         let only = parts.count == 1
             ? "Change only the \(part) of the \(person) \(place) of this picture"
             : "Change only these parts of the \(person) \(place) of this picture: \(parts.joined(separator: "; "))"
         return "Edit this photo. \(text) \(only); keep everything else exactly as it is. \(stays) Where the outline "
             + "moves in, continue the background behind it. Photorealistic."
+    }
+
+    /// What Muse Image is asked when a costume was drawn around a face smaller than the person's own, and their own face
+    /// has been laid into it: to draw what they wear on their head and neck again, around that face.
+    public func refitPrompt(person: String, place: String) -> String {
+        "Edit this photo. Keep the face of the \(person) \(place) of this picture exactly as it is: the same face, the "
+            + "same size, in the same place, uncovered. Redraw what they wear on their head and around their neck so it "
+            + "fits naturally around that face, as a well-made costume would: where its edges show faintly across the "
+            + "face, move them out to the face's edge. Keep the rest of their costume, their pose and the background "
+            + "exactly as they are. Photorealistic."
     }
 
     /// What Muse Image is asked for the person's other bare skin, in its own close-up; nil for a style that leaves it.
@@ -328,7 +352,11 @@ public struct PersonStyle: Equatable, Sendable {
     /// their head is no longer the shape it was, and that is the point.
     public var dressesUp: Bool { pieces.contains(.top) || pieces.contains(.hat) }
 
-    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone, samePose }
+    public enum Firmness: Sendable { case asked, subtler, stronger, sameTone, samePose, sameFace }
+
+    /// Whether the person's own face stays as it is with these `pieces`: a costume's does, unless it paints, masks or
+    /// covers the face.
+    public func keepsFace(with pieces: Set<Piece>) -> Bool { ownFace && part == .head && !pieces.contains(.face) }
 
     /// Whether the part keeps the photo's own colour: all but those that recolour it (make-up, dyed or greying hair, a
     /// costume).

@@ -70,9 +70,11 @@ import UniformTypeIdentifiers
 }
 
 /// Given a crop 1335 × 2048, Muse Image scaled it to fill 1280 × 1984 and cut the extra off the sides; stretched back,
-/// its content came out too wide around the middle. An answer cut to its own shape goes back as it was fitted.
+/// its content came out too wide around the middle. An answer cut to its own shape goes back as it was fitted, and the
+/// strips it cut off continue its edge: the crop's showed a jacket's last rows under a spacesuit.
 @Test func anAnswerCutToMuseImagesOwnShapeGoesBackWhereItWas() async throws {
-    // A 200 × 100 crop with dark lines at x 50 and 150; the answer is it cut to 180 × 100 (x 10..<190), as Muse Image fits.
+    // A 200 × 100 crop with dark lines at x 50 and 150 and a dark strip at x 0..<10; the answer is it cut to 180 × 100
+    // (x 10..<190), as Muse Image fits, with the strip redrawn light.
     func png(width: Int, height: Int, dark: (Int) -> Bool) throws -> Data {
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
         for y in 0..<height { for x in 0..<width {
@@ -88,7 +90,8 @@ import UniformTypeIdentifiers
         #expect(CGImageDestinationFinalize(destination))
         return output as Data
     }
-    let crop = EncodedImage(data: try png(width: 200, height: 100) { $0 == 50 || $0 == 150 }, format: .png, size: PixelSize(width: 200, height: 100))
+    let crop = EncodedImage(data: try png(width: 200, height: 100) { $0 == 50 || $0 == 150 || $0 < 10 }, format: .png,
+                            size: PixelSize(width: 200, height: 100))
     let answer = try png(width: 180, height: 100) { $0 == 40 || $0 == 140 }
     let placed = try PhotoPNG.placed(answer, over: crop)
     let source = try #require(CGImageSourceCreateWithData(placed.data as CFData, nil))
@@ -99,7 +102,7 @@ import UniformTypeIdentifiers
     context.draw(image, in: CGRect(x: 0, y: 0, width: 200, height: 100))
     func darkest(_ columns: Range<Int>) -> Int { columns.min { bytes[(50 * 200 + $0) * 4] < bytes[(50 * 200 + $1) * 4] }! }
     #expect(darkest(30..<70) == 50 && darkest(130..<170) == 150, "the lines where the crop had them, not stretched outward")
-    #expect(bytes[(50 * 200 + 3) * 4] > 200, "the strip the answer cut off is the crop's")
+    #expect(bytes[(50 * 200 + 3) * 4] > 200 && bytes[(50 * 200 + 197) * 4] > 200, "the strips it cut off continue its edge, not the crop's")
 }
 
 @Test func generatorRejectsMalformedAnswers() async throws {

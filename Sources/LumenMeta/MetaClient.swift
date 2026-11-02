@@ -193,8 +193,10 @@ public struct MetaPlanner: Planner, PhotoCostEstimating {
         (a medieval knight in shining armour with a plumed helmet), and in with what it covers: top for clothes on
         the upper body worn over or in place of their own top, outfit for a full costume that replaces everything
         they wear down to their feet (a full suit of armour, a spacesuit), hat for anything worn on the head, neck
-        for make-up or a collar there, skin for gloves, paint or make-up on the hands. Use outfit null for every
-        other style.
+        for make-up or a collar there, skin for gloves, paint or make-up on the hands. A costume keeps the person's
+        own face exactly as it is, with a helmet or hood drawn around it; add face only when the costume itself paints,
+        masks or covers the face (a clown's make-up, a closed visor, a fake beard). Use outfit null for every other
+        style.
         A style marked adults only is never for someone who looks under 18: plan nothing for them and
         finish, saying Lumen doesn't reshape or age children's faces or bodies. Effects grade the photo, with a style or
         alone (style none, and the person's region for main character and redCarpet): \(effects). "Black and white

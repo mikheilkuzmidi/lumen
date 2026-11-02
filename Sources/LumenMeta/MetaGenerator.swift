@@ -60,7 +60,8 @@ enum PhotoPNG {
     /// Muse Image's `answer` put back over the crop it was given. It answers at sizes of its own: given a crop 1335 ×
     /// 2048, it scaled it to fill 1280 × 1984 and cut the 13 px it had too many off the sides. Stretched back to the
     /// crop's shape, its content came out 0.8% too wide around the middle, and a body redrawn in it sat 15 to 20 px in
-    /// from where it was. The answer is scaled back as it was fitted, centred, and the strips it cut off are the crop's.
+    /// from where it was. The answer is scaled back as it was fitted, centred, and the strips it cut off continue its own
+    /// edge: filled from the crop, a spacesuit that ran off the photo's bottom edge kept the denim jacket's last 4 rows.
     static func placed(_ answer: Data, over original: EncodedImage) throws -> EncodedImage {
         let size = original.size
         guard size.width > 0, size.height > 0,
@@ -81,8 +82,18 @@ enum PhotoPNG {
         }
         context.interpolationQuality = .high
         context.draw(base, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
-        context.draw(drawn, in: CGRect(x: (Double(size.width) - width) / 2, y: (Double(size.height) - height) / 2,
-                                       width: width, height: height))
+        let x = (Double(size.width) - width) / 2, y = (Double(size.height) - height) / 2
+        // Each cut strip is the answer's edge row or column, stretched across it (the context's rows run from the bottom).
+        let edges: [(CGRect, CGRect)] = [
+            (CGRect(x: 0, y: 0, width: drawn.width, height: 1), CGRect(x: x, y: y + height, width: width, height: y)),
+            (CGRect(x: 0, y: drawn.height - 1, width: drawn.width, height: 1), CGRect(x: x, y: 0, width: width, height: y)),
+            (CGRect(x: 0, y: 0, width: 1, height: drawn.height), CGRect(x: 0, y: y, width: x, height: height)),
+            (CGRect(x: drawn.width - 1, y: 0, width: 1, height: drawn.height), CGRect(x: x + width, y: y, width: x, height: height)),
+        ]
+        for (edge, strip) in edges where strip.width > 0 && strip.height > 0 {
+            if let slice = drawn.cropping(to: edge) { context.draw(slice, in: strip) }
+        }
+        context.draw(drawn, in: CGRect(x: x, y: y, width: width, height: height))
         let output = NSMutableData()
         guard let image = context.makeImage(),
               let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {

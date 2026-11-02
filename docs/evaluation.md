@@ -278,6 +278,17 @@ Before this, the knight's armour stopped at his hips over his jeans; a full cost
 | Muse Wonder left the woman in the red sweatshirt out of "T-shirts" without asking (the October 31 library recording). | A near match gets its own group and a question: "Include the woman's red sweatshirt too?" |
 | The first T-shirt run then also asked which blue, and whether everyone gets the same shirt: questions with a usual answer. | Muse Wonder still asks whatever is truly the person's choice, but never about degree or taste with a usual answer: a colour named is a clear, true shade, and each person keeps their own style. The next run asked only about the sweatshirt and the silhouettes. |
 
+**A costume keeps the face.** Watching the video, the knight's face had come out a third smaller inside his helmet, and the astronaut's smaller and without his beard: a costume redrew the whole head, and Muse Image drew each helmet the size of the head it replaced, with a smaller face inside. A costume now keeps the person's own face. Muse Image is told to draw the costume around it, at its size and place, and the photo's face is laid back over the redraw. It is laid only where the redraw shows skin of the face's colour inside it, each row filled across for the eyes, brows and mouth, so the rim of a helmet over the brow or cheeks stays. Below 60% of the face showing, the face was drawn smaller: it is laid into the redraw, and the costume drawn again around it.
+
+| Problem found live | Change |
+| --- | --- |
+| With his face laid over a helmet drawn for a smaller one, the cheek guards showed faintly across his cheeks. | His face is laid only where the redraw shows a face. |
+| SAM, asked for the face in the redraw, found a third of his face inside the helmet; laid only there, his own face came out smeared, and the critic sent it back. | The face is found by its skin colour; a host that can't read pixels asks SAM instead. |
+| Drawn again from the photo and told the face's size, the helmet came back as small. | Their own face is laid into the first redraw, and the costume drawn again around it. |
+| The bottom four rows of the photo kept the astronaut's denim jacket under the spacesuit. | Muse Image trims a few rows to its own shape; the trimmed strips now continue its edge instead of showing the photo. |
+
+With all four, the knight (a mail hood and a raised visor around his face, $0.05) and the astronaut ($0.05) each kept his own face, at its size, in one pass, and the critic accepted both first time. Six live runs cost $0.43.
+
 The same T-shirt instruction in Lumen Studio's Library on Muse Glimmer, on this Mac (an M4 Max), reviewed and planned with no Meta call: 2 model calls in 16 minutes, the straighten question, and a plan for the T-shirts on three photos and the base pass on eleven. It asked nothing about the red sweatshirt and marked the café photo for attention. Glimmer works for a library, slowly; Muse Spark and Muse Wonder review and plan it better.
 
 ## At scale

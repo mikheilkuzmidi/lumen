@@ -11,7 +11,7 @@ enum StudioPhase: Equatable {
 }
 
 enum StepStatus: Equatable {
-    case waiting, running, done
+    case waiting, running, done, issues
     case skipped(String)
     case failed(String)
 
@@ -20,6 +20,7 @@ enum StepStatus: Equatable {
         case .waiting: "Waiting"
         case .running: "Running"
         case .done: "Done"
+        case .issues: "Needs attention"
         case .skipped: "Skipped"
         case .failed: "Failed"
         }

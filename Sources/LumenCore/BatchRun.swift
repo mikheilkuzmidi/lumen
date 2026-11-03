@@ -641,7 +641,10 @@ actor BatchRun {
             agents[photo] = agent
             // A step that failed is a failure only if the edit didn't recover from it: the shirts SAM didn't find by
             // one name, it found by another on the critic's revision, and the photo was marked failed all the same.
-            var stepFailed = false, satisfied = false
+            var stepFailed = false
+            // A critique judges the pixels at that point. A later simple
+            // revision may finish directly under EditAgent's result contract.
+            var currentVerdict: Bool?
             try await withTaskCancellationHandler {
                 for try await event in agent.run(instruction) {
                     try checkCancellation()
@@ -659,10 +662,11 @@ actor BatchRun {
                     switch event {
                     case .applied, .reverted:
                         changed.insert(photo)
+                        currentVerdict = nil
                     case .finished(let reason):
                         note(reason, for: photo)
                     case .critiqued(let critique):
-                        satisfied = critique.satisfied
+                        currentVerdict = critique.satisfied
                     case .trace(let trace) where trace.kind == .failure:
                         stepFailed = true
                         note(trace.detail, for: photo)
@@ -671,7 +675,9 @@ actor BatchRun {
                     }
                 }
                 try checkCancellation()
-                if stepFailed && !satisfied { results[photo]?.failed = true }
+                if currentVerdict == false || (stepFailed && currentVerdict != true) {
+                    results[photo]?.failed = true
+                }
             } onCancel: {
                 Task { await agent.cancel() }
             }

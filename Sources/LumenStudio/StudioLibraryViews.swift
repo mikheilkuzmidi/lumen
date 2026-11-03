@@ -190,7 +190,9 @@ struct StudioLibraryView: View {
                         }
                     } else if let summary = model.summary ?? model.stoppedSnapshot?.summary {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(model.stoppedSnapshot == nil ? "Library finished" : "Library stopped").font(.system(size: 16, weight: .semibold))
+                            Text(model.stoppedSnapshot == nil
+                                 ? (summary.photos.contains(where: \.failed) ? "Finished with issues" : "Library finished")
+                                 : "Library stopped").font(.system(size: 16, weight: .semibold))
                             Text(model.completionDetail).font(StudioStyle.title)
                             Text("\(model.stoppedSnapshot?.startedModelCalls ?? summary.modelCalls) model calls · \(studioDollars(summary.totalCost))")
                                 .font(StudioStyle.label).foregroundStyle(StudioStyle.textSecondary)

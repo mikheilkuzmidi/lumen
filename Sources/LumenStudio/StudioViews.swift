@@ -588,6 +588,7 @@ struct TimelineRow: View {
         switch entry.status {
         case .running: StudioStyle.accent
         case .done: StudioStyle.success
+        case .issues: StudioStyle.accent
         case .failed: StudioStyle.danger
         case .waiting, .skipped: StudioStyle.textTertiary
         }

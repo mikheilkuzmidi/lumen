@@ -436,6 +436,7 @@ final class StudioLibraryModel {
         var detail: String?
         var symbol = "checkmark"
         var trace: TraceEvent?
+        var entryStatus: StepStatus?
         switch event {
         case .found(let count): total = count; title = "Measuring \(count) \(count == 1 ? "photo" : "photos")"; symbol = "viewfinder"
         case .measured(let photo, let facts):
@@ -497,12 +498,20 @@ final class StudioLibraryModel {
             }
         case .editFinished(let result):
             apply(result); refreshPhoto(result.photo)
-            title = "Finished \(result.photo.rawValue)"; detail = result.outcome
+            title = result.failed ? "Needs attention · \(result.photo.rawValue)" : "Finished \(result.photo.rawValue)"
+            detail = result.outcome
+            if result.failed {
+                symbol = "exclamationmark.triangle"
+                entryStatus = .failed(result.outcome ?? "The edit needs review.")
+            }
         case .progress(let done, let total): self.done = done; self.total = total
         case .finished(let summary):
             self.summary = summary; modelCalls = summary.modelCalls
             for result in summary.photos { apply(result); refreshPhoto(result.photo) }
-            title = "Finished · \(completionDetail)"; symbol = "checkmark.seal"
+            let hasFailures = summary.photos.contains(where: \.failed)
+            title = (hasFailures ? "Finished with issues" : "Finished") + " · \(completionDetail)"
+            symbol = hasFailures ? "exclamationmark.triangle" : "checkmark.seal"
+            if hasFailures { entryStatus = .issues }
         case .trace(let value): trace = value; title = value.kind.rawValue.capitalized; detail = value.detail; symbol = "waveform.path"
         }
         if let trace {
@@ -513,7 +522,7 @@ final class StudioLibraryModel {
         if let title {
             status = title
             events.append(StudioStep(title: title, symbol: symbol, detail: detail,
-                                     status: trace?.kind == .failure ? .failed(detail ?? "Failed") : .done,
+                                     status: entryStatus ?? (trace?.kind == .failure ? .failed(detail ?? "Failed") : .done),
                                      traces: trace.map { [$0] } ?? [], kind: .trace))
             if events.count > 80 { events.removeFirst(events.count - 80) }
         }

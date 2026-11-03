@@ -442,6 +442,10 @@ final class StudioLibraryModel {
             states[photo]?.facts = facts
             states[photo]?.badges.insert(.measured)
             status = "Measured \(photo.rawValue)"
+        case .phase(let phase):
+            // A pending provider answer is neither a finished trace nor a charge.
+            status = phase.status
+            return
         case .reviewed(let review):
             states[review.photo]?.review = review
             if review.quality < runThreshold { states[review.photo]?.badges.insert(.attention) }

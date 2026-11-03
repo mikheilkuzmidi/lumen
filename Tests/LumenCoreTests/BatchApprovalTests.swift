@@ -109,12 +109,16 @@ struct BatchApprovalTests {
         #expect(try batchTestSummary(events).photos.count == 2)
     }
 
-    @Test func baseOnlyGroupCanGainAnInstructionAndPreviewRecalculatesItsEstimate() async throws {
+    @Test func verifiedBaseActionGroupCanGainAnInstructionAndPreviewRecalculatesItsEstimate() async throws {
         let library = BatchTestLibrary([batchTestFacts(), batchTestFacts()])
         let planner = BatchTestPlanner()
-        let agent = BatchAgent(host: library, reviewer: nil, planner: ApprovalPricedPlanner(base: planner),
+        let reviewer = BatchTestReviewer(plans: [BatchPlan(summary: "Base actions", groups: [
+            BatchGroup(id: "library", title: "Library", photos: [PhotoID("photo-0"), PhotoID("photo-1")], instruction: nil),
+        ])])
+        let agent = BatchAgent(host: library, reviewer: reviewer, planner: ApprovalPricedPlanner(base: planner),
                                segmenter: BatchTestSegmenter(), generator: BatchTestGenerator())
-        for try await event in await agent.run(BatchOptions(mode: .planFirst, auto: false, straighten: false, qualityThreshold: 0)) {
+        for try await event in await agent.run(BatchOptions(mode: .planFirst, instruction: "Make shirts blue", auto: true,
+                                                           straighten: false, qualityThreshold: 0)) {
             if case .awaitingApproval(let plan, let calls) = event {
                 #expect(calls == 0)
                 #expect(plan.estimatedCost == 0)
@@ -125,11 +129,13 @@ struct BatchApprovalTests {
                 #expect(draft.estimatedModelCalls == 15)
                 #expect(draft.estimatedCost == 0.09)
                 #expect(await planner.plans.isEmpty)
+                #expect(await library.autos.isEmpty)
                 #expect(await library.saved.isEmpty)
                 try await agent.approve(approval)
             }
         }
         #expect(await planner.plans.map(\.instruction) == ["Make it warmer"])
+        #expect(await library.autos == [PhotoID("photo-0")])
         #expect(await library.saved == [PhotoID("photo-0")])
     }
 

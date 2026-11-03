@@ -68,7 +68,7 @@ actor BatchRun {
             var plan: BatchPlan
             if options.mode == .planFirst {
                 let straighten = try await decideStraightening(kept)
-                plan = try await instructionPlan(kept)
+                plan = try await instructionPlan(kept, straighten: straighten)
                 plan.approvalToken = UUID()
                 plan.targetPhotos = photos
                 plan.photoActions = plannedActions(kept, straighten: straighten)
@@ -89,7 +89,7 @@ actor BatchRun {
                 let straighten = try await decideStraightening(kept.filter { results[$0]?.failed == false })
                 try await straightenPhotos(kept, enabled: straighten)
                 try await closerLook(kept)
-                plan = try await instructionPlan(kept.filter { results[$0]?.failed == false })
+                plan = try await instructionPlan(kept.filter { results[$0]?.failed == false }, straighten: straighten)
             }
             for group in plan.groups {
                 guard let instruction = group.instruction else { continue }
@@ -271,7 +271,8 @@ actor BatchRun {
         guard !inputs.isEmpty else { return }
         do {
             let request = ReviewRequest(instruction: options.instruction, photos: inputs)
-            let response = try await call(.critique, model: reviewer.modelID, detail: "Review \(inputs.count) \(inputs.count == 1 ? "photo" : "photos")") {
+            let response = try await call(.critique, model: reviewer.modelID, detail: "Review \(inputs.count) \(inputs.count == 1 ? "photo" : "photos")",
+                                          phase: .reviewing(count: inputs.count, model: reviewer.modelID)) {
                 try await reviewer.review(request)
             }
             for input in inputs {
@@ -451,9 +452,10 @@ actor BatchRun {
         }
     }
 
-    private func instructionPlan(_ kept: [PhotoID]) async throws -> BatchPlan {
+    private func instructionPlan(_ kept: [PhotoID], straighten: Bool) async throws -> BatchPlan {
+        let basePhotos = Set(plannedActions(kept, straighten: straighten).map(\.photo))
         guard let instruction = options.instruction, !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            let plan = basePlan(kept)
+            let plan = basePlan(kept, basePhotos: basePhotos)
             events.yield(.planned(plan))
             return plan
         }
@@ -466,22 +468,23 @@ actor BatchRun {
         // review. It may narrow that set, never overrule a negative decision.
         let matching = kept.filter { verifiedInstructionPhotos.contains($0) }.compactMap { reviews[$0] }
         guard !matching.isEmpty else {
-            let plan = basePlan(kept)
+            let plan = basePlan(kept, basePhotos: basePhotos)
             events.yield(.planned(plan))
             return plan
         }
-        var latest = basePlan(kept)
+        var latest = basePlan(kept, basePhotos: basePhotos)
         for round in 0..<3 {
             let request = BatchPlanRequest(instruction: instruction, reviews: matching,
                                            answers: Dictionary(uniqueKeysWithValues: answers.map { ($0.question.id, $0.answer) }))
             do {
-                latest = try await call(.plan, model: reviewer.planModelID, detail: instruction) { try await reviewer.plan(request) }
+                latest = try await call(.plan, model: reviewer.planModelID, detail: instruction,
+                                        phase: .planning(model: reviewer.planModelID)) { try await reviewer.plan(request) }
             } catch is BatchCallLimit {
                 for review in matching { note("Instruction skipped: model call limit reached.", for: review.photo) }
-                latest = basePlan(kept)
+                latest = basePlan(kept, basePhotos: basePhotos)
                 break
             }
-            latest = checked(latest, kept: kept, matching: Set(matching.map(\.photo)))
+            latest = checked(latest, kept: kept, matching: Set(matching.map(\.photo)), basePhotos: basePhotos)
             events.yield(.planned(latest))
             if latest.questions.isEmpty { return latest }
             for question in latest.questions { _ = try await choose(question, recommendationOnly: round == 2) }
@@ -491,14 +494,16 @@ actor BatchRun {
         return latest
     }
 
-    private func basePlan(_ kept: [PhotoID]) -> BatchPlan {
-        BatchPlan(summary: hasContentInstruction && reviewer != nil
+    private func basePlan(_ kept: [PhotoID], basePhotos: Set<PhotoID>) -> BatchPlan {
+        let changing = kept.filter { basePhotos.contains($0) }
+        return BatchPlan(summary: basePhotos.isEmpty ? "No changes are planned for these photos."
+                  : hasContentInstruction && reviewer != nil
                   ? "Only the separately listed base actions are planned; no instruction edits are planned."
                   : "Apply the base pass and give low-quality photos a closer look.",
-                  groups: [BatchGroup(id: "library", title: "Library", photos: kept, instruction: nil)])
+                  groups: changing.isEmpty ? [] : [BatchGroup(id: "library", title: "Library", photos: changing, instruction: nil)])
     }
 
-    private func checked(_ plan: BatchPlan, kept: [PhotoID], matching: Set<PhotoID>) -> BatchPlan {
+    private func checked(_ plan: BatchPlan, kept: [PhotoID], matching: Set<PhotoID>, basePhotos: Set<PhotoID>) -> BatchPlan {
         var plan = plan
         let allowedBase = Set(kept)
         var seen: Set<PhotoID> = []
@@ -509,12 +514,12 @@ actor BatchRun {
             group.id = baseID.isEmpty ? "group" : baseID
             while !groupIDs.insert(group.id).inserted { group.id += "-group" }
             var inGroup: Set<PhotoID> = []
-            let allowed = group.instruction == nil ? allowedBase : matching
+            let allowed = group.instruction == nil ? allowedBase.intersection(basePhotos) : matching
             group.photos = group.photos.filter { allowed.contains($0) && inGroup.insert($0).inserted }
             seen.formUnion(group.photos)
             return group.photos.isEmpty ? nil : group
         }
-        let other = kept.filter { !seen.contains($0) }
+        let other = kept.filter { !seen.contains($0) && basePhotos.contains($0) }
         if !other.isEmpty {
             var id = "base"
             while plan.groups.contains(where: { $0.id == id }) { id += "-base" }
@@ -531,7 +536,7 @@ actor BatchRun {
             return question
         }
         if !plan.groups.contains(where: { $0.instruction != nil }) {
-            plan.summary = basePlan(kept).summary
+            plan.summary = basePlan(kept, basePhotos: basePhotos).summary
         }
         return plan
     }
@@ -590,9 +595,10 @@ actor BatchRun {
                 return BatchPhotoActions(photo: photo, flagReason: reviews[photo]?.misfireReason ?? "The shot misfired.")
             }
             guard kept.contains(photo) else { return nil }
-            return BatchPhotoActions(photo: photo, auto: options.auto,
-                                     straightenDegrees: tilted.contains(photo) ? facts[photo]?.tilt.map { -$0 } : nil,
-                                     closerLook: (reviews[photo]?.quality ?? 1) < options.qualityThreshold)
+            let actions = BatchPhotoActions(photo: photo, auto: options.auto,
+                                            straightenDegrees: tilted.contains(photo) ? facts[photo]?.tilt.map { -$0 } : nil,
+                                            closerLook: (reviews[photo]?.quality ?? 1) < options.qualityThreshold)
+            return actions.hasChanges ? actions : nil
         }
     }
 
@@ -698,9 +704,11 @@ actor BatchRun {
     }
 
     private func call<Value: Sendable>(_ kind: TraceEvent.Kind, model: String, detail: String,
+                                      phase: BatchPhase? = nil,
                                       operation: @Sendable () async throws -> Value) async throws -> Value {
         try checkCancellation()
         try await calls.begin()
+        if let phase { events.yield(.phase(phase)) }
         let started = Date()
         let usage = ModelUsageRecorder()
         let notes = ModelCallNoteRecorder()

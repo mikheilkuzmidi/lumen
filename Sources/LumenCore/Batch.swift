@@ -249,6 +249,19 @@ public struct BatchPlan: Codable, Equatable, Sendable {
         self.photoActions = photoActions
         self.estimatedModelCalls = estimatedModelCalls
     }
+
+    /// Photos with a proposed instruction or base mutation, in frozen-scope order.
+    /// Scope membership alone is not a proposed change. Older plans without an
+    /// action list retain their groups' original approval meaning.
+    public var changingPhotoIDs: [PhotoID] {
+        let grouped = groups.filter { $0.instruction != nil || photoActions == nil }.flatMap(\.photos)
+        let actions = (photoActions ?? []).filter(\.hasChanges).map(\.photo)
+        let changing = Set(grouped + actions)
+        var seen: Set<PhotoID> = []
+        return (targetPhotos ?? (groups.flatMap(\.photos) + actions)).filter {
+            changing.contains($0) && seen.insert($0).inserted
+        }
+    }
 }
 
 /// Base-pass work shown for approval. Instructions remain in `BatchPlan.groups`.
@@ -267,6 +280,8 @@ public struct BatchPhotoActions: Codable, Equatable, Sendable {
         self.straightenDegrees = straightenDegrees
         self.closerLook = closerLook
     }
+
+    public var hasChanges: Bool { flagReason != nil || auto || straightenDegrees != nil || closerLook }
 }
 
 /// The person's changes to one pending plan. Exclusions apply to every stage, even across overlapping groups.
@@ -436,10 +451,31 @@ public struct BatchAnswer: Codable, Equatable, Sendable {
     }
 }
 
+/// Shared model work that has started, before its answer or completion trace exists.
+/// It is progress only: receiving a phase does not authorize edits or add a charge.
+public enum BatchPhase: Equatable, Sendable {
+    case reviewing(count: Int, model: String)
+    case planning(model: String)
+
+    public var model: String {
+        switch self {
+        case .reviewing(_, let model), .planning(let model): model
+        }
+    }
+
+    public var status: String {
+        switch self {
+        case .reviewing(let count, _): "Reviewing \(count) \(count == 1 ? "photo" : "photos")…"
+        case .planning: "Planning the edits…"
+        }
+    }
+}
+
 /// What the batch agent reports while it works.
 public enum BatchEvent: Sendable {
     case found(count: Int)
     case measured(PhotoID, PhotoFacts)
+    case phase(BatchPhase)
     case reviewed(PhotoReview)
     case flagged(PhotoID, reason: String)
     case autoApplied(PhotoID, label: String)

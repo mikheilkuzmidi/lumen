@@ -136,6 +136,7 @@ actor BatchTestReviewer: BatchPlanner {
     private let reviews: [PhotoID: PhotoReview]
     private let plans: [BatchPlan]
     private let gate: BatchTestGate?
+    private let planGate: BatchTestGate?
     private let repeatQuestions: Bool
     private let reviewResponse: [PhotoReview]?
     private let reviewError: (any Error)?
@@ -144,12 +145,14 @@ actor BatchTestReviewer: BatchPlanner {
     private(set) var active = 0
     private(set) var peak = 0
 
-    init(reviews: [PhotoReview] = [], plans: [BatchPlan] = [], gate: BatchTestGate? = nil, repeatQuestions: Bool = false,
+    init(reviews: [PhotoReview] = [], plans: [BatchPlan] = [], gate: BatchTestGate? = nil, planGate: BatchTestGate? = nil,
+         repeatQuestions: Bool = false,
          reviewResponse: [PhotoReview]? = nil, reviewError: (any Error)? = nil) {
         self.reviews = Dictionary(uniqueKeysWithValues: reviews.map { ($0.photo, $0) })
         self.reviewError = reviewError
         self.plans = plans
         self.gate = gate
+        self.planGate = planGate
         self.repeatQuestions = repeatQuestions
         self.reviewResponse = reviewResponse
     }
@@ -166,6 +169,7 @@ actor BatchTestReviewer: BatchPlanner {
 
     func plan(_ request: BatchPlanRequest) async throws -> BatchPlan {
         planRequests.append(request)
+        await planGate?.enter()
         if !plans.isEmpty { return plans[min(planRequests.count - 1, plans.count - 1)] }
         let question = BatchQuestion(id: "shirts", question: "Which blue?", options: ["Navy", "Sky blue"], recommended: 0)
         let questions = request.answers[question.id] == nil ? [question] : []

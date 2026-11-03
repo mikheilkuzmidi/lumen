@@ -30,6 +30,7 @@ struct BatchEventLines {
             lines.append("Measured \(measured) of \(total) \(total == 1 ? "photo" : "photos").")
         }
         switch event {
+        case .phase(let phase): lines.append("\(phase.status) (\(oneLine(phase.model)))")
         case .reviewed(let review):
             let quality = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), review.quality)
             let name = oneLine(review.photo.rawValue)

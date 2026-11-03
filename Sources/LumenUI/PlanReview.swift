@@ -28,14 +28,19 @@ public struct PlanReview<Thumbnail: View>: View {
         self.name = name; self.changed = changed; self.approve = approve; self.cancel = cancel; self.thumbnail = thumbnail
     }
 
-    private var includedCount: Int { targets.filter { !excluded.contains($0) }.count }
+    private var changingPhotos: Set<PhotoID> { Set(plan.changingPhotoIDs) }
+    private var includedCount: Int {
+        let changing = changingPhotos
+        return targets.filter { changing.contains($0) && !excluded.contains($0) }.count
+    }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let changingPhotos = self.changingPhotos
+        return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Review your plan").font(.system(size: 16, weight: .semibold))
                 Text(plan.summary).font(.system(size: 12)).foregroundStyle(style.secondary).textSelection(.enabled)
-                Text("\(includedCount) of \(targets.count) photos included")
+                Text("Changes proposed for \(includedCount) of \(targets.count) photos")
                     .font(.system(size: 11).monospacedDigit()).foregroundStyle(style.secondary)
             }
             ForEach(plan.groups) { group in groupCard(group) }
@@ -52,9 +57,15 @@ public struct PlanReview<Thumbnail: View>: View {
                     ForEach(targets, id: \.self) { photo in
                         HStack(spacing: 8) {
                             thumbnail(photo).frame(width: 38, height: 30).clipped().clipShape(RoundedRectangle(cornerRadius: LumenRadii.photo, style: .continuous))
-                            Toggle(name(photo), isOn: inclusion(photo)).toggleStyle(.checkbox)
-                                .font(.system(size: 11)).lineLimit(1)
-                                .accessibilityIdentifier("planPhoto.\(photo.rawValue)")
+                            if changingPhotos.contains(photo) {
+                                Toggle(name(photo), isOn: inclusion(photo)).toggleStyle(.checkbox)
+                                    .font(.system(size: 11)).lineLimit(1)
+                                    .accessibilityIdentifier("planPhoto.\(photo.rawValue)")
+                            } else {
+                                Text(name(photo)).font(.system(size: 11)).lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text("Unchanged").font(.system(size: 10)).foregroundStyle(style.secondary)
+                            }
                         }
                     }
                 }.padding(.top, 8)

@@ -524,6 +524,54 @@ enum MaterialRecolour {
       }
       return false
     }
+    // The model's own photographic garment, wherever it painted the requested
+    // colour at a plausible lightness for the photo's shading. Its folds,
+    // weave and relighting look like fabric; a colour scaled from the old
+    // shirt's luminance alone looks flat. Pale bands, flesh and background
+    // the model painted inside the selection are not garment evidence.
+    func modelAgrees(_ i: Int, _ k: Int) -> Bool {
+      let model = labValue(generated, i)
+      let predicted = L(y(target[k]) * y(rgb(source, i)) / max(0.0001, medianY[k]))
+      let family = dominant == 12 ? hue(model) == 12 : sameHue(hue(model))
+      return family && abs(model.lightness - predicted) < 28
+    }
+    var modelCloth = [Bool](repeating: false, count: n)
+    for i in 0..<n where union[i] >= 250 && owner[i] >= 0 && !protected[i] && graphicEdge[i] == 0 {
+      if i & 8191 == 0 { try Task.checkCancellation() }
+      if inside[owner[i]][i] > band { modelCloth[i] = modelAgrees(i, owner[i]) }
+    }
+    // Summed-area tables over the model's own garment pixels: its colour and
+    // broad lighting nearby, and the photo's luminance at the same pixels.
+    var tableG = [SIMD3<Double>](repeating: SIMD3(repeating: 0), count: (w + 1) * (h + 1))
+    var tableY = [Double](repeating: 0, count: (w + 1) * (h + 1))
+    var tableN = [Double](repeating: 0, count: (w + 1) * (h + 1))
+    for yy in 0..<h {
+      if yy & 63 == 0 { try Task.checkCancellation() }
+      var rowG = SIMD3<Double>(repeating: 0), rowY = 0.0, rowN = 0.0
+      for x in 0..<w {
+        let i = yy * w + x
+        if modelCloth[i] { rowG += rgb(generated, i); rowY += y(rgb(source, i)); rowN += 1 }
+        let t = (yy + 1) * (w + 1) + x + 1
+        tableG[t] = tableG[t - (w + 1)] + rowG
+        tableY[t] = tableY[t - (w + 1)] + rowY
+        tableN[t] = tableN[t - (w + 1)] + rowN
+      }
+    }
+    // The model's colour and broad shading around this pixel, carrying the
+    // photo's own fine fold and weave detail as a luminance ratio.
+    func modelColour(_ i: Int, _ k: Int, luminance: Double, radius: Int = 8) -> SIMD3<Double>? {
+      let x0 = max(0, i % w - radius), x1 = min(w, i % w + radius + 1)
+      let y0 = max(0, i / w - radius), y1 = min(h, i / w + radius + 1)
+      let a = y0 * (w + 1) + x0, b = y0 * (w + 1) + x1, c = y1 * (w + 1) + x0, d = y1 * (w + 1) + x1
+      let count = tableN[d] - tableN[b] - tableN[c] + tableN[a]
+      guard count >= 8 else { return nil }
+      let g = (tableG[d] - tableG[b] - tableG[c] + tableG[a]) / count
+      let sourceY = (tableY[d] - tableY[b] - tableY[c] + tableY[a]) / count
+      return g * min(2.5, max(0.4, luminance / max(0.0001, sourceY)))
+    }
+    func garment(_ i: Int, _ k: Int, luminance: Double) -> SIMD3<Double> {
+      modelColour(i, k, luminance: luminance) ?? recoloured(k, luminance: luminance)
+    }
     for i in 0..<n where owner[i] >= 0 {
       if i & 8191 == 0 { try Task.checkCancellation() }
       let k = owner[i]
@@ -557,18 +605,24 @@ enum MaterialRecolour {
             if mix.alpha < 0.2 { continue }
             // A convex mixture of the recoloured cloth and the real exterior:
             // an edge pixel can never acquire a hue neither side has.
-            write(i, mix.alpha * recoloured(k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
+            write(i, mix.alpha * garment(i, k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
             continue
           }
-          write(i, recoloured(k, luminance: y(s)))
+          write(i, garment(i, k, luminance: y(s)))
           continue
         }
         if !materialColour[i], depth <= 6, matchesFarExterior(i) { continue }
-        for c in 0..<3 { result.bytes[i * 4 + c] = proposal.bytes[i * 4 + c] }
+        if modelCloth[i], let colour = modelColour(i, k, luminance: y(s), radius: 4) {
+          write(i, colour)
+        } else if let colour = modelColour(i, k, luminance: y(s)) {
+          write(i, colour)
+        } else {
+          for c in 0..<3 { result.bytes[i * 4 + c] = proposal.bytes[i * 4 + c] }
+        }
         continue
       }
       if allowed[i] && neutral[i] && !protected[i] {
-        write(i, target[k] * min(6, max(0, y(s) / max(0.0001, medianY[k]))))
+        write(i, garment(i, k, luminance: y(s)))
         continue
       }
       // The garment's own photographed rim just outside the selection: cloth
@@ -580,14 +634,42 @@ enum MaterialRecolour {
       if e.nearestExterior + 2 <= clothDistance { continue }
       if let mix = unmix(s, e) {
         guard mix.alpha >= 0.5 else { continue }
-        write(i, mix.alpha >= 0.98 ? recoloured(k, luminance: y(s))
-          : mix.alpha * recoloured(k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
+        write(i, mix.alpha >= 0.98 ? garment(i, k, luminance: y(s))
+          : mix.alpha * garment(i, k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
         continue
       }
       if clothFamily(i, k), clothDistance + 3 < e.nearestExterior {
-        write(i, recoloured(k, luminance: y(s)))
+        write(i, garment(i, k, luminance: y(s)))
       }
     }
+
+    // Edge decisions are per pixel. Along a contour they must not alternate
+    // into a dotted outline: a kept old-fabric pixel mostly surrounded by
+    // recoloured garment takes the garment colour, and a recoloured pixel
+    // outside the selection with almost no recoloured neighbours is restored.
+    func recolouredAt(_ j: Int) -> Bool {
+      (0..<3).contains { source.bytes[j * 4 + $0] != result.bytes[j * 4 + $0] }
+    }
+    var flipsToGarment: [Int] = []
+    var flipsToSource: [Int] = []
+    for i in 0..<n where owner[i] >= 0 && (distance[i] <= band) && !protected[i] && graphicEdge[i] == 0 {
+      if i & 8191 == 0 { try Task.checkCancellation() }
+      let x = i % w, yy = i / w
+      guard x > 0, yy > 0, x < w - 1, yy < h - 1 else { continue }
+      var around = 0
+      for dy in -1...1 { for dx in -1...1 where dx != 0 || dy != 0 {
+        if recolouredAt(i + dy * w + dx) { around += 1 }
+      } }
+      let k = owner[i]
+      if !recolouredAt(i) {
+        let cloth = union[i] > 0 ? materialColour[i] : clothFamily(i, k)
+        if around >= 6, cloth, exteriorZero[i] || union[i] > 0 { flipsToGarment.append(i) }
+      } else if union[i] == 0, around <= 1 {
+        flipsToSource.append(i)
+      }
+    }
+    for i in flipsToGarment { write(i, garment(i, owner[i], luminance: y(rgb(source, i)))) }
+    for i in flipsToSource { for c in 0..<3 { result.bytes[i * 4 + c] = source.bytes[i * 4 + c] } }
 
     try Task.checkCancellation()
     let changed = (0..<n).map { i -> UInt8 in

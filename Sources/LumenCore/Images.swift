@@ -10,11 +10,21 @@ public struct EncodedImage: Codable, Equatable, Sendable {
     public var data: Data
     public var format: Format
     public var size: PixelSize
+    /// Host-local provenance for an in-flight render. It is never serialized,
+    /// sent to a model, or considered part of the image's pixel equality.
+    public var renderContextID: UUID? = nil
 
-    public init(data: Data, format: Format, size: PixelSize) {
+    public init(data: Data, format: Format, size: PixelSize, renderContextID: UUID? = nil) {
         self.data = data
         self.format = format
         self.size = size
+        self.renderContextID = renderContextID
+    }
+
+    private enum CodingKeys: String, CodingKey { case data, format, size }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.data == rhs.data && lhs.format == rhs.format && lhs.size == rhs.size
     }
 
     /// A `data:` URL, as image inputs to the Meta Model API are sent.

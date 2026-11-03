@@ -5,6 +5,21 @@ import Testing
 import UniformTypeIdentifiers
 @testable import LumenMeta
 
+@Test func transientHostContextDoesNotChangeProviderOrRecordingBytes() async throws {
+    let photo = try recordedPhoto()
+    var contextual = photo; contextual.renderContextID = UUID()
+    let transport = ReplayTransport([try .init(file: "image.json"), try .init(file: "image.json")])
+    let generator = MetaGenerator(configuration: testConfiguration, transport: transport)
+    let mask = MaskData(size: photo.size, filledWith: 255)
+    let first = try await generator.generate(GenerateRequest(image: photo, mask: mask, prompt: "Recolour navy"))
+    let second = try await generator.generate(GenerateRequest(image: contextual, mask: mask, prompt: "Recolour navy"))
+    let requests = await transport.requests
+    #expect(requests.count == 2)
+    #expect(requests[0].httpBody == requests[1].httpBody)
+    #expect(first.data == second.data && first == second)
+    #expect(first.renderContextID == nil && second.renderContextID == nil)
+}
+
 @Test func generatorSendsPNGWithoutMaskAndResizesAnswer() async throws {
     let transport = ReplayTransport([try .init(file: "image.json")])
     let generator = MetaGenerator(configuration: testConfiguration, transport: transport)

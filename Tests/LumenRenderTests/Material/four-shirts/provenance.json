@@ -1,0 +1,89 @@
+{
+  "source": "Fixtures/library/men-laughing-by-green-valley.jpg",
+  "sourceSHA256": "2b1470e782d7fd14c53fae46c252df70e44e6e2c8c8ed583277eacee18309f10",
+  "generator": "muse-image-1.0",
+  "segmenter": "sam-3.1",
+  "selectionConcept": "t-shirt",
+  "cropTopLeftPixels": [
+    20,
+    360,
+    1239,
+    385
+  ],
+  "imagePhysicalAttempts": 1,
+  "segmentationPhysicalAttempts": 1,
+  "imageTransportRetries": 0,
+  "segmentationTransportRetries": 0,
+  "historicalFailedTransportWasNotSaved": true,
+  "provenance": "Independent model colour and original-photo semantic observations made2026-11-03. This is a deterministic compositor fixture, not a claim of a complete coherent live agent run. No credentials/requests/headers are included.",
+  "instances": [
+    {
+      "boxTopLeftNormalized": [
+        0.3296875,
+        0.47479484173505276,
+        0.17265625,
+        0.305978898007034
+      ],
+      "followsPhoto": true,
+      "height": 853,
+      "index": 0,
+      "label": "t-shirt",
+      "score": 0.9452055096626282,
+      "width": 1280
+    },
+    {
+      "boxTopLeftNormalized": [
+        0.68359375,
+        0.48534583821805394,
+        0.18828125,
+        0.31770222743259086
+      ],
+      "followsPhoto": true,
+      "height": 853,
+      "index": 1,
+      "label": "t-shirt",
+      "score": 0.941605806350708,
+      "width": 1280
+    },
+    {
+      "boxTopLeftNormalized": [
+        0.12734375,
+        0.5181711606096131,
+        0.1640625,
+        0.30363423212192264
+      ],
+      "followsPhoto": true,
+      "height": 853,
+      "index": 2,
+      "label": "t-shirt",
+      "score": 0.9375000596046448,
+      "width": 1280
+    },
+    {
+      "boxTopLeftNormalized": [
+        0.5125,
+        0.49941383352872215,
+        0.19609375,
+        0.30011723329425555
+      ],
+      "followsPhoto": true,
+      "height": 853,
+      "index": 3,
+      "label": "t-shirt",
+      "score": 0.949367105960846,
+      "width": 1280
+    }
+  ],
+  "rawProviderDimensions": [
+    2720,
+    848
+  ],
+  "rawProviderSHA256": "87ff930aa94cf1f4801939ddc42cbc854f5a4eb6b9d49b74c43438aaabcfbf8c",
+  "files": {
+    "proposed-colour-crop.png": "2cbd5eb197275136cb94c85f5bde53d322d2728cf0d18bd50c10e1a61780a93b",
+    "instance-3.png": "b3f302f2cd75ba798969533453bad76ec9059acbf52aee9655ae29207346de21",
+    "instance-2.png": "7980c9c2bc6a804d6f4bb294c813a85d57f4e86e413c51d05d87de00e4da92c3",
+    "instance-0.png": "4e92740f9fb76da0e9f73cbfa8430f69c4cfa45cf3a7e824cd871b8e8423bbc3",
+    "instance-1.png": "16c4934276eaae3ba194cbfbcb0f5fe1f71d59a7e1bd86c050277e8d4b2b78bb"
+  }
+}

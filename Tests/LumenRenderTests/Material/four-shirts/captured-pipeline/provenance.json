@@ -1,0 +1,12 @@
+{
+  "provenance": "Exact lossless source crop, registered recorded generator proposal and Core cropped/resized/min-clipped instances from the offline real EditAgent\u2192PhotoDocument integration test. Deterministic test planner; independent earlier provider observations, not a newly recorded coherent provider agent run. Original source is the existing licensed valley fixture. No credentials, transport headers or private photos.",
+  "files": {
+    "geometry.json": "35c04e01ede0358566bde58c15a491be286fb7183b238ccc96a66ec89f4d25ea",
+    "instance-2.bin": "6019b25112c00160b4cc6ed9b31b46c4f4c7c4a4b088ef3aa1053a877cf463a6",
+    "instance-3.bin": "5bd2fc4264094c53be74479222cb86d5996750ac0b2f7be3a03fdaad6848d977",
+    "instance-1.bin": "fd4c450c9322e297afc1bea322187b854dc5df7672fb6594f4e4254b265e34c7",
+    "instance-0.bin": "76f7ed6c450b97cb28edc007c70d69493499458bc1fd7e984984bd9150d8eccd",
+    "source.png": "a0f8c12c235988fc72842f7adea2c15e0ff1847c2f25c2f62022fd6b617f6475",
+    "generator.png": "517619cdb60f680388ae5a6e0c942c4d9cb4a03e918b93a3e141e16c153790af"
+  }
+}

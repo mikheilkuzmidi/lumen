@@ -7,6 +7,14 @@ import LumenCore
 /// own document and an app's editor get the same masks and measurements from it: a recolour held to the photo's edges
 /// and grown over the thing's own colours, and the colour and detail numbers the critic reads.
 public enum EditSupport {
+    /// Keeps the source geometry and fabric detail for a confident, uniform
+    /// recolour of independently selected materials. Nil leaves uncertain or
+    /// non-solid proposals on the existing photographic redraw path.
+    public static func materialRecolour(_ generated: EncodedImage, over original: EncodedImage,
+                                       instances: [MaskData]) throws -> PreparedPatch? {
+        try MaterialRecolour.prepare(generated, over: original, instances: instances)
+    }
+
     /// Physical edge preparation for explicit colour-only replacements. This
     /// preserves background/skin and returns its pixel crop and support as one.
     /// Fits support from the original semantic selection, before fitted/extended
@@ -28,10 +36,12 @@ public enum EditSupport {
 
     /// Corrects the crop's overall drift, then restores retained source texture.
     /// Finished recolour edges are excluded from source-detail restoration.
+    /// Source-referenced material colours already use the frozen photo's
+    /// illumination; they skip only the generated patch's global correction.
     public static func matchedPatch(_ patch: CIImage, to photo: CIImage, within mask: CIImage,
                                     enlargement: CGFloat, restoresDetail: Bool = true,
-                                    precompositedEdges: Bool = false, context: CIContext) -> CIImage {
-        let corrected = PhotoCompositor.colorMatched(patch, to: photo, mask: mask, context: context)
+                                    precompositedEdges: Bool = false, sourceReferenced: Bool = false, context: CIContext) -> CIImage {
+        let corrected = sourceReferenced ? patch : PhotoCompositor.colorMatched(patch, to: photo, mask: mask, context: context)
         let matched = restoresDetail ? PhotoCompositor.restoringDetail(corrected, from: photo, enlargement: enlargement,
                                                                        support: precompositedEdges ? mask : nil) : corrected
         guard precompositedEdges else { return matched }

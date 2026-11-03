@@ -532,7 +532,13 @@ enum MaterialRecolour {
     func modelAgrees(_ i: Int, _ k: Int) -> Bool {
       let model = labValue(generated, i)
       let predicted = L(y(target[k]) * y(rgb(source, i)) / max(0.0001, medianY[k]))
-      let family = dominant == 12 ? hue(model) == 12 : sameHue(hue(model))
+      // A deep shade of the requested colour has too little chroma to show
+      // its hue; it still belongs to the garment.
+      let centre = (Double(dominant) + 0.5) / 12 * 2 * Double.pi
+      let leans = model.chroma >= 2
+        ? hueDistance((atan2(model.b, model.a) + 2 * Double.pi).truncatingRemainder(dividingBy: 2 * Double.pi), centre) <= Double.pi / 3
+        : model.lightness < 12
+      let family = dominant == 12 ? hue(model) == 12 : (sameHue(hue(model)) || (model.lightness < 20 && predicted < 25 && leans))
       return family && abs(model.lightness - predicted) < 28
     }
     var modelCloth = [Bool](repeating: false, count: n)
@@ -608,12 +614,18 @@ enum MaterialRecolour {
             write(i, mix.alpha * garment(i, k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
             continue
           }
-          write(i, garment(i, k, luminance: y(s)))
+          if modelAgrees(i, k) {
+            for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
+          } else {
+            write(i, garment(i, k, luminance: y(s)))
+          }
           continue
         }
         if !materialColour[i], depth <= 6, matchesFarExterior(i) { continue }
-        if modelCloth[i], let colour = modelColour(i, k, luminance: y(s), radius: 4) {
-          write(i, colour)
+        if modelCloth[i] {
+          // The model's own photographic garment: its folds, weave and light
+          // for the new colour, which the old fabric's brightness cannot give.
+          for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
         } else if let colour = modelColour(i, k, luminance: y(s)) {
           write(i, colour)
         } else {

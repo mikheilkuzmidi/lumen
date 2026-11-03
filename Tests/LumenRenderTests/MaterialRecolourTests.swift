@@ -265,7 +265,7 @@ struct MaterialRecolourTests {
     }
   }
 
-  @Test func actualCapturedPipelineRepairsSupportedMaroonShoulderAndKeepsNaturalDetail() throws {
+  @Test func actualCapturedPipelineRepairsSupportedMaroonShoulderAndKeepsModelFabric() throws {
     let dir = try #require(Bundle.module.resourceURL?.appendingPathComponent("Material/four-shirts/captured-pipeline"))
     let size = PixelSize(width: 1239, height: 386)
     let source = try EncodedImage(data: Data(contentsOf: dir.appendingPathComponent("source.png")), format: .png, size: size)
@@ -273,31 +273,19 @@ struct MaterialRecolourTests {
     let masks = try (0..<4).map { k in MaskData(size: size, coverage: Array(try Data(contentsOf: dir.appendingPathComponent("instance-\(k).bin")))) }
     let prepared = try #require(try EditSupport.materialRecolour(generated, over: source, instances: masks))
     let output = try RGBAPixels(prepared.image)
-    let before = try RGBAPixels(source)
+    let model = try RGBAPixels(generated)
     if let path = ProcessInfo.processInfo.environment["LUMEN_MATERIAL_CAPTURED_CANDIDATE"] {
       try prepared.image.data.write(to: URL(fileURLWithPath: path))
     }
     let i = (50 * size.width + 527) * 4
     #expect(output.bytes[i + 2] > output.bytes[i] + 5, "Actual supported maroon shoulder must not become model flesh")
-    // Contrast is normalized to local perceptual lightness, not an absolute
-    // L* residual: darkening fabric must not amplify its grain threefold.
-    func detail(_ p: RGBAPixels, _ r: [Int]) -> (Double, [Double]) {
-      let L = (0..<(p.width * p.height)).map { j in ColourMeasuring.lab(red: p.bytes[j*4], green: p.bytes[j*4+1], blue: p.bytes[j*4+2]).lightness }
-      let low = MaskRefinement.boxMean(L, width: p.width, height: p.height, radius: 2)
-      let ids = (r[1]..<r[3]).flatMap { y in (r[0]..<r[2]).map { x in y*p.width+x } }
-      let hf = ids.map { L[$0] - low[$0] }
-      let mean = ids.map { L[$0] }.reduce(0,+) / Double(ids.count)
-      let hm = hf.reduce(0,+) / Double(hf.count)
-      return (sqrt(hf.map { pow($0-hm,2) }.reduce(0,+)/Double(hf.count))/(mean+16), hf)
-    }
-    for r in [[710,120,790,200],[970,110,1030,220]] {
-      let a = detail(before,r), b = detail(output,r)
-      #expect(b.0 / a.0 < 1.5, "Do not emboss source grain when pale fabric becomes navy")
-      #expect(b.0 / a.0 > 0.65, "Do not erase normalized fabric detail")
-      let am=a.1.reduce(0,+)/Double(a.1.count), bm=b.1.reduce(0,+)/Double(b.1.count)
-      let num=zip(a.1,b.1).map { ($0-am)*($1-bm) }.reduce(0,+)
-      let den=sqrt(a.1.map{pow($0-am,2)}.reduce(0,+)*b.1.map{pow($0-bm,2)}.reduce(0,+))
-      #expect(num/den > 0.9, "Fabric detail positions stay source-correlated")
+    // Inside a garment the result is the model's own photographic fabric for
+    // the new colour. Scaling the old shirt's brightness looked flat and
+    // plastic (a white shirt's low-contrast shading on a mid-tone blue).
+    for r in [[710, 120, 790, 200], [970, 110, 1030, 220], [200, 130, 260, 200]] {
+      let ids = (r[1]..<r[3]).flatMap { y in (r[0]..<r[2]).map { x in y * size.width + x } }
+      let fromModel = ids.filter { j in (0..<3).allSatisfy { abs(Int(output.bytes[j * 4 + $0]) - Int(model.bytes[j * 4 + $0])) <= 1 } }
+      #expect(Double(fromModel.count) / Double(ids.count) >= 0.95, "Interior \(r) keeps the model's fabric: \(fromModel.count)/\(ids.count)")
     }
   }
 

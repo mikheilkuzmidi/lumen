@@ -302,6 +302,7 @@ enum MaterialRecolour {
     var protected = [Bool](repeating: false, count: n)
     var unchangedByModel = [Bool](repeating: false, count: n)
     var neutralSource = [Bool](repeating: false, count: n)
+    var strongMaterial = [Bool](repeating: false, count: n)
     var sourceLabs = [ColourMeasurement](
       repeating: ColourMeasurement(lightness: 0, a: 0, b: 0), count: n)
     for i in 0..<n where owner[i] >= 0 { sourceLabs[i] = labValue(source, i) }
@@ -338,6 +339,8 @@ enum MaterialRecolour {
       // similar hue (a neck above a red collar), so zero-support extension
       // keeps the strict source-ratio evidence only.
       materialColour[i] = sourceMatch || achromatic || (union[i] > 0 && (hueMatches || labNeutral))
+      // Evidence beyond a shared hue: skin can share a red shirt's hue.
+      strongMaterial[i] = sourceMatch || achromatic || (union[i] > 0 && labNeutral)
       materialCompatible[i] = medianY[k] > 0.03 && y(c) > 0.015 && materialColour[i]
       neutral[i] = materialCompatible[i] && !(union[i] == 0 && same)
       unchangedByModel[i] = same
@@ -573,7 +576,28 @@ enum MaterialRecolour {
       guard count >= 8 else { return nil }
       let g = (tableG[d] - tableG[b] - tableG[c] + tableG[a]) / count
       let sourceY = (tableY[d] - tableY[b] - tableY[c] + tableY[a]) / count
-      return g * min(2.5, max(0.4, luminance / max(0.0001, sourceY)))
+      // Near the model's own nearby colour: a bright lint or highlight pixel in
+      // the old fabric must not become a pale fleck on the new one.
+      return g * min(1.2, max(0.8, luminance / max(0.0001, sourceY)))
+    }
+    // The model's nearby garment lightness, for rejecting its own light rims.
+    func modelMeanLightness(_ i: Int, radius: Int = 6) -> Double? {
+      let x0 = max(0, i % w - radius), x1 = min(w, i % w + radius + 1)
+      let y0 = max(0, i / w - radius), y1 = min(h, i / w + radius + 1)
+      let a = y0 * (w + 1) + x0, b = y0 * (w + 1) + x1, c = y1 * (w + 1) + x0, d = y1 * (w + 1) + x1
+      let count = tableN[d] - tableN[b] - tableN[c] + tableN[a]
+      guard count >= 8 else { return nil }
+      let g = (tableG[d] - tableG[b] - tableG[c] + tableG[a]) / count
+      return ColourMeasuring.lab(red: byte(g.x), green: byte(g.y), blue: byte(g.z)).lightness
+    }
+    // A model pixel clearly lighter than its own garment nearby: a rim light,
+    // pale band or flesh it painted, which reads as a halo or blotch.
+    func lightRim(_ i: Int) -> Bool {
+      let model = labValue(generated, i).lightness
+      if let mean = modelMeanLightness(i) { return model - mean > 10 }
+      // No trusted model garment nearby (a broad pale area): compare with the
+      // requested colour itself.
+      return model - L(y(target[owner[i]])) > 15
     }
     func garment(_ i: Int, _ k: Int, luminance: Double) -> SIMD3<Double> {
       modelColour(i, k, luminance: luminance) ?? recoloured(k, luminance: luminance)
@@ -603,54 +627,58 @@ enum MaterialRecolour {
           for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
           continue
         }
-        if depth <= band, let e = edgeEvidence(i, k) {
-          let clothDistance = deltaE(sourceLabs[i], e.clothLab)
-          // The selection took in skin or background beside the garment.
-          if !materialColour[i], e.nearestExterior + 2 <= clothDistance { continue }
-          if let mix = unmix(s, e), mix.alpha < 0.98 {
-            if mix.alpha < 0.2 { continue }
-            // A convex mixture of the recoloured cloth and the real exterior:
-            // an edge pixel can never acquire a hue neither side has.
-            write(i, mix.alpha * garment(i, k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
-            continue
-          }
-          if modelAgrees(i, k) {
-            for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
-          } else {
-            write(i, garment(i, k, luminance: y(s)))
-          }
+        // The model sees where the garment, its shadows and the gaps beside it
+        // are; its own pixels are the result. The photo overrides it only with
+        // evidence: a light rim, pale band or flesh painted on cloth, a pixel
+        // the model lightened that was not cloth, and skin or background inside
+        // the selection that the model painted as garment.
+        if lightRim(i) {
+          if materialColour[i] { write(i, garment(i, k, luminance: y(s))) }
           continue
         }
-        if !materialColour[i], depth <= 6, matchesFarExterior(i) { continue }
-        if modelCloth[i] {
-          // The model's own photographic garment: its folds, weave and light
-          // for the new colour, which the old fabric's brightness cannot give.
-          for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
-        } else if let colour = modelColour(i, k, luminance: y(s)) {
-          write(i, colour)
-        } else {
-          for c in 0..<3 { result.bytes[i * 4 + c] = proposal.bytes[i * 4 + c] }
+        if !materialColour[i], depth <= reach, modelAgrees(i, k), let e = edgeEvidence(i, k),
+          e.nearestExterior + 2 <= deltaE(sourceLabs[i], e.clothLab) {
+          continue
         }
+        if !modelAgrees(i, k) {
+          // Something other than the garment: over skin, a gap or background
+          // the selection took in, the photo stays; over cloth, the model's
+          // darker shadow or gap is kept and anything else takes the garment.
+          let model = labValue(generated, i)
+          if !materialColour[i] || deltaE(model, sourceLabs[i]) < 15 { continue }
+          if model.lightness >= sourceLabs[i].lightness {
+            write(i, garment(i, k, luminance: y(s)))
+            continue
+          }
+          // A saturated colour of something else is the model saying this is
+          // not garment; only a neutral darker shadow or gap is taken.
+          if model.chroma >= 12 {
+            if strongMaterial[i] { write(i, garment(i, k, luminance: y(s))) }
+            continue
+          }
+        }
+        for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
         continue
       }
       if allowed[i] && neutral[i] && !protected[i] {
         write(i, garment(i, k, luminance: y(s)))
         continue
       }
-      // The garment's own photographed rim just outside the selection: cloth
-      // closer to the garment than to any exterior colour beyond the band.
+      // The garment's own photographed rim just outside the selection, which
+      // the model repainted: cloth or its shadow, not skin or the background.
       guard distance[i] >= 1, distance[i] <= band, exteriorZero[i], !ambiguousExterior[i],
         !unchangedByModel[i], let e = edgeEvidence(i, k)
       else { continue }
       let clothDistance = deltaE(sourceLabs[i], e.clothLab)
       if e.nearestExterior + 2 <= clothDistance { continue }
-      if let mix = unmix(s, e) {
-        guard mix.alpha >= 0.5 else { continue }
-        write(i, mix.alpha >= 0.98 ? garment(i, k, luminance: y(s))
-          : mix.alpha * garment(i, k, luminance: y(e.cloth)) + (1 - mix.alpha) * mix.background)
+      let model = labValue(generated, i)
+      if lightRim(i) {
+        if clothFamily(i, k), clothDistance + 3 < e.nearestExterior { write(i, garment(i, k, luminance: y(s))) }
         continue
       }
-      if clothFamily(i, k), clothDistance + 3 < e.nearestExterior {
+      if modelAgrees(i, k) || model.lightness < sourceLabs[i].lightness {
+        for c in 0..<3 { result.bytes[i * 4 + c] = generated.bytes[i * 4 + c] }
+      } else if clothFamily(i, k), clothDistance + 3 < e.nearestExterior {
         write(i, garment(i, k, luminance: y(s)))
       }
     }
@@ -682,6 +710,28 @@ enum MaterialRecolour {
     }
     for i in flipsToGarment { write(i, garment(i, owner[i], luminance: y(rgb(source, i)))) }
     for i in flipsToSource { for c in 0..<3 { result.bytes[i * 4 + c] = source.bytes[i * 4 + c] } }
+    // A single-pixel speck or one-pixel line along a garment edge reads as a
+    // dotted or light outline. Replace each edge-band pixel by the neighbour of
+    // median brightness in its 3x3 window: isolated marks disappear, real
+    // steps between garment and background stay where they are, and no new
+    // colour is created. Skin and background the result kept are untouched.
+    var smoothed = result.bytes
+    for i in 0..<n where owner[i] >= 0 && !protected[i] && graphicEdge[i] == 0 {
+      if i & 8191 == 0 { try Task.checkCancellation() }
+      let inBand = union[i] >= 250 ? inside[owner[i]][i] <= band : (distance[i] >= 1 && distance[i] <= band && recolouredAt(i))
+      guard inBand, recolouredAt(i) || (union[i] > 0 && materialColour[i]) else { continue }
+      let x = i % w, yy = i / w
+      guard x > 0, yy > 0, x < w - 1, yy < h - 1 else { continue }
+      var window: [(Double, Int)] = []
+      for dy in -1...1 { for dx in -1...1 {
+        let j = i + dy * w + dx
+        window.append((y(SIMD3(linear[Int(result.bytes[j * 4])], linear[Int(result.bytes[j * 4 + 1])], linear[Int(result.bytes[j * 4 + 2])])), j))
+      } }
+      window.sort { $0.0 < $1.0 }
+      let j = window[4].1
+      for c in 0..<3 { smoothed[i * 4 + c] = result.bytes[j * 4 + c] }
+    }
+    result.bytes = smoothed
 
     try Task.checkCancellation()
     let changed = (0..<n).map { i -> UInt8 in

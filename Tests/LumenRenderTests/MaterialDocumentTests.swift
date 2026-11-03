@@ -48,7 +48,7 @@ struct MaterialDocumentTests {
         let host = MaterialDocumentHost(document: document)
         let generator = MaterialRecordedGenerator(proposal: try registered.encoded(), host: host)
         let agent = EditAgent(planner: MaterialDocumentPlanner(), segmenter: MaterialRecordedSegmenter(masks: masks),
-                              generator: generator, host: host, configuration: AgentConfiguration(maxRevisions: 0))
+                              generator: generator, host: host, configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true))
         for try await _ in agent.run("Make the shirts in these selected photos blue") {}
         #expect(await generator.calls == 1)
         #expect(await host.materialCalls == 1)
@@ -124,7 +124,7 @@ struct MaterialDocumentTests {
         let host = MaterialDocumentHost(document: document)
         let generator = MaterialDocumentGenerator()
         let agent = EditAgent(planner: MaterialDocumentPlanner(), segmenter: MaterialDocumentSegmenter(masks: instances()),
-                              generator: generator, host: host, configuration: AgentConfiguration(maxRevisions: 0))
+                              generator: generator, host: host, configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true))
         for try await _ in agent.run("Make the shirts in these selected photos blue") {}
         #expect(await generator.calls == 1)
         #expect(await host.preparedCount == 1, "The actual document helper must accept, rather than taking a default-nil fake route")

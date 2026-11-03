@@ -361,6 +361,58 @@ struct MaterialRecolourTests {
     #expect(foreignHue <= 100, "Changed pixels with a saturated hue far from the requested navy: \(foreignHue)")
   }
 
+  /// Opt-in offline replay of inputs captured from a live editor run
+  /// (LUMEN_MATERIAL_REPLAY_DIR with source.png, generator.png, instance-N.bin
+  /// and geometry.json). Writes result.png beside them; no provider call.
+  @Test func capturedLiveInputsReplayOffline() throws {
+    guard let path = ProcessInfo.processInfo.environment["LUMEN_MATERIAL_REPLAY_DIR"] else { return }
+    let dir = URL(fileURLWithPath: path)
+    let geometry = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("geometry.json"))) as! [String: Any]
+    let size = (geometry["size"] as! [Int]).map { $0 }
+    let pixel = PixelSize(width: size[0], height: size[1])
+    let generatorSize = geometry["generatorSize"] as! [Int]
+    let source = try EncodedImage(data: Data(contentsOf: dir.appendingPathComponent("source.png")), format: .png, size: pixel)
+    let generated = try EncodedImage(data: Data(contentsOf: dir.appendingPathComponent("generator.png")), format: .png,
+                                     size: PixelSize(width: generatorSize[0], height: generatorSize[1]))
+    let count = (geometry["instances"] as! [[Int]]).count
+    let masks = try (0..<count).map { k in
+      MaskData(size: pixel, coverage: Array(try Data(contentsOf: dir.appendingPathComponent("instance-\(k).bin"))), followsPhoto: true)
+    }
+    let prepared = try #require(try EditSupport.materialRecolour(generated, over: source, instances: masks))
+    try prepared.image.data.write(to: dir.appendingPathComponent(ProcessInfo.processInfo.environment["LUMEN_MATERIAL_REPLAY_NAME"] ?? "result.png"))
+  }
+
+  /// Opt-in: the established colour-only edge path on the same captured
+  /// inputs, composited by its prepared mask (global colour matching at
+  /// placement not applied), for a like-for-like visual comparison.
+  @Test func capturedLiveInputsLegacyEdgeReplayOffline() throws {
+    guard let path = ProcessInfo.processInfo.environment["LUMEN_MATERIAL_REPLAY_DIR"] else { return }
+    let dir = URL(fileURLWithPath: path)
+    let geometry = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("geometry.json"))) as! [String: Any]
+    let size = geometry["size"] as! [Int]
+    let pixel = PixelSize(width: size[0], height: size[1])
+    let generatorSize = geometry["generatorSize"] as! [Int]
+    let source = try EncodedImage(data: Data(contentsOf: dir.appendingPathComponent("source.png")), format: .png, size: pixel)
+    let generated = try EncodedImage(data: Data(contentsOf: dir.appendingPathComponent("generator.png")), format: .png,
+                                     size: PixelSize(width: generatorSize[0], height: generatorSize[1]))
+    let count = (geometry["instances"] as! [[Int]]).count
+    let masks = try (0..<count).map { k in
+      MaskData(size: pixel, coverage: Array(try Data(contentsOf: dir.appendingPathComponent("instance-\(k).bin"))), followsPhoto: true)
+    }
+    let union = masks.dropFirst().reduce(masks[0]) { $0.union($1) }
+    let prepared = try #require(try EditSupport.recolourEdges(generated, over: source, within: union))
+    let patch = try RGBAPixels(prepared.image)
+    var out = try RGBAPixels(source)
+    let mask = prepared.mask.resized(to: pixel).coverage
+    for i in 0..<(pixel.width * pixel.height) {
+      let a = Double(mask[i]) / 255
+      for c in 0..<3 {
+        out.bytes[i * 4 + c] = UInt8((Double(patch.bytes[i * 4 + c]) * a + Double(out.bytes[i * 4 + c]) * (1 - a)).rounded())
+      }
+    }
+    try out.encoded().data.write(to: dir.appendingPathComponent("legacy.png"))
+  }
+
   @Test func emptyAndErodedAwayInstanceCannotBorrowOtherMaterial() throws {
     let source = try image { x, y in member(x, y) == nil ? [20, 65, 25] : [200, 200, 200] }
     let generated = try image { x, y in member(x, y) == nil ? [20, 65, 25] : [25, 55, 105] }

@@ -75,14 +75,19 @@ public struct AgentConfiguration: Sendable {
     public var selectionLongEdge = 1536
     /// The long edge of the close-up of each redrawn region the critic is shown, before and after.
     public var closeUpLongEdge = 768
+    /// Whether a recolour of several garments may use the host's optional
+    /// material recolour. Off by default: on real edits the established
+    /// photographic edge path looked more natural.
+    public var materialRecolour = false
 
     public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1024, selectionLongEdge: Int = 1536,
-                closeUpLongEdge: Int = 768) {
+                closeUpLongEdge: Int = 768, materialRecolour: Bool = false) {
         self.maxSteps = maxSteps
         self.maxRevisions = maxRevisions
         self.previewLongEdge = previewLongEdge
         self.selectionLongEdge = selectionLongEdge
         self.closeUpLongEdge = closeUpLongEdge
+        self.materialRecolour = materialRecolour
     }
 }
 
@@ -810,7 +815,8 @@ public actor EditAgent {
         // Preserve the provider input and call sequence. Only an accepted
         // optional material result replaces placement; nil follows the exact
         // established edge/transform path below.
-        if kind == .regenerate, materialPurpose, materialGeometryStable, region.materialInstances.count >= 2 {
+        if configuration.materialRecolour, kind == .regenerate, materialPurpose, materialGeometryStable,
+           region.materialInstances.count >= 2 {
             // Validate support in the original coordinate frame. Max-union
             // and bilinear resizing do not commute where instances touch;
             // requiring equality after resizing would reject valid contact

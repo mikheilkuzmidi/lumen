@@ -21,6 +21,7 @@ struct MaterialRecolourIntegrationTests {
         #expect(await host.legacyCalls == 0)
         let layer = try #require(await host.layers.last)
         #expect(layer.precompositedEdges == true)
+        #expect(layer.sourceReferenced == true)
         guard case .patch(let imageID, _, let rect) = layer.content,
               case .image(let image) = await agent.assets.get(imageID) else { Issue.record("No prepared patch"); return }
         #expect(image.data == Data("material prepared".utf8))
@@ -39,6 +40,9 @@ struct MaterialRecolourIntegrationTests {
         #expect(await declined.legacyCalls == 1)
         #expect(await legacy.inputs.isEmpty, "The protocol default is nil, without adapter changes")
         #expect(await legacy.legacyCalls == 1)
+        #expect(await accepted.layers.last?.sourceReferenced == true)
+        #expect(await declined.layers.last?.sourceReferenced == nil)
+        #expect(await legacy.layers.last?.sourceReferenced == nil)
         let first = await a.requests, second = await b.requests, third = await c.requests
         #expect(first.count == second.count && first.count == third.count)
         #expect(zip(first, second).allSatisfy { $0.image == $1.image && $0.mask == $1.mask && $0.prompt == $1.prompt })

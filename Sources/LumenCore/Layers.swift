@@ -55,9 +55,13 @@ public struct Layer: Codable, Equatable, Identifiable, Sendable {
     /// A colour-only patch whose physical edge was already prepared with its
     /// background. Hosts must not apply an additional inward matte to it.
     public var precompositedEdges: Bool?
+    /// Frozen-source-derived patch colours already reference the captured
+    /// photo. Further global colour matching would alter that preparation.
+    /// Nil retains the legacy generated-patch correction path.
+    public var sourceReferenced: Bool?
 
     public init(id: UUID = UUID(), label: String, content: Content, isEnabled: Bool = true, opacity: Double = 1,
-                drawsNew: Bool? = nil, precompositedEdges: Bool? = nil) {
+                drawsNew: Bool? = nil, precompositedEdges: Bool? = nil, sourceReferenced: Bool? = nil) {
         self.id = id
         self.label = label
         self.content = content
@@ -65,6 +69,7 @@ public struct Layer: Codable, Equatable, Identifiable, Sendable {
         self.opacity = opacity
         self.drawsNew = drawsNew
         self.precompositedEdges = precompositedEdges
+        self.sourceReferenced = sourceReferenced
     }
 }
 

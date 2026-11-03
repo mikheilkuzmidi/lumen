@@ -55,14 +55,25 @@ struct MaterialDocumentTests {
         #expect(await host.preparedCount == 1, "Real SAM masks and recorded colour must reach the optional document helper")
         let layer = try #require(await document.layers.last)
         #expect(layer.precompositedEdges == true)
+        #expect(layer.sourceReferenced == true)
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("material-four-shirts-\(UUID()).png")
         defer { try? FileManager.default.removeItem(at: output) }
         try await document.export(to: output, format: .png)
         let result = try RGBAPixels(EncodedImage(data: Data(contentsOf: output), format: .png, size: fullSize))
         let before = try RGBAPixels(EncodedImage(data: sourceBytes, format: .jpeg, size: fullSize))
+        guard case .patch(let imageID, let maskID, _) = layer.content,
+              case .image(let preparedImage) = await agent.assets.get(imageID),
+              case .mask(let preparedMask) = await agent.assets.get(maskID) else {
+            Issue.record("Actual prepared material assets missing"); return
+        }
+        let preparedPixels = try RGBAPixels(preparedImage)
         for (x, y) in [(230, 520), (550, 510), (780, 530), (1020, 530)] {
             let i = (y * fullSize.width + x) * 4
             #expect(Int(result.bytes[i + 2]) > Int(result.bytes[i]) + 8, "Each independently selected shirt is blue")
+            let local = (y - 360) * preparedPixels.width + x - 20
+            #expect(preparedMask.coverage[local] == 255)
+            #expect((0..<3).allSatisfy { abs(Int(result.bytes[i + $0]) - Int(preparedPixels.bytes[local * 4 + $0])) <= 2 },
+                    "A source-referenced material keeps prepared illumination instead of getting globally darkened again")
         }
         for (x, y) in [(0, 0), (100, 250), (450, 370), (870, 443), (1140, 750)] {
             let i = (y * fullSize.width + x) * 4
@@ -72,6 +83,23 @@ struct MaterialDocumentTests {
         if let target = ProcessInfo.processInfo.environment["LUMEN_MATERIAL_DOCUMENT_OUTPUT"], target.hasPrefix("/") {
             try Data(contentsOf: output).write(to: URL(fileURLWithPath: target), options: .atomic)
         }
+        let replayed = try JSONDecoder().decode(Layer.self, from: JSONEncoder().encode(layer))
+        var legacy = layer; legacy.sourceReferenced = nil
+        try await document.apply(legacy, assets: agent.assets)
+        let legacyOutput = output.deletingPathExtension().appendingPathExtension("legacy.png")
+        defer { try? FileManager.default.removeItem(at: legacyOutput) }
+        try await document.export(to: legacyOutput, format: .png)
+        let legacyPixels = try RGBAPixels(EncodedImage(data: Data(contentsOf: legacyOutput), format: .png, size: fullSize))
+        #expect(zip(legacyPixels.bytes, result.bytes).contains { abs(Int($0) - Int($1)) > 2 },
+                "Nil metadata retains the legacy correction path, as measured by the colour-matching counterfactual")
+        try await document.apply(replayed, assets: agent.assets)
+        let replayOutput = output.deletingPathExtension().appendingPathExtension("replayed.png")
+        defer { try? FileManager.default.removeItem(at: replayOutput) }
+        try await document.export(to: replayOutput, format: .png)
+        let replayPixels = try RGBAPixels(EncodedImage(data: Data(contentsOf: replayOutput), format: .png, size: fullSize))
+        #expect(replayed.sourceReferenced == true)
+        #expect(zip(replayPixels.bytes, result.bytes).allSatisfy { abs(Int($0) - Int($1)) <= 1 },
+                "Saved/replayed metadata preserves the accepted source-referenced rendering")
         try await document.remove(layer.id)
         let untouched = try await document.render(region: .whole, maxLongEdge: 1280)
         let manual = Layer(label: "User edit record", content: .adjustment(values: [.exposure: 0], mask: nil))
@@ -284,8 +312,33 @@ private actor MaterialDocumentHost: EditHost {
     func remove(_ layer: Layer.ID) async throws { try await document.remove(layer) }
     func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect, instances: [MaskData]) async throws -> PreparedPatch? {
         materialCalls += 1
+        let target = ProcessInfo.processInfo.environment["LUMEN_MATERIAL_DOCUMENT_OUTPUT"]
+        if let target, target.hasPrefix("/"), let id = original.renderContextID {
+            let source = try await document.materialSource(id, original: original, region: region)
+            let context = CIContext(options: [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
+                                              .workingFormat: CIFormat.RGBAh, .cacheIntermediates: false])
+            let base = URL(fileURLWithPath: target).deletingPathExtension()
+            let png = try #require(context.pngRepresentation(of: source.image, format: .RGBA8,
+                                                             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!))
+            try png.write(to: base.appendingPathExtension("captured-source.png"))
+            try generated.data.write(to: base.appendingPathExtension("generator.png"))
+            for (index, mask) in instances.enumerated() {
+                try Data(mask.coverage).write(to: base.appendingPathExtension("instance-\(index).bin"))
+            }
+            let info: [String: Any] = ["region": [region.x, region.y, region.width, region.height],
+                                      "size": [original.size.width, original.size.height], "instances": instances.count,
+                                      "instanceSizes": instances.map { [$0.size.width, $0.size.height] },
+                                      "instanceFollowsPhoto": instances.map(\.followsPhoto)]
+            try JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted, .sortedKeys])
+                .write(to: base.appendingPathExtension("geometry.json"))
+        }
         let result = try await document.materialRecolour(generated, over: original, in: region, instances: instances)
         if result != nil { preparedCount += 1 }
+        if let target, target.hasPrefix("/"), let result {
+            let base = URL(fileURLWithPath: target).deletingPathExtension()
+            try result.image.data.write(to: base.appendingPathExtension("prepared.png"))
+            try Data(result.mask.coverage).write(to: base.appendingPathExtension("prepared-mask.bin"))
+        }
         return result
     }
 }

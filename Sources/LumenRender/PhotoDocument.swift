@@ -23,7 +23,7 @@ public actor PhotoDocument: EditHost {
     private var masks: [UUID: CIImage] = [:]
     private var patches: [UUID: CIImage] = [:]
     private var renderRevision = UUID()
-    private struct MaterialSource {
+    struct MaterialSource {
         let id: UUID
         let revision: UUID
         let region: NormalizedRect
@@ -212,7 +212,7 @@ public actor PhotoDocument: EditHost {
         return result
     }
 
-    private func materialSource(_ id: UUID, original: EncodedImage, region: NormalizedRect) throws -> MaterialSource {
+    func materialSource(_ id: UUID, original: EncodedImage, region: NormalizedRect) throws -> MaterialSource {
         guard let source = materialSources.first(where: { $0.id == id }), source.revision == renderRevision,
               source.region == region, source.input.size == original.size, source.input == original else {
             throw LumenError.invalidResponse("The photo changed after its material source was rendered.")
@@ -460,7 +460,8 @@ public actor PhotoDocument: EditHost {
                 let enlargement = min(patchBounds.width / patch.extent.width, patchBounds.height / patch.extent.height)
                 let matched = EditSupport.matchedPatch(placed, to: image, within: coverage, enlargement: enlargement,
                                                       restoresDetail: layer.drawsNew != true,
-                                                      precompositedEdges: layer.precompositedEdges == true, context: context)
+                                                      precompositedEdges: layer.precompositedEdges == true,
+                                                      sourceReferenced: layer.sourceReferenced == true, context: context)
                 // A prepared recolour already carries a physical object edge;
                 // inward feathering would matte it twice. Other patch kinds
                 // retain their existing, explicitly softened blending path.

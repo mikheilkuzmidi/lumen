@@ -826,6 +826,7 @@ public actor EditAgent {
                 try checkCancellation()
                 return try await place(prepared.image, mask: prepared.mask, rect: rect, label: label,
                                        region: region.info.id, kind: kind, notes: notes, precompositedEdges: true,
+                                       sourceReferenced: true,
                                        redraws: &redraws, events: events)
             }
             try checkCancellation()
@@ -1594,14 +1595,16 @@ public actor EditAgent {
 
     /// Puts a redrawn crop on the photo as a layer.
     private func place(_ generated: EncodedImage, mask: MaskData, rect: NormalizedRect, label: String, region: String,
-                       kind: TraceEvent.Kind, notes: [String], drawsNew: Bool = false, precompositedEdges: Bool = false, redraws: inout [String: Layer.ID],
+                       kind: TraceEvent.Kind, notes: [String], drawsNew: Bool = false, precompositedEdges: Bool = false,
+                       sourceReferenced: Bool = false, redraws: inout [String: Layer.ID],
                        events: Events) async throws -> [String] {
         for detail in notes { note(kind, detail, events: events) }
         let imageAsset = await assets.put(.image(generated))
         let maskAsset = await assets.put(.mask(mask.resized(to: generated.size)))
         do {
             let layer = Layer(label: label, content: .patch(image: imageAsset, mask: maskAsset, rect: rect),
-                              drawsNew: drawsNew ? true : nil, precompositedEdges: precompositedEdges ? true : nil)
+                              drawsNew: drawsNew ? true : nil, precompositedEdges: precompositedEdges ? true : nil,
+                              sourceReferenced: sourceReferenced ? true : nil)
             try await apply(layer, kind: kind.rawValue, region: region, events: events)
             redraws[region] = layer.id
         } catch {

@@ -17,6 +17,7 @@ struct RedrawTests {
         let patch = try await redrawPatch(layer, agent: agent)
         #expect(await host.recolourCalls == (recolour ? 1 : 0))
         #expect(layer.precompositedEdges == (recolour ? true : nil))
+        #expect(layer.sourceReferenced == nil, "Ordinary and single-garment edge paths retain their colour correction")
         #expect((String(data: patch.image.data, encoding: .utf8) == "prepared edge crop") == recolour)
     }
     @Test func acceptedObjectExtendsThePatchAndUsesTheBestOverlap() async throws {

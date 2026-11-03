@@ -40,16 +40,18 @@ class BudgetTests(unittest.TestCase):
     def test_process_race_never_exceeds_planned_cap(self):
         context = multiprocessing.get_context("spawn")
         with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=context) as executor:
-            results = list(executor.map(competing_reservation, [self.path] * 64))
-        self.assertEqual(sum(value is not None for value in results), 45)
-        self.assertEqual(self.ledger.summary()["liabilityMicros"], 4_500_000)
-        self.assertEqual(len({r for r in results if r}), 45)
+            fits = budget.PLANNED // 100_000
+            results = list(executor.map(competing_reservation, [self.path] * (fits + 19)))
+        self.assertEqual(sum(value is not None for value in results), fits)
+        self.assertEqual(self.ledger.summary()["liabilityMicros"], fits * 100_000)
+        self.assertEqual(len({r for r in results if r}), fits)
 
     def test_unknown_and_restart_cannot_free_money(self):
-        identifier = self.ledger.reserve("meta", "muse-spark-1.3", 4_000_000)
+        held = budget.PLANNED - 500_000
+        identifier = self.ledger.reserve("meta", "muse-spark-1.3", held)
         self.ledger.settle(identifier, None, "network_error")
         reopened = budget.Ledger(self.path)
-        self.assertEqual(reopened.summary()["liabilityMicros"], 4_000_000)
+        self.assertEqual(reopened.summary()["liabilityMicros"], held)
         with self.assertRaises(budget.BudgetError):
             reopened.reserve("elevenlabs", "stock-voice", 500_001)
         with self.assertRaises(budget.BudgetError):

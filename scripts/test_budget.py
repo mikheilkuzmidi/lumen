@@ -28,8 +28,9 @@ import uuid
 import wave
 
 SCHEMA = 1
-PLANNED = 4_500_000
-HARD = 5_000_000
+# Raised by the owner on November 3 by $10 (was $4.50 planned / $5.00 hard).
+PLANNED = 14_500_000
+HARD = 15_000_000
 PRICE_DATE = "2026-11-02"
 PRICE_SOURCE = "https://dev.meta.ai/docs/pricing-rate-limits"
 CONTEXT = 1_048_576  # https://dev.meta.ai/docs/models (Spark and Wonder)

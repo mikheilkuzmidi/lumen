@@ -267,6 +267,38 @@ struct MaterialDocumentTests {
         #expect(await document.layers.map(\.id) == [manual.id, freshLayer.id],
                 "A successfully applied retained asset must still support history replay")
     }
+
+    @Test func abandonedPreparationsDeclineInsteadOfBlockingAndStayRejectedWhenStale() async throws {
+        let folder = try LibraryFolder(); defer { folder.remove() }
+        let path = try folder.photo(name: "source.png", width: size.width, height: size.height) { x, y in
+            ((20..<100).contains(x) || (140..<220).contains(x)) && (24..<136).contains(y) ? (200, 200, 200) : (20, 65, 25)
+        }
+        let document = try PhotoDocument(contentsOf: path)
+        let proposal = try RGBAPixels(width: size.width, height: size.height,
+            bytes: Array(repeating: [UInt8(25), 55, 105, 255], count: size.width * size.height).flatMap { $0 }).encoded()
+        func prepare() async throws -> PreparedPatch? {
+            let input = try await document.render(region: .whole, maxLongEdge: 240)
+            return try await document.materialRecolour(proposal, over: input, in: .whole, instances: instances())
+        }
+        // Eight preparations a cancelled or rejected step never applied.
+        var abandoned: [PreparedPatch] = []
+        for _ in 0..<8 { abandoned.append(try #require(await prepare())) }
+        #expect(try await prepare() == nil, "Too many waiting preparations decline to the established path")
+        let manual = Layer(label: "Manual edit", content: .adjustment(values: [.exposure: 0.1], mask: nil))
+        try await document.apply(manual, assets: AssetStore())
+        let fresh = try #require(await prepare(), "Stale preparations no longer occupy the waiting limit")
+        let assets = AssetStore()
+        let staleLayer = Layer(label: "Stale material", content: .patch(image: await assets.put(.image(abandoned[0].image)),
+            mask: await assets.put(.mask(abandoned[0].mask)), rect: .whole), precompositedEdges: true)
+        await #expect(throws: LumenError.self) { try await document.apply(staleLayer, assets: assets) }
+        await #expect(throws: LumenError.self, "A rejected stale preparation stays rejected on retry") {
+            try await document.apply(staleLayer, assets: assets)
+        }
+        let freshLayer = Layer(label: "Fresh material", content: .patch(image: await assets.put(.image(fresh.image)),
+            mask: await assets.put(.mask(fresh.mask)), rect: .whole), precompositedEdges: true)
+        try await document.apply(freshLayer, assets: assets)
+        #expect(await document.layers.map(\.id) == [manual.id, freshLayer.id])
+    }
 }
 
 private struct MaterialDocumentPlanner: Planner {

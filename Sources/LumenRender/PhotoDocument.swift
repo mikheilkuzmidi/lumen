@@ -145,9 +145,10 @@ public actor PhotoDocument: EditHost {
         guard let id = original.renderContextID else { return nil }
         let source = try materialSource(id, original: original, region: region)
         let alphaImage = originalAlphaImage
-        guard pendingMaterialRevisions.count < 8 else {
-            throw LumenError.invalidResponse("Too many material edits are waiting to be applied.")
-        }
+        // Prepared material edits that were never applied (a cancelled or
+        // rejected step) cannot block this optional path: with too many
+        // waiting, decline to the established edit path instead.
+        guard waitingMaterialPreparations < 8 else { return nil }
         let worker = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             let context = CIContext(options: [
@@ -202,9 +203,7 @@ public actor PhotoDocument: EditHost {
         try Task.checkCancellation()
         _ = try materialSource(id, original: original, region: region)
         if result != nil {
-            guard pendingMaterialRevisions.count < 8 else {
-                throw LumenError.invalidResponse("Too many material edits are waiting to be applied.")
-            }
+            guard waitingMaterialPreparations < 8 else { return nil }
             let preparedID = UUID()
             result?.image.renderContextID = preparedID
             pendingMaterialRevisions[preparedID] = source.revision
@@ -223,6 +222,12 @@ public actor PhotoDocument: EditHost {
     private func invalidateMaterialSources() {
         renderRevision = UUID()
         materialSources.removeAll()
+    }
+
+    /// Preparations still applicable to the current photo. Stale entries stay
+    /// recorded as rejections but do not occupy the waiting limit.
+    private var waitingMaterialPreparations: Int {
+        pendingMaterialRevisions.values.filter { $0 == renderRevision }.count
     }
 
     /// The photo as it is now, framed, over `region`.
@@ -293,6 +298,7 @@ public actor PhotoDocument: EditHost {
             _ = try Self.bounds(of: rect, in: canvas.extent)
         }
         if let id = materialContextID, let expected = pendingMaterialRevisions[id] {
+            // A stale preparation stays recorded, so a retry is rejected too.
             guard expected == renderRevision else {
                 throw LumenError.invalidResponse("The photo changed before its prepared material edit could be applied.")
             }

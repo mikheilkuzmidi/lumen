@@ -14,6 +14,9 @@ actor BatchRun {
     private var photos: [PhotoID] = []
     private var facts: [PhotoID: PhotoFacts] = [:]
     private var reviews: [PhotoID: PhotoReview] = [:]
+    /// Only a successful content review can establish eligibility. Quality
+    /// measurements and the text planner cannot add to this set.
+    private var verifiedInstructionPhotos: Set<PhotoID> = []
     private var results: [PhotoID: BatchPhotoResult] = [:]
     private var changed: Set<PhotoID> = []
     private var completed: Set<PhotoID> = []
@@ -178,11 +181,15 @@ actor BatchRun {
             }
         }
         var draft = plan
-        draft.groups = plan.groups.compactMap { group in
+        draft.groups = try plan.groups.compactMap { group in
             var group = group
             group.photos.removeAll { excluded.contains($0) }
             if let instruction = approval.instructionOverrides[group.id] {
                 group.instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if group.instruction != nil, reviewer != nil,
+               !group.photos.allSatisfy({ verifiedInstructionPhotos.contains($0) }) {
+                throw LumenError.invalidResponse("This group contains photos not visually verified for the requested edit. Run a new content review before adding an instruction.")
             }
             return group.photos.isEmpty ? nil : group
         }
@@ -271,19 +278,23 @@ actor BatchRun {
                 let matches = response.filter { $0.photo == input.photo }
                 guard matches.count == 1, let review = matches.first, review.quality.isFinite,
                       (0...1).contains(review.quality) else {
+                    if hasContentInstruction { throw contentReviewFailure() }
                     try record(LumenError.invalidResponse("Expected one review with a quality from 0 to 1."), for: input.photo)
                     continue
                 }
                 reviews[input.photo] = review
+                if review.matchesInstruction { verifiedInstructionPhotos.insert(input.photo) }
                 results[input.photo]?.levelLine = review.levelLine
                 events.yield(.reviewed(review))
             }
         } catch is BatchCallLimit {
+            if hasContentInstruction { throw contentReviewFailure() }
             return
         } catch {
             // A review that failed as a whole (a timeout, a refusal) leaves its photos judged by measurement, as without
             // a reviewer, so they still get their base pass: one slow answer lost a whole shoot's edit.
             if isCancellation(error) { throw LumenError.cancelled }
+            if hasContentInstruction { throw contentReviewFailure() }
             for input in inputs {
                 let review = measuredReview(input.photo, facts: input.facts)
                 reviews[input.photo] = review
@@ -292,6 +303,14 @@ actor BatchRun {
                 events.yield(.reviewed(review))
             }
         }
+    }
+
+    private var hasContentInstruction: Bool {
+        options.instruction?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func contentReviewFailure() -> LumenError {
+        .invalidResponse("The visual content review could not be completed. No photos were changed. Try planning again before applying the requested edit.")
     }
 
     /// Measurement-only quality averages detail, balanced exposure and unclipped coverage.
@@ -314,7 +333,7 @@ actor BatchRun {
             reason = nil
         }
         return PhotoReview(photo: photo, misfire: reason != nil, misfireReason: reason, quality: quality,
-                           description: "Measured photo", group: photo.rawValue, matchesInstruction: true)
+                           description: "Measured photo", group: photo.rawValue, matchesInstruction: false)
     }
 
     private func isMisfire(_ photo: PhotoID) -> Bool {
@@ -443,9 +462,9 @@ actor BatchRun {
             events.yield(.planned(plan))
             return plan
         }
-        // Every kept photo goes to the planner, with the reviewer's word on whether the instruction applies as a
-        // hint: a reviewer looking at twenty thumbnails at once misses some, and the planner sees the whole library.
-        let matching = kept.compactMap { reviews[$0] }
+        // Text planning receives only photos admitted by the successful visual
+        // review. It may narrow that set, never overrule a negative decision.
+        let matching = kept.filter { verifiedInstructionPhotos.contains($0) }.compactMap { reviews[$0] }
         guard !matching.isEmpty else {
             let plan = basePlan(kept)
             events.yield(.planned(plan))
@@ -473,12 +492,15 @@ actor BatchRun {
     }
 
     private func basePlan(_ kept: [PhotoID]) -> BatchPlan {
-        BatchPlan(summary: "Apply the base pass and give low-quality photos a closer look.",
+        BatchPlan(summary: hasContentInstruction && reviewer != nil
+                  ? "Only the separately listed base actions are planned; no instruction edits are planned."
+                  : "Apply the base pass and give low-quality photos a closer look.",
                   groups: [BatchGroup(id: "library", title: "Library", photos: kept, instruction: nil)])
     }
 
     private func checked(_ plan: BatchPlan, kept: [PhotoID], matching: Set<PhotoID>) -> BatchPlan {
         var plan = plan
+        let allowedBase = Set(kept)
         var seen: Set<PhotoID> = []
         var groupIDs: Set<String> = []
         plan.groups = plan.groups.compactMap { group in
@@ -487,7 +509,8 @@ actor BatchRun {
             group.id = baseID.isEmpty ? "group" : baseID
             while !groupIDs.insert(group.id).inserted { group.id += "-group" }
             var inGroup: Set<PhotoID> = []
-            group.photos = group.photos.filter { matching.contains($0) && inGroup.insert($0).inserted }
+            let allowed = group.instruction == nil ? allowedBase : matching
+            group.photos = group.photos.filter { allowed.contains($0) && inGroup.insert($0).inserted }
             seen.formUnion(group.photos)
             return group.photos.isEmpty ? nil : group
         }
@@ -496,6 +519,19 @@ actor BatchRun {
             var id = "base"
             while plan.groups.contains(where: { $0.id == id }) { id += "-base" }
             plan.groups.append(BatchGroup(id: id, title: "Base pass", photos: other, instruction: nil))
+        }
+        let retainedGroups = Set(plan.groups.map(\.id))
+        plan.questions = plan.questions.compactMap { question in
+            var question = question
+            if !question.groups.isEmpty {
+                question.groups = question.groups.filter { retainedGroups.contains($0) }
+                guard !question.groups.isEmpty else { return nil }
+            }
+            question.photos = question.photos?.filter { allowedBase.contains($0) }
+            return question
+        }
+        if !plan.groups.contains(where: { $0.instruction != nil }) {
+            plan.summary = basePlan(kept).summary
         }
         return plan
     }

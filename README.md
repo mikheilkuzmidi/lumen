@@ -45,13 +45,13 @@ An editor can also use the finding step on its own. `AreaSearch` looks for a nam
 ## A whole library
 
 ```sh
-lumen batch shoot/ "Make everyone's T-shirts blue" --out edited/ --mode ask
+lumen batch shoot/ "Make the shirts in these photos blue" --out edited/ --mode ask
 ```
 
 1. **Look.** Every photo is measured on the Mac: sharpness, exposure, clipping, the horizon's tilt with Vision, and the lean of its long straight lines. Muse Spark then reviews numbered contact sheets of 20. For each photo it gives a misfire verdict, quality, description and group, says whether the instruction applies, and names the line that should be level, if any.
 2. **Base pass.** Misfires (shaken frames, pocket shots) are flagged and left out. Everything else gets a gentle auto tone and colour. A photo is straightened only when its own walls and poles, or with none of those its horizon or shoreline, lean with the tilt Vision measured: perspective, a receding shore or a slope reads as tilt too, and is left alone.
 3. **Closer look.** Photos still under the quality threshold get their own edit.
-4. **The instruction.** Muse Wonder groups the photos it applies to and writes each photo's instruction. It asks what only you can decide, whatever the instruction is about, such as a near match it would otherwise decide alone ("include the woman's red sweatshirt too?" for T-shirts), each with a recommendation; a shade or how strong takes the usual reading. Then each photo is edited by its own agent, a few at a time.
+4. **The instruction.** Muse Wonder groups only photos admitted by the visual review and writes each photo's instruction. Text planning can narrow that set, but cannot add a photo the review rejected. If the content review fails, instruction editing stops before photos or flags change. When a visible near match needs your decision, the planner can ask a question with a recommendation. Then each photo is edited by its own agent, a few at a time.
 
 There are three modes:
 
@@ -59,9 +59,7 @@ There are three modes:
 - **Ask:** waits for your answers.
 - **Plan first:** shows the plan and its estimated model calls, and changes nothing until you approve.
 
-Results are written to a separate folder with a sidecar per photo, a summary of every answer and who gave it, and before and after contact sheets. The originals are never written. Lumen Studio has the same flow in its Library window (File › Open Folder).
-
-![Lumen Studio's Library after Muse Glimmer's review on this Mac: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten the two tilted photos, highlighted?), with a recommendation](docs/images/studio-library-question.jpg)
+Results are written to a separate folder with a sidecar per photo, a summary of every answer and who gave it, and before and after contact sheets. The originals are never written. Lumen Studio has the same flow in its Library window (File › Open Folder), with explicit Selected photos, Current view and Entire library scopes. In Plan first, review the separate Auto, straightening and flagging actions, revise group instructions, and exclude photos before approving. Exclusions also prevent those base actions.
 
 ## Models
 
@@ -79,7 +77,7 @@ Lumen uses your own Meta API key. Set `META_API_KEY`, or enter it in Lumen Studi
 
 ### What an edit costs
 
-Every model call is priced from Meta's published prices and recorded in the trace, and `lumen edit` prints the total. A one-photo edit costs about 3 cents:
+Every model call is priced from Meta's published prices and recorded in the trace, and `lumen edit` prints the total. The November 2 coat and shirt recordings cost $0.043160 and $0.045816 respectively, each with:
 - a plan and a check with Muse Spark;
 - a SAM 3.1 selection, plus SAM's check of the redraw;
 - one Muse Image redraw.
@@ -103,21 +101,21 @@ swift build -c release
 ```
 
 What to expect:
-- It takes about half a minute and five model calls, and costs about 3 cents. The command prints the cost, and `yellow.json` has every plan, call and check.
+- The November 2 coat recording used five model calls and cost $0.043160. Provider time varies. The command prints the run's cost, and `yellow.json` has every plan, call and check.
 - A follow-up remembers the edit: run Lumen Studio, or see [Follow-ups and undo](docs/evaluation.md#follow-ups-and-undo).
 
 For a whole library, plan-first mode shows the plan and waits for approval before changing anything:
 
 ```sh
-.build/release/lumen batch Fixtures/library "Make everyone's T-shirts blue" --out results --mode plan
+.build/release/lumen batch Fixtures/library "Make the shirts in these photos blue" --out results --mode plan
 ```
 
-The last full run of this library, autonomous, took 42 model calls in 361 s and cost $0.52.
+An October 30 autonomous run of this library took 42 model calls in 361 s and cost $0.52. That historical run predates the current planning and rendering changes; see [the dated evaluation](docs/evaluation.md).
 
 ### Without a key
 
-Two live edits are recorded in [`Samples/`](Samples/README.md), every answer the Meta models gave. Replayed, they run
-the whole edit again on your Mac, with no key, no account and no cost, and make the same result:
+Three live edits are recorded in [`Samples/`](Samples/README.md), with every answer the Meta models gave. Replayed, they run
+the whole edit again on your Mac, with no key, no account and no new provider charge. They use the current renderer, including corrections to edge residue found in the original recordings:
 
 ```sh
 .build/release/lumen edit Fixtures/photos/man-in-denim-jacket-posing.jpg "Dress the man up as a medieval knight" \

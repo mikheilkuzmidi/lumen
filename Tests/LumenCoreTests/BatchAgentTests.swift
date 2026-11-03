@@ -256,8 +256,8 @@ struct BatchAgentTests {
         #expect(requests.count == 2)
         #expect(requests[0].answers.isEmpty)
         #expect(requests[1].answers == ["shirts": "Sky blue"])
-        // The planner sees every kept photo and decides; here it plans only the one the reviewer matched.
-        #expect(requests.allSatisfy { $0.reviews.map(\.photo) == [PhotoID("photo-0"), PhotoID("photo-1")] })
+        // Text planning receives only the successfully verified eligible photo.
+        #expect(requests.allSatisfy { $0.reviews.map(\.photo) == [PhotoID("photo-0")] })
         #expect(await planner.plans.map(\.instruction) == ["Make the shirts Sky blue"])
         #expect(await library.saved == [PhotoID("photo-0")])
         let summary = try batchTestSummary(events)
@@ -507,13 +507,18 @@ struct BatchAgentTests {
     @Test func zeroBudgetMakesNoCalls() async throws {
         let library = BatchTestLibrary([batchTestFacts()])
         let reviewer = BatchTestReviewer()
-        let events = try await batchTestCollect(await batchTestAgent(library, reviewer: reviewer).run(
-            BatchOptions(mode: .autonomous, instruction: "Blue shirts", straighten: false, maxModelCalls: 0)))
+        let agent = batchTestAgent(library, reviewer: reviewer)
+        await #expect(throws: LumenError.self) {
+            _ = try await batchTestCollect(await agent.run(
+                BatchOptions(mode: .autonomous, instruction: "Blue shirts", straighten: false, maxModelCalls: 0)))
+        }
         #expect(await reviewer.reviewRequests.isEmpty)
         #expect(await reviewer.planRequests.isEmpty)
         #expect(await library.autos.isEmpty)
-        #expect(try batchTestSummary(events).modelCalls == 0)
-        #expect(try batchTestSummary(events).photos.count == 1)
+        #expect(await library.flags.isEmpty)
+        let snapshot = try #require(await agent.snapshot())
+        #expect(snapshot.summary.modelCalls == 0)
+        #expect(snapshot.summary.photos.count == 1)
     }
 
     @Test func cancellationStopsRunningPhotoAgentsAndDoesNotStartMorePhotos() async throws {

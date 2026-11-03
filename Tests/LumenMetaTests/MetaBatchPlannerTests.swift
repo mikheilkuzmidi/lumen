@@ -140,7 +140,8 @@ import Testing
                  "recommendation", "small or partly hidden", "Never ask what the photos themselves can answer", "Make his T-shirt royal blue",
                  "a colour named is a clear, true shade of it", "keeps their own clothes'\nstyle",
                  "With every answer given, the plan has no questions",
-                 "photo with likelyMatch true unless its description rules the instruction out",
+                 "Text planning may narrow visual eligibility, never expand it",
+                 "Never put a likelyMatch false photo in an instructed group",
                  "The summary is one short sentence the person reads above the plan", "Nothing about the request",
                  "never leave that photo out or put it in silently", "(\"Include\nthe woman's red sweatshirt too?\")",
                  "answered no, leave the group out"] {

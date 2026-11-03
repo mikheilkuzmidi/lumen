@@ -172,7 +172,7 @@ actor BatchTestReviewer: BatchPlanner {
         let open = repeatQuestions ? [BatchQuestion(id: "round-\(planRequests.count)", question: "Which blue?",
                                                     options: question.options, recommended: 0)] : questions
         return BatchPlan(summary: "Colour the shirts", groups: [
-            // Like the real planner, it takes the reviewer's hint about which photos the instruction applies to.
+            // The engine admits only visually verified photos for instructed groups.
             BatchGroup(id: "people", title: "People", photos: request.reviews.filter(\.matchesInstruction).map(\.photo),
                        instruction: "Make the shirts \(request.answers["shirts"] ?? "navy")"),
         ], questions: open)

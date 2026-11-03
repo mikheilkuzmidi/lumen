@@ -137,7 +137,10 @@ public struct MetaBatchPlanner: BatchPlanner {
     Quality is how good the photo is as it stands: 0 is unusable, 1 needs nothing.
     Describe what the photo shows in a few words, including subjects and relevant clothing or objects.
     Group is a short key shared by photos of the same scene or subjects.
-    matchesInstruction says whether the instruction applies to this photo; false when there is no instruction. An
+    matchesInstruction is visual eligibility for planning the instruction, not image quality. It is false when the
+    requested subject or relevant content is absent, and false when there is no instruction. When a visible near
+    match could reasonably be intended but needs the person's decision, mark it eligible and describe that
+    ambiguity explicitly so the planner can ask; do not silently treat it as an exact match. An
     instruction about what people wear doesn't apply to people seen only as dark silhouettes against the light: no
     colour of their clothes shows to change.
     levelLine names the line in the photo that should be level, whatever its angle now: horizon where sky meets land or
@@ -161,10 +164,11 @@ public struct MetaBatchPlanner: BatchPlanner {
     for example "Turn everyone's T-shirts royal blue; the other photos get the base pass". Nothing about the request,
     the number of photos or what to do next.
     Group photos that should receive the same edit. Use only supplied photo numbers, once each at most,
-    and include only photos the instruction applies to. likelyMatch is the reviewer's judgement of that from the
-    photo itself; a description is only a few words and can leave out what the instruction is about. Include every
-    photo with likelyMatch true unless its description rules the instruction out, and a photo with likelyMatch
-    false only when its description shows the instruction applies. Give each group a short unique id and title.
+    and include only photos the instruction applies to. likelyMatch is a mandatory visual eligibility boundary,
+    established by the reviewer from the photo itself. Never put a likelyMatch false photo in an instructed group,
+    even when its description sounds relevant. Include every photo with likelyMatch true unless its description
+    rules the instruction out. Text planning may narrow visual eligibility, never expand it. Give each group a short
+    unique id and title. Base-pass groups with null instructions may retain other supplied photos.
     Write each group's instruction for each photo's own editing agent in that agent's own terms,
     for example "Make his T-shirt royal blue, same cut and folds". Ask for what the instruction asks and nothing
     more: auto tone, colour and straightening are already done for every photo, so never ask the agent to

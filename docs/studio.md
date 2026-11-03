@@ -90,25 +90,23 @@ Selection and redraw snapshots are omitted when the plan never reaches those eve
 
 ## Library window
 
-![The Library window after Muse Glimmer's review on this Mac: every photo measured, two flagged for attention, and the one question that is yours to decide (straighten the two tilted photos, highlighted?), with a recommendation](images/studio-library-question.jpg)
-
-![The Library window in plan-first mode: Muse Glimmer's plan for "Make everyone's T-shirts blue" across 16 photos, the photos it covers highlighted, the estimate, and Stop or Approve Plan](images/studio-library-plan.jpg)
-
 Choose **File › Open Folder…** (⇧⌘O), or drop a folder on a Studio window. Each folder opens its own Library window. Lumen lists JPEG, PNG, HEIC and camera RAW photos directly in that folder. The grid loads thumbnails as they become visible and keeps a bounded image cache, including for libraries of 1,000 photos.
 
 Results default to `<folder>/Lumen`. Use **Change folder…** before Run to choose a different destination. The destination must be separate from the originals. **Results** reveals it in Finder. HEIC and RAW files export as JPEG; each exported photo has a `.lumen.json` sidecar with its layer labels, rotation and any misfire flag.
 
-Enter an instruction for the library, or leave it blank for the base pass. Choose a mode:
+Choose **Selected photos**, **Current view** or **Entire library** beside the prompt. The count states exactly which photos will be planned. Current view contains the folder's photos in this window. Select individual photos using the control revealed on hover or the photo's context menu. The target IDs are frozen when planning starts; changing the scope requires another plan.
+
+Enter an instruction such as "Make the shirts on the selected photos blue", or leave it blank for the base pass. Choose a mode:
 
 - **Autonomous** takes recommended answers without waiting. Each choice appears briefly as **Decided: …** and remains in Decisions and the event history.
-- **Ask me** pauses for personal choices. A card above the grid shows the question and its options, with the recommendation marked. Affected photos have an accent outline. Choose an option to continue.
-- **Plan first** reviews the library and asks its questions before making changes. The plan panel shows each group's title, photo count and instruction, plus estimated remaining model calls. Select a group to highlight its photos. **Approve Plan** starts the edits; **Stop** stops without applying the base pass or edits, as in the Lumen editor's library sheet.
+- **Ask me** pauses for personal choices. The review sidebar shows the question and its options, with the recommendation marked. Affected photos have an accent outline. Choose an option to continue.
+- **Plan first** reviews the scoped photos and asks its questions before making changes. A compact status surface sits above the prompt; the collapsible review sidebar contains each group's thumbnails and editable instruction, the separate Auto, straightening and flagging actions, and estimated remaining model calls. Exclude photos or revise instructions before approving. The estimate updates with the draft. Excluded photos receive no edits, base adjustments or flags. Approval starts the exact accepted draft; a stale approval cannot run. **Stop** discards the pending plan without applying its changes.
 
-The side panel controls **Auto**, **Straighten** (Ask, Yes or No), **Flag misfires**, and the **quality threshold**. The agent measures and reviews the library, flags misfires, applies the base pass, gives low-quality photos a closer look, and plans the instruction across the remaining photos. Straighten Ask raises a question only when a horizon looks tilted. Misfires stay in the source folder and are left out of later editing.
+The side panel controls **Auto**, **Straighten** (Ask, Yes or No), **Flag misfires**, and the **quality threshold**. The agent measures and visually reviews the scoped photos. Only photos admitted by that review can enter an instructed group; a text plan cannot override a negative review. If content review fails, it stops before changing photos or flags. In Plan first, every mutation waits for approval. Straighten Ask raises a question only when supported lines agree that the camera was tilted. Misfires stay in the source folder and are left out of later editing.
 
 The planner menu uses the same saved backends and settings as the photo window. The selected planner also reviews the library's contact sheets and plans its groups. SAM 3.1 and Muse Image still use the Meta key. The status line, progress bar, completed count, model call count and latest events update during the run. **Stop** cancels an edit or a pending question or approval.
 
-Cells show Measured, Misfire, Auto, Straightened, Edited, Needs attention and Failed badges as events arrive. Hover a misfire or failure to read its reason. **Before** switches the grid to the originals. Once the library has finished or stopped, click a photo to open its retained document in the photo window. Its batch layers, assets and straightening are available there: toggle them, change layer opacity, undo or redo, and export. These controls change the retained document; use Export to write further changes to disk. Open the folder again to start another batch run.
+The grid keeps photos clear of metadata strips. Native delayed hover help and **Photo Info…** in the context menu show the filename, dimensions, status and any failure reason. **Before / After** switches the grid to the originals. Once the library has finished or stopped, click a photo to open its retained document in the photo window. Its batch layers, assets and straightening are available there: toggle them, change layer opacity, undo or redo, and export. These controls change the retained document; use Export to write further changes to disk. Open the folder again to start another batch run.
 
 ### Script a library
 

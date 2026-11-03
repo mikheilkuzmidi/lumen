@@ -52,7 +52,7 @@ lumen batch Fixtures/library "Make everyone's shirts blue" --out results/library
 lumen batch Fixtures/library --out results/library --mode autonomous --concurrency 3
 ```
 
-`lumen batch <folder> ["instruction"] --out <folder>` reviews the library with Muse Spark, flags misfires, applies automatic tone and colour, and offers to straighten tilted horizons. Low-quality photos get a closer look from their own editing agent. When an instruction is supplied, the library reviewer groups the matching photos and writes each group's edit. Each photo's changes remain separate layers. JPEG, PNG, HEIC and camera RAW files directly inside the folder are included; HEIC and RAW export as `.jpg`. `lumen edit` opens the same formats. The output folder is created as needed and must be separate from the originals.
+`lumen batch <folder> ["instruction"] --out <folder>` reviews the library with Muse Spark, flags misfires, applies automatic tone and colour, and offers to straighten tilted horizons. Low-quality photos get a closer look from their own editing agent. When an instruction is supplied, only photos admitted by the visual review can enter an instructed group. The text planner may narrow that set, but cannot add rejected photos. A failed content review stops instruction editing before base edits or flags are written. Each photo's changes remain separate layers. JPEG, PNG, HEIC and camera RAW files directly inside the folder are included; HEIC and RAW export as `.jpg`. `lumen edit` opens the same formats. The output folder is created as needed and must be separate from the originals.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

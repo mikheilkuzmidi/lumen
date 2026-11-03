@@ -17,7 +17,7 @@ struct BatchAgentLifecycleTests {
         #expect(await library.saved == [good])
     }
 
-    @Test func eachGroupCanEditTheSamePhotoAndThePlannerDecidesWhichPhotosMatch() async throws {
+    @Test func eachGroupCanEditTheSameVerifiedPhotoButTextCannotOverrideVisualRejection() async throws {
         let photo = PhotoID("photo-0")
         let bad = PhotoID("photo-1")
         let other = PhotoID("photo-2")
@@ -30,12 +30,12 @@ struct BatchAgentLifecycleTests {
         let planner = BatchTestPlanner()
         let events = try await batchTestCollect(await batchTestAgent(library, reviewer: reviewer, planner: planner).run(
             BatchOptions(mode: .autonomous, instruction: "Warm the photo and add contrast", auto: false, straighten: false)))
-        // Misfires, unknown ids and repeats are dropped; a photo the reviewer did not match is edited when the
-        // planner, which sees the whole library, includes it.
-        #expect(events.batchEdits.map(\.rawValue).sorted() == ["photo-0", "photo-0", "photo-2"])
-        #expect(await planner.plans.map(\.instruction).sorted() == ["Add contrast", "Warm the photo", "Warm the photo"])
-        #expect(Set(await library.saved) == [photo, other])
-        #expect(try batchTestSummary(events).modelCalls == 8)
+        // Misfires, unknown IDs, repeats and visually rejected targets cannot
+        // be admitted by text planning. Verified photos may receive two edits.
+        #expect(events.batchEdits.map(\.rawValue).sorted() == ["photo-0", "photo-0"])
+        #expect(await planner.plans.map(\.instruction).sorted() == ["Add contrast", "Warm the photo"])
+        #expect(Set(await library.saved) == [photo])
+        #expect(try batchTestSummary(events).modelCalls == 6)
         #expect(events.batchProgress == [1, 2, 3])
     }
 
@@ -62,6 +62,8 @@ struct BatchAgentLifecycleTests {
         #expect(await library.autos == [PhotoID("photo-0")])
         #expect(await library.saved == [PhotoID("photo-0")])
         #expect(summary.photos.allSatisfy { ($0.outcome ?? "").contains("The library review failed") })
+        let measured = events.compactMap { if case .reviewed(let review) = $0 { review } else { nil } }
+        #expect(measured.allSatisfy { !$0.matchesInstruction }, "Quality measurement is not visual content permission")
     }
 
     @Test func aFinishedAgentCanRunAnotherBatchImmediately() async throws {

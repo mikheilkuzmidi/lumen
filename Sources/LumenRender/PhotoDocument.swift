@@ -17,8 +17,24 @@ public actor PhotoDocument: EditHost {
     private let sourceColorSpace: CGColorSpace
     private let context: CIContext
     private let capturedAt: Date?
+    private let originalIsKnownSDR: Bool
+    private let originalMaterialSourceIsComplete: Bool
+    private let originalAlphaImage: CIImage?
     private var masks: [UUID: CIImage] = [:]
     private var patches: [UUID: CIImage] = [:]
+    private var renderRevision = UUID()
+    private struct MaterialSource {
+        let id: UUID
+        let revision: UUID
+        let region: NormalizedRect
+        let input: EncodedImage
+        let image: CIImage
+        let allowsSDRGamutMapping: Bool
+    }
+    private var materialSources: [MaterialSource] = []
+    /// First insertion must still match the source revision. After successful
+    /// insertion the asset is ordinary retained history and can be replayed.
+    private var pendingMaterialRevisions: [UUID: UUID] = [:]
 
     public init(contentsOf url: URL) throws {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
@@ -26,6 +42,7 @@ public actor PhotoDocument: EditHost {
         }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let oriented: CIImage
+        let mayHaveAlpha: Bool
         if PhotoFormats.isRaw(url) {
             // A camera RAW is developed by Core Image with the camera's own defaults (white balance, exposure, lens
             // corrections), upright, and kept at full precision; it is saved as sRGB.
@@ -34,6 +51,9 @@ public actor PhotoDocument: EditHost {
                 throw LumenError.invalidResponse("This RAW photo could not be developed on this Mac.")
             }
             oriented = developed
+            originalIsKnownSDR = false
+            originalMaterialSourceIsComplete = true // CIRAWFilter retains scene-linear precision.
+            mayHaveAlpha = false
             sourceColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
         } else {
             guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
@@ -41,12 +61,24 @@ public actor PhotoDocument: EditHost {
             }
             let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.int32Value ?? 1
             oriented = CIImage(cgImage: image).oriented(forExifOrientation: orientation)
+            let sourceDepth = (properties?[kCGImagePropertyDepth] as? NSNumber)?.intValue
+            let hasGainMap = CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
+                || CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
+            // Default ImageIO decoding can reduce a floating TIFF or a gain
+            // map to an SDR CGImage. That is not evidence the original was
+            // bounded SDR, so it cannot authorize this optional pixel path.
+            originalMaterialSourceIsComplete = sourceDepth.map { $0 <= image.bitsPerComponent } == true && !hasGainMap
+            originalIsKnownSDR = sourceDepth == 8 && image.bitsPerComponent == 8 && !image.bitmapInfo.contains(.floatComponents)
+                && image.contentHeadroom.isFinite && image.contentHeadroom <= 1
+                && !hasGainMap
+            mayHaveAlpha = ![CGImageAlphaInfo.none, .noneSkipFirst, .noneSkipLast].contains(image.alphaInfo)
             let colorSpace = image.colorSpace
             sourceColorSpace = (colorSpace?.model == .indexed ? colorSpace?.baseColorSpace : colorSpace)
                 ?? CGColorSpace(name: CGColorSpace.sRGB)!
         }
         photo = oriented.transformed(by: CGAffineTransform(translationX: -oriented.extent.minX,
                                                          y: -oriented.extent.minY))
+        originalAlphaImage = mayHaveAlpha ? photo : nil
         canvas = photo
         capturedAt = PhotoStatistics.capturedAt(in: properties)
         context = CIContext(options: [
@@ -79,6 +111,7 @@ public actor PhotoDocument: EditHost {
         let bounds = CGRect(x: -cropWidth / 2, y: -cropHeight / 2, width: cropWidth, height: cropHeight)
         canvas = rotated.cropped(to: bounds)
             .transformed(by: CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
+        invalidateMaterialSources()
     }
 
     public func render(maxLongEdge: Int) async throws -> EncodedImage {
@@ -87,7 +120,7 @@ public actor PhotoDocument: EditHost {
 
     public func render(region: NormalizedRect, maxLongEdge: Int) async throws -> EncodedImage {
         let bounds = try Self.bounds(of: region, in: cropBounds())
-        return try preview(in: bounds, maxLongEdge: maxLongEdge)
+        return try preview(in: bounds, maxLongEdge: maxLongEdge, materialRegion: region)
     }
 
     public func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData {
@@ -100,6 +133,96 @@ public actor PhotoDocument: EditHost {
 
     public func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch? {
         try EditSupport.recolourEdges(generated, over: original, within: mask)
+    }
+
+    public func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect,
+                                instances: [MaskData]) async throws -> PreparedPatch? {
+        try Task.checkCancellation()
+        guard originalMaterialSourceIsComplete else { return nil }
+        // Old recordings and other hosts carry no local render provenance.
+        // They retain the established edge path, rather than rereading a
+        // possibly changed photo under an old generation result.
+        guard let id = original.renderContextID else { return nil }
+        let source = try materialSource(id, original: original, region: region)
+        let alphaImage = originalAlphaImage
+        guard pendingMaterialRevisions.count < 8 else {
+            throw LumenError.invalidResponse("Too many material edits are waiting to be applied.")
+        }
+        let worker = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let context = CIContext(options: [
+                .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
+                .workingFormat: CIFormat.RGBAh, .cacheIntermediates: false,
+            ])
+            let bounds = CGRect(x: 0, y: 0, width: original.size.width, height: original.size.height)
+            let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+            // The ordinary preview flattens alpha for its JPEG. Verify actual
+            // source opacity before that representation can hide transparency.
+            if let alphaImage {
+                let alphaBounds = alphaImage.extent
+                let width = Int(alphaBounds.width), height = Int(alphaBounds.height)
+                var alpha = [Float](repeating: 0, count: width * height)
+                context.render(alphaImage, toBitmap: &alpha, rowBytes: width * 4,
+                               bounds: alphaBounds, format: .Af, colorSpace: nil)
+                for i in alpha.indices {
+                    if i & 8191 == 0 { try Task.checkCancellation() }
+                    guard alpha[i].isFinite, abs(alpha[i] - 1) <= 0.00001 else { return nil as PreparedPatch? }
+                }
+            }
+            var samples = [Float](repeating: 0, count: original.size.width * original.size.height * 4)
+            context.render(source.image, toBitmap: &samples, rowBytes: original.size.width * 16,
+                           bounds: bounds, format: .RGBAf, colorSpace: space)
+            // Known untouched 8-bit SDR can contain extended finite codec /
+            // colour-conversion values even before any scaling. Its normal
+            // sRGB PNG representation is the canonical display gamut. Unknown
+            // or edited sources retain strict HDR/radiance bounds.
+            for pixel in stride(from: 0, to: samples.count, by: 4) {
+                if pixel & 32767 == 0 { try Task.checkCancellation() }
+                guard (0..<3).allSatisfy({ samples[pixel + $0].isFinite
+                          && (source.allowsSDRGamutMapping || (samples[pixel + $0] >= 0 && samples[pixel + $0] <= 1)) }),
+                      samples[pixel + 3].isFinite, abs(samples[pixel + 3] - 1) <= 0.00001 else {
+                    return nil as PreparedPatch?
+                }
+            }
+            try Task.checkCancellation()
+            guard let data = context.pngRepresentation(of: source.image, format: .RGBA8,
+                                                       colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else {
+                throw LumenError.invalidResponse("The captured material source could not be encoded.")
+            }
+            let lossless = EncodedImage(data: data, format: .png, size: original.size)
+            let result = try EditSupport.materialRecolour(generated, over: lossless, instances: instances)
+            try Task.checkCancellation()
+            return result
+        }
+        var result = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        try Task.checkCancellation()
+        _ = try materialSource(id, original: original, region: region)
+        if result != nil {
+            guard pendingMaterialRevisions.count < 8 else {
+                throw LumenError.invalidResponse("Too many material edits are waiting to be applied.")
+            }
+            let preparedID = UUID()
+            result?.image.renderContextID = preparedID
+            pendingMaterialRevisions[preparedID] = source.revision
+        }
+        return result
+    }
+
+    private func materialSource(_ id: UUID, original: EncodedImage, region: NormalizedRect) throws -> MaterialSource {
+        guard let source = materialSources.first(where: { $0.id == id }), source.revision == renderRevision,
+              source.region == region, source.input.size == original.size, source.input == original else {
+            throw LumenError.invalidResponse("The photo changed after its material source was rendered.")
+        }
+        return source
+    }
+
+    private func invalidateMaterialSources() {
+        renderRevision = UUID()
+        materialSources.removeAll()
     }
 
     /// The photo as it is now, framed, over `region`.
@@ -149,6 +272,7 @@ public actor PhotoDocument: EditHost {
     public func apply(_ layer: Layer, assets: AssetStore) async throws {
         var mask: CIImage?
         var patch: CIImage?
+        var materialContextID: UUID?
         switch layer.content {
         case .adjustment(_, let id):
             // A selection's edge is fitted to the photo once, when its layer is added.
@@ -164,8 +288,15 @@ public actor PhotoDocument: EditHost {
             }
             patch = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX,
                                                             y: -image.extent.minY))
+            materialContextID = encoded.renderContextID
         case .crop(let rect):
             _ = try Self.bounds(of: rect, in: canvas.extent)
+        }
+        if let id = materialContextID, let expected = pendingMaterialRevisions[id] {
+            guard expected == renderRevision else {
+                throw LumenError.invalidResponse("The photo changed before its prepared material edit could be applied.")
+            }
+            pendingMaterialRevisions[id] = nil
         }
         var layer = layer
         layer.opacity = Self.opacity(layer.opacity)
@@ -176,24 +307,28 @@ public actor PhotoDocument: EditHost {
         }
         masks[layer.id] = mask
         patches[layer.id] = patch
+        invalidateMaterialSources()
     }
 
     public func remove(_ layer: Layer.ID) async throws {
         stack.layers.removeAll { $0.id == layer }
         masks[layer] = nil
         patches[layer] = nil
+        invalidateMaterialSources()
     }
 
     /// Turns a layer on or off without changing its pixels.
     public func setEnabled(_ enabled: Bool, for layer: Layer.ID) {
         guard let index = stack.layers.firstIndex(where: { $0.id == layer }) else { return }
         stack.layers[index].isEnabled = enabled
+        invalidateMaterialSources()
     }
 
     /// Sets how much of a layer is visible, from zero to one.
     public func setOpacity(_ opacity: Double, for layer: Layer.ID) {
         guard let index = stack.layers.firstIndex(where: { $0.id == layer }) else { return }
         stack.layers[index].opacity = Self.opacity(opacity)
+        invalidateMaterialSources()
     }
 
     /// Writes the photo with its layers at full size.
@@ -278,7 +413,7 @@ public actor PhotoDocument: EditHost {
         return canvas.extent
     }
 
-    private func preview(in bounds: CGRect, maxLongEdge: Int) throws -> EncodedImage {
+    private func preview(in bounds: CGRect, maxLongEdge: Int, materialRegion: NormalizedRect? = nil) throws -> EncodedImage {
         guard maxLongEdge > 0 else {
             throw LumenError.invalidResponse("The render size must be greater than zero.")
         }
@@ -291,9 +426,17 @@ public actor PhotoDocument: EditHost {
         let output = image.transformed(by: CGAffineTransform(scaleX: CGFloat(size.width) / scaledBounds.width,
                                                              y: CGFloat(size.height) / scaledBounds.height))
             .cropped(to: CGRect(x: 0, y: 0, width: size.width, height: size.height))
-        return EncodedImage(data: try encoded(output, format: .jpeg,
+        var result = EncodedImage(data: try encoded(output, format: .jpeg,
                                               colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!),
                             format: .jpeg, size: size)
+        if let region = materialRegion {
+            let id = UUID()
+            result.renderContextID = id
+            materialSources.append(MaterialSource(id: id, revision: renderRevision, region: region, input: result, image: output,
+                                                  allowsSDRGamutMapping: originalIsKnownSDR && stack.layers.isEmpty && straighteningAngle == 0))
+            if materialSources.count > 4 { materialSources.removeFirst(materialSources.count - 4) }
+        }
+        return result
     }
 
     private func rendered(scale: CGFloat) -> CIImage {

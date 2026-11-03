@@ -415,6 +415,7 @@ private actor StudioTestPhoto: StudioPhoto {
     #expect(try await host.lostDetail(before: image, after: image).count == 1)
     #expect(try await host.reshaped(image, mask: mask, face: nil, keep: nil, shoulders: 0.1, waist: -0.1)?.changed == mask)
     #expect(try await host.toneMatched(image, to: image, under: mask)?.data == Data([9]))
+    #expect(try await host.materialRecolour(image, over: image, in: .whole, instances: [mask, mask])?.image.data == Data([8]))
 }
 
 private actor AnsweringPhoto: StudioPhoto {
@@ -427,6 +428,11 @@ private actor AnsweringPhoto: StudioPhoto {
     func export(to url: URL, format: EncodedImage.Format) async throws {}
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { MaskData(size: mask.size, filledWith: 255) }
     func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { MaskData(size: mask.size, filledWith: 255) }
+    func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect,
+                          instances: [MaskData]) async throws -> PreparedPatch? {
+        guard generated == original, region == .whole, instances.count == 2 else { return nil }
+        return PreparedPatch(image: EncodedImage(data: Data([8]), format: .png, size: original.size), mask: instances[0])
+    }
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { ColourMeasurement(lightness: 42, a: 0, b: 0) }
     func lostDetail(before: EncodedImage, after: EncodedImage) async throws -> [LostDetail] {
         [LostDetail(rect: .whole, kept: 0.2)]

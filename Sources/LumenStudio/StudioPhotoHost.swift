@@ -61,6 +61,11 @@ actor StudioPhotoHost: EditHost {
         try await photo.extended(mask, region: region)
     }
 
+    func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect,
+                          instances: [MaskData]) async throws -> PreparedPatch? {
+        try await photo.materialRecolour(generated, over: original, in: region, instances: instances)
+    }
+
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? {
         try await photo.measure(image, mask: mask)
     }

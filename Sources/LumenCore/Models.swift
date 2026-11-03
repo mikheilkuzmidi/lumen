@@ -334,6 +334,13 @@ public protocol EditHost: Sendable {
     /// `mask` is the original semantic selection at the crop's size, before
     /// fitted/extended opacity; its full support and exterior define seeds.
     func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch?
+    /// Optional source-material preservation for one consistent colour-only edit of
+    /// several independently selected objects. `original` is the unchanged
+    /// generation input for normalized photo `region`. Instances are already
+    /// clipped to the approved selection, cropped to that region and resized
+    /// to `original.size`. Nil declines this path; errors must propagate.
+    func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect,
+                          instances: [MaskData]) async throws -> PreparedPatch?
     /// The colour most of `image` has, a render of the photo as it is framed now, where `mask` (over the whole photo)
     /// covers it; all of it when `mask` is nil. Nil when nothing is covered.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement?
@@ -410,6 +417,8 @@ public extension EditHost {
     func fitted(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
     func extended(_ mask: MaskData, region: NormalizedRect) async throws -> MaskData { mask }
     func recolourEdges(_ generated: EncodedImage, over original: EncodedImage, within mask: MaskData) async throws -> PreparedPatch? { nil }
+    func materialRecolour(_ generated: EncodedImage, over original: EncodedImage, in region: NormalizedRect,
+                          instances: [MaskData]) async throws -> PreparedPatch? { nil }
     /// A host that can't look at its pixels measures nothing, and the critic judges by eye alone.
     func measure(_ image: EncodedImage, mask: MaskData?) async throws -> ColourMeasurement? { nil }
     /// A host that can't look at its pixels finds no lost detail, and the critic looks at the close-ups alone.

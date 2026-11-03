@@ -125,6 +125,9 @@ public actor EditAgent {
     /// Things this run found standing on no ground in the photo, so with no shadow to select: their shadow's steps are
     /// left out on purpose, not failed.
     private var shadowless: Set<String> = []
+    /// A changed coordinate frame or non-colour transformation makes retained
+    /// instances uncertain until the agent is reset for a fresh photo state.
+    private var materialGeometryStable = true
 
     public init(planner: any Planner, segmenter: any Segmenter, generator: any Generator, host: any EditHost,
                 configuration: AgentConfiguration = AgentConfiguration()) {
@@ -159,6 +162,7 @@ public actor EditAgent {
         regions.removeAll()
         layers.removeAll()
         history.removeAll()
+        materialGeometryStable = true
     }
 
     private struct Region {
@@ -172,6 +176,8 @@ public actor EditAgent {
         var byLocation = false
         /// A deliberately drawn gradient/shadow is strength, not an object matte.
         var intentionalFalloff = false
+        /// Effective SAM instances, never raw unfiltered model candidates.
+        var materialInstances: [MaskData] = []
     }
 
     private struct AppliedLayer {
@@ -397,13 +403,18 @@ public actor EditAgent {
                 case .regenerate(let regeneration):
                     needsLook = true
                     let label = "\(title(regeneration.region)): redrawn as \(regeneration.prompt)"
-                    let notes = try await redraw(try region(regeneration.region), prompt: regeneration.prompt,
+                    var target = try region(regeneration.region)
+                    // A later area request cannot reuse broad instances from
+                    // an earlier whole-photo selection for material transfer.
+                    if area != nil { target.materialInstances = [] }
+                    let notes = try await redraw(target, prompt: regeneration.prompt,
                                                  label: label, kind: .regenerate, redraws: &redraws, events: events)
                     run.edit(regeneration.region)
                     run.done.append(label)
                     run.done.append(contentsOf: notes)
                     troubled = troubled || !notes.isEmpty
                 case .remove(let removal):
+                    invalidateMaterialInstances()
                     needsLook = true
                     let label = "\(title(removal.region)): removed"
                     let notes = try await redraw(try region(removal.region), prompt: nil, label: label, kind: .remove,
@@ -413,11 +424,13 @@ public actor EditAgent {
                     run.done.append(contentsOf: notes)
                     troubled = troubled || !notes.isEmpty
                 case .style(let restyle):
+                    invalidateMaterialInstances()
                     needsLook = true
                     try await self.restyle(restyle, run: &run, redraws: &redraws, events: events)
                 case .crop(let crop):
                     let layer = Layer(label: "Photo: cropped", content: .crop(crop.rect))
                     try await apply(layer, kind: step.type, events: events)
+                    invalidateMaterialInstances()
                     run.done.append(layer.label)
                 case .revert(let revert):
                     guard let layer = layers.first(where: { $0.info.id == revert.layer }) else {
@@ -425,6 +438,7 @@ public actor EditAgent {
                     }
                     let started = Date()
                     try await host.remove(layer.id)
+                    invalidateMaterialInstances()
                     layers.removeAll { $0.id == layer.id }
                     redraws = redraws.filter { $0.value != layer.id }
                     run.done.append("Reverted \(layer.info.label)")
@@ -568,7 +582,27 @@ public actor EditAgent {
                                            events: events) else { return nil }
         found.count = selection.invert || selection.shadowTip != nil ? 1 : segments.count
         found.byLocation = byLocation
+        if materialGeometryStable, every, !byLocation, area == nil,
+           selection.box == nil, selection.points.isEmpty, selection.colours.isEmpty,
+           !selection.invert, selection.gradient == nil, selection.shadowTip == nil,
+           found.mask.followsPhoto, segments.count >= 2, segments.allSatisfy({ $0.mask.followsPhoto }) {
+            found.materialInstances = segments.map { Self.clampedInstance($0.mask, within: found.mask) }
+                .filter { $0.boundingBox != nil }
+        }
         return found
+    }
+
+    private func invalidateMaterialInstances() {
+        materialGeometryStable = false
+        for id in Array(regions.keys) { regions[id]?.materialInstances = [] }
+    }
+
+    /// Logical clipping preserves numeric soft coverage instead of squaring
+    /// antialiased edges by multiplying a mask by its own union.
+    private static func clampedInstance(_ instance: MaskData, within approved: MaskData) -> MaskData {
+        let instance = instance.size == approved.size ? instance : instance.resized(to: approved.size)
+        return MaskData(size: approved.size, coverage: zip(instance.coverage, approved.coverage).map { min($0, $1) },
+                        followsPhoto: instance.followsPhoto && approved.followsPhoto)
     }
 
     /// Keeps a selection's mask as a region later steps can use.
@@ -707,6 +741,8 @@ public actor EditAgent {
     /// Redraws a region as `prompt` describes, or takes it out when `prompt` is nil.
     private func redraw(_ region: Region, prompt: String?, label: String, kind: TraceEvent.Kind,
                         redraws: inout [String: Layer.ID], events: Events) async throws -> [String] {
+        let materialPurpose = Self.isMaterialRecolourPrompt(prompt, instruction: history.last)
+        if kind != .regenerate || !(Self.isRecolourPrompt(prompt) || materialPurpose) { invalidateMaterialInstances() }
         try await replaceRedraw(of: region.info.id, redraws: &redraws, events: events)
         let box = region.info.box
         // A removal is filled from what is around the thing, so it gets a crop three times its size; a redraw keeps
@@ -771,6 +807,29 @@ public actor EditAgent {
             }
         }
         if let detail = attempt.note { notes.append(detail) }
+        // Preserve the provider input and call sequence. Only an accepted
+        // optional material result replaces placement; nil follows the exact
+        // established edge/transform path below.
+        if kind == .regenerate, materialPurpose, materialGeometryStable, region.materialInstances.count >= 2 {
+            // Validate support in the original coordinate frame. Max-union
+            // and bilinear resizing do not commute where instances touch;
+            // requiring equality after resizing would reject valid contact
+            // edges. Each sampled instance is still bounded by the approved
+            // crop, without filling gaps or inventing instance ownership.
+            let retainedUnion = region.materialInstances.dropFirst().reduce(region.materialInstances[0]) { $0.union($1) }
+            let instances = region.materialInstances.map {
+                Self.clampedInstance($0.cropped(to: rect).resized(to: image.size), within: original)
+            }.filter { $0.boundingBox != nil }
+            if retainedUnion.size == region.mask.size, retainedUnion.coverage == region.mask.coverage,
+               instances.count >= 2,
+               let prepared = try await host.materialRecolour(attempt.image, over: image, in: rect, instances: instances) {
+                try checkCancellation()
+                return try await place(prepared.image, mask: prepared.mask, rect: rect, label: label,
+                                       region: region.info.id, kind: kind, notes: notes, precompositedEdges: true,
+                                       redraws: &redraws, events: events)
+            }
+            try checkCancellation()
+        }
         // A recolour shows exactly where the thing is: SAM's mask held to the photo's own edges, which keeps out a
         // border the generator drew past it (a dark line along a shirt onto a black backpack) while still taking in
         // the edge's last pixels. Then it takes in the rim or shade of the same colour SAM stopped short of, which the
@@ -1588,6 +1647,39 @@ public actor EditAgent {
                                 options: .regularExpression) == nil else { return false }
         return instruction.range(of: "\\b(new|different)\\s+(pattern|logo|texture|material)\\b|\\bmake\\b[^.,;]*\\b(wooden|metallic|leather|bigger|smaller|longer|shorter)\\b",
                                  options: .regularExpression) == nil
+    }
+
+    /// The model cannot expand an ambiguous/patterned user request into a
+    /// uniform material transfer. Unknown language/colour wording declines.
+    static func isMaterialRecolourPrompt(_ prompt: String?, instruction: String?) -> Bool {
+        guard let prompt, let instruction else { return false }
+        let model = prompt.lowercased(), user = instruction.lowercased()
+        let unsafe = "\\b(gradient|ombr[eé]|rainbow|multicolou?r|striped?|stripes|pattern|checkered|plaid)\\b|two[- ]tone|different[- ]colou?rs"
+        guard model.range(of: unsafe, options: .regularExpression) == nil,
+              user.range(of: unsafe, options: .regularExpression) == nil else { return false }
+        func taskClause(_ text: String) -> String {
+            guard let range = text.range(of: "\\b(keeping|preserving|retaining|preserve|keep|retain|leave)\\b", options: .regularExpression) else { return text }
+            return String(text[..<range.lowerBound])
+        }
+        let modelTask = taskClause(model), userTask = taskClause(user)
+        let transformation = "\\b(replace|reshape|dress|costume|transform|add|remove|resize|enlarge|lengthen|shorten)\\b|\\b(new|different)\\s+(texture|material|logo)|\\b(wooden|metallic|leather|bigger|smaller|longer|shorter)\\b"
+        let spatial = "\\b(left|right|front|back|upper|lower|sleeves?|collars?|cuffs?|pockets?|halves)\\b"
+        guard modelTask.range(of: "\\b(recolou?r|dye|dyed|make|turn|change)\\b", options: .regularExpression) != nil,
+              modelTask.range(of: transformation, options: .regularExpression) == nil,
+              userTask.range(of: transformation, options: .regularExpression) == nil,
+              modelTask.range(of: spatial, options: .regularExpression) == nil,
+              userTask.range(of: spatial, options: .regularExpression) == nil else { return false }
+        func colours(_ text: String) -> Set<String> {
+            let aliases = ["navy": "blue", "maroon": "red", "burgundy": "red", "grey": "gray", "violet": "purple"]
+            let names: Set<String> = ["black", "white", "gray", "grey", "red", "blue", "green", "yellow", "orange",
+                                      "purple", "pink", "brown", "beige", "tan", "navy", "maroon", "burgundy", "violet", "teal", "cyan", "magenta"]
+            return Set(text.split { !$0.isLetter }.map(String.init).filter { names.contains($0) }.map { aliases[$0] ?? $0 })
+        }
+        let target = model.components(separatedBy: "instead of")[0].components(separatedBy: "rather than")[0]
+            .components(separatedBy: "keeping")[0].components(separatedBy: "preserving")[0]
+            .components(separatedBy: "retaining")[0].components(separatedBy: " not ")[0]
+        let requested = colours(user), proposed = colours(target)
+        return requested.count == 1 && proposed == requested
     }
 
     /// Where `box` sits in `rect`, in words: "in the centre", "on the left", "at the top right".

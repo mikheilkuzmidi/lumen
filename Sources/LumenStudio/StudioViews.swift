@@ -6,11 +6,11 @@ import LumenUI
 /// the chrome never biases how a photo's colour reads, and the orange-red accent kept for Lumen's own actions and the
 /// few marks that must catch the eye. Standard controls are tinted grey, not the accent.
 enum StudioStyle {
-    static let canvas = Color(hex: 0x0E0E0F)
-    static let panel = Color(hex: 0x161617)
-    static let raised = Color(hex: 0x1D1D1F)
-    static let hover = Color(hex: 0x242426)
-    static let line = Color(hex: 0x2A2A2D)
+    static let canvas = Color(hex: 0x0A0A0B)
+    static let panel = Color(hex: 0x0E0E0F)
+    static let raised = Color(hex: 0x141416)
+    static let hover = Color(hex: 0x1A1A1C)
+    static let line = Color(hex: 0x1E1E21)
     static let textPrimary = Color(hex: 0xE8E8EA)
     static let textSecondary = Color(hex: 0x9A9AA0)
     static let textTertiary = Color(hex: 0x5E5E64)

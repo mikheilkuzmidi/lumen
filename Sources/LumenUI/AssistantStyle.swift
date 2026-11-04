@@ -11,9 +11,9 @@ public struct AssistantStyle {
     public var danger: Color
     public var radius: CGFloat
 
-    public init(panel: Color = Color(.sRGB, white: 0.086, opacity: 1),
-                raised: Color = Color(.sRGB, white: 0.114, opacity: 1),
-                line: Color = Color(.sRGB, white: 0.17, opacity: 1),
+    public init(panel: Color = Color(.sRGB, white: 0.055, opacity: 1),
+                raised: Color = Color(.sRGB, white: 0.08, opacity: 1),
+                line: Color = Color(.sRGB, white: 0.12, opacity: 1),
                 primary: Color = Color(.sRGB, white: 0.91, opacity: 1),
                 secondary: Color = Color(.sRGB, white: 0.61, opacity: 1),
                 accent: Color = Color(red: 0.949, green: 0.333, blue: 0.165),

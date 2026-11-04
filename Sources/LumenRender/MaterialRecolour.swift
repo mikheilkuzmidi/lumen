@@ -734,8 +734,13 @@ enum MaterialRecolour {
     result.bytes = smoothed
 
     try Task.checkCancellation()
-    let changed = (0..<n).map { i -> UInt8 in
-      (0..<3).contains { source.bytes[i * 4 + $0] != result.bytes[i * 4 + $0] } ? 255 : 0
+    var changed = [UInt8](repeating: 0, count: n)
+    for i in 0..<n {
+      let at = i * 4
+      let red = source.bytes[at] != result.bytes[at]
+      let green = source.bytes[at + 1] != result.bytes[at + 1]
+      let blue = source.bytes[at + 2] != result.bytes[at + 2]
+      if red || green || blue { changed[i] = 255 }
     }
     guard changed.contains(255) else { return nil }
     // Pixels already contain their physical background term. A second

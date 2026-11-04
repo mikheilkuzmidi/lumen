@@ -175,6 +175,27 @@ struct CastShadowTests {
         #expect((0..<shadow.coverage.count).contains { $0 % size > 13 && shadow.coverage[$0] > 0 }, "the shadow goes on past them")
     }
 
+    /// A lone tree on a ridge, its shadow laid toward the horizon just behind it, came out as a dark band in the sky
+    /// above the field. A shadow keeps off the sky and still lies on the field.
+    @Test func aShadowKeepsOffTheSky() async throws {
+        let tip = NormalizedPoint(x: 0.05, y: 0.35)
+        let planner = MeasuredPlanner(plan: EditPlan(summary: "The tree's long shadow", steps: [
+            .select(Selection(id: "shadow", concept: "tree", shadowTip: tip)),
+            .adjust(Adjustment(region: "shadow", values: [.exposure: -1.8])),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: TreeAndSkySegmenter(), generator: MeasuredGenerator(), host: MeasuringHost())
+        var masks: [MaskData] = []
+        for try await event in agent.run("Golden hour, with the tree's long shadow") {
+            if case .selected(_, let segment) = event { masks.append(segment.mask) }
+        }
+        let shadow = try #require(masks.first)
+        let unblocked = TreeAndSkySegmenter.tree.castShadow(tip: tip)
+        let sky = TreeAndSkySegmenter.sky
+        #expect((0..<sky.coverage.count).contains { sky.coverage[$0] > 0 && unblocked.coverage[$0] > 0 }, "the test's shadow reaches the sky")
+        #expect((0..<sky.coverage.count).allSatisfy { sky.coverage[$0] == 0 || shadow.coverage[$0] == 0 }, "no shadow in the sky")
+        #expect((0..<sky.coverage.count).contains { sky.coverage[$0] == 0 && shadow.coverage[$0] > 0 }, "the shadow lies on the field")
+    }
+
     /// A bench running off the bottom of the photo stands on no ground in it: its shadow, laid from the frame's edge,
     /// fell on the legs and hands of the man sitting on it. It casts none, and says why; the shadow's darkening is left
     /// out on purpose, not failed: counted as a failure, it made a satisfied golden hour exit with an error.
@@ -221,6 +242,20 @@ private struct CarAndPersonSegmenter: Segmenter {
     func segment(_ request: SegmentRequest) async throws -> [Segment] {
         let mask = request.concept == "person" ? Self.person : Self.car
         return [Segment(label: request.concept ?? "car", box: mask.boundingBox!, mask: mask)]
+    }
+}
+
+/// A tree standing on a field whose horizon is just behind it, and the sky above.
+private struct TreeAndSkySegmenter: Segmenter {
+    let modelID = "sam-3.1"
+    static let tree = MaskData(size: PixelSize(width: 20, height: 20),
+                               coverage: (0..<400).map { (9..<12).contains($0 % 20) && (4..<14).contains($0 / 20) ? 255 : 0 })
+    static let sky = MaskData(size: PixelSize(width: 20, height: 20),
+                              coverage: (0..<400).map { $0 / 20 < 11 && tree.coverage[$0] == 0 ? 255 : 0 })
+    func segment(_ request: SegmentRequest) async throws -> [Segment] {
+        if request.concept == "person" { return [] }
+        let mask = request.concept == "sky" ? Self.sky : Self.tree
+        return [Segment(label: request.concept ?? "tree", box: mask.boundingBox!, mask: mask)]
     }
 }
 

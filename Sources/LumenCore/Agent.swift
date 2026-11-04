@@ -133,6 +133,7 @@ public actor EditAgent {
     private var closeUpsBefore: [(region: String, rect: NormalizedRect, image: EncodedImage)] = []
     /// The people in this run's photo, found once a shadow needs them: `.some(nil)` when there are none.
     private var standingPeople: MaskData??
+    private var openSky: MaskData??
     /// Things this run found standing on no ground in the photo, so with no shadow to select: their shadow's steps are
     /// left out on purpose, not failed.
     private var shadowless: Set<String> = []
@@ -241,6 +242,7 @@ public actor EditAgent {
             var redraws: [String: Layer.ID] = [:]
             closeUpsBefore = []
             standingPeople = nil
+            openSky = nil
             shadowless = []
             guard configuration.maxSteps > 0 else {
                 finish("Step limit reached.", events: events)
@@ -582,6 +584,14 @@ public actor EditAgent {
                     mask = MaskData(size: mask.size, coverage: mask.multiplied(by: others.inverted()).coverage, followsPhoto: false)
                 }
             }
+            // A shadow lies on the ground, never on the sky: a lone tree on a ridge, its shadow laid toward the horizon
+            // just behind it, came out as a dark band in the sky above the field.
+            if let sky = try await sky(in: image, events: events) {
+                let open = (sky.size == caster.size ? sky : sky.resized(to: caster.size)).multiplied(by: caster.inverted())
+                if open.boundingBox != nil {
+                    mask = MaskData(size: mask.size, coverage: mask.multiplied(by: open.inverted()).coverage, followsPhoto: false)
+                }
+            }
         } else if selection.invert {
             mask = mask.inverted()
         }
@@ -625,6 +635,17 @@ public actor EditAgent {
         }
         let union = segments.first.map { first in segments.dropFirst().reduce(first.mask) { $0.union($1.mask) } }
         standingPeople = .some(union)
+        return union
+    }
+
+    /// The sky in this run's photo, found once for keeping shadows off it; nil when there is none.
+    private func sky(in image: EncodedImage, events: Events) async throws -> MaskData? {
+        if let found = openSky { return found }
+        let segments = try await call(.select, model: segmenter.modelID, detail: "Find the sky a shadow can't fall on", events: events) {
+            try await self.segmenter.segment(SegmentRequest(image: image, concept: "sky"))
+        }
+        let union = segments.first.map { first in segments.dropFirst().reduce(first.mask) { $0.union($1.mask) } }
+        openSky = .some(union)
         return union
     }
 

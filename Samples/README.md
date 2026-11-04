@@ -23,9 +23,9 @@ swift build -c release
 | `knight-costume.run.json` | `Fixtures/photos/man-in-denim-jacket-posing.jpg` | October 30, 2026 | 6: plan, select the man, his face and his head, redraw, critique | $0.0470 |
 
 Everything Lumen does on the Mac between those answers runs again for real: the masks are decoded, fitted and grown,
-the redraw is checked and composited, and the critic's measurements are taken. The November 2 coat and shirt runs
-originally revealed old-color edge residue. They are retained so the current renderer's correction can be reproduced
-without another model call. The earlier coat recording remains in `archive/`.
+the redraw is checked and composited, and the critic's measurements are taken. The November 2 shirt run is kept as
+the hardest recolour case: a white T-shirt made black against a dark hill. On the current renderer it still shows a
+thin light edge along the shirt's outline. The earlier coat recording remains in `archive/`.
 
 Any API-cost summary printed during replay describes recorded model usage, not a new charge. The recorded model's
 critique is also historical; inspect the current image rather than treating that verdict as new model evaluation.

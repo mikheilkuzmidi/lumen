@@ -115,7 +115,7 @@ An October 30 autonomous run of this library took 42 model calls in 361 s and co
 ### Without a key
 
 Three live edits are recorded in [`Samples/`](Samples/README.md), with every answer the Meta models gave. Replayed, they run
-the whole edit again on your Mac, with no key, no account and no new provider charge. They use the current renderer, including corrections to edge residue found in the original recordings:
+the whole edit again on your Mac, with no key, no account and no new provider charge. They use the current renderer, so a replay shows what this code makes of the recorded answers:
 
 ```sh
 .build/release/lumen edit Fixtures/photos/man-in-denim-jacket-posing.jpg "Dress the man up as a medieval knight" \

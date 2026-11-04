@@ -32,6 +32,25 @@ Recorded model responses in `Tests/LumenMetaTests/Recorded/` are trimmed to what
 
 The photos are scaled to 1280 px on the long edge. `Fixtures/instructions.json` pairs each with the instruction the evaluation runs.
 
+## Examples
+
+The before-and-after pairs in `docs/images/examples/`, shown in the README. Each is the CC0 photo as it was beside Lumen's result from one live run through Meta's models on November 3, 2026. Licenses checked on Wikimedia Commons on November 4, 2026.
+
+| Image | Source | Author | License |
+| --- | --- | --- | --- |
+| `striped-t-shirt-navy-and-white.jpg` | [Man in t-shirt posing (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_in_t-shirt_posing_(Unsplash).jpg) | Mohammad Faruque primitivestudios | CC0 |
+| `bicycle-glossy-teal.jpg` | [Red bicycle (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Red_bicycle_(Unsplash).jpg) | Dakota Corbin thedakotacorbin | CC0 |
+| `boat-bright-red.jpg` | [Cianorte blue boat (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Cianorte_blue_boat_(Unsplash).jpg) | João Silas joaosilas | CC0 |
+| `truck-cherry-red.jpg` | [Rusted truck Great Ocean Road (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Rusted_truck_Great_Ocean_Road_(Unsplash).jpg) | jamie r. mink jamiemink | CC0 |
+| `denim-jacket-camel.jpg`, `platinum-blonde.jpg` | [Laughing woman in jean jacket (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Laughing_woman_in_jean_jacket_(Unsplash).jpg) | Brooke Cagle brookecagle | CC0 |
+| `tent-removed.jpg` | [Kite and exciting beach (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Kite_and_exciting_beach_(Unsplash).jpg) | Denin Williams deninwilliams | CC0 |
+| `lake-turquoise.jpg` | [Peaceful mountain lake (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Peaceful_mountain_lake_(Unsplash).jpg) | Héctor J. Rivas hjrc33 | CC0 |
+| `building-black-and-white.jpg` | [One Wilshire Building (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:One_Wilshire_Building_(Unsplash).jpg) | Owen CL owencavlys | CC0 |
+| `aviator-shades.jpg` | [Face portrait (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Face_portrait_(Unsplash).jpg) | William Stitt willpower | CC0 |
+| `snow-and-dog.jpg` | [Dog in a snowy forest (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Dog_in_a_snowy_forest_(Unsplash).jpg) | Cam Adams camadams | CC0 |
+
+- `striped-t-shirt-navy-and-white.jpg`: Commons marks it with a personality-rights note: the person shown has rights of their own beyond the license. The same photo is `photos/man-in-t-shirt-posing.jpg` above.
+
 ## The batch library
 `Fixtures/library/` is a small shoot for batch editing: people in shirts of several colours, a few photos with nobody in them, two misfires and two tilted horizons. Five files there link to `photos/`. These photos are new to the library, at 1280 px wide:
 

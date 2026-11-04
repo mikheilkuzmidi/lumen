@@ -42,6 +42,53 @@ Every model call, plan, critique and failure is kept in a trace. [docs/evaluatio
 
 An editor can also use the finding step on its own. `AreaSearch` looks for a name only inside a box the person drew, keeping what lies mostly inside it. When nothing by that name is there, it selects what the box frames, or the box itself when that comes back as a few specks. The Lumen editor's Masks panel uses it: drag a box, type "cup", and only the cup inside the box is selected.
 
+## Examples
+
+Each pair is one instruction, run live through Meta's models on November 3, 2026: the photo as it was on the left, Lumen's result on the right. The photos are CC0, credited in [docs/fixtures.md](docs/fixtures.md#examples).
+
+“Make his striped T-shirt navy and white instead of red and black.” The stripes and the chest patch are kept.
+
+![A man's red and black striped T-shirt turned navy and white](docs/images/examples/striped-t-shirt-navy-and-white.jpg)
+
+“Make the bicycle glossy teal.”
+
+![A red bicycle turned glossy teal, its basket and tyres unchanged](docs/images/examples/bicycle-glossy-teal.jpg)
+
+“Make the boat bright red.” The chipped paint and the rope are kept.
+
+![A turquoise boat's bow turned bright red with its chipped paint kept](docs/images/examples/boat-bright-red.jpg)
+
+“Make the old truck a deep cherry red.” The rust and moss are kept; the yellow frame around the windshield stayed yellow.
+
+![A rusted yellow truck turned deep cherry red](docs/images/examples/truck-cherry-red.jpg)
+
+“Make her denim jacket camel brown.”
+
+![A woman's denim jacket turned camel brown](docs/images/examples/denim-jacket-camel.jpg)
+
+“Remove the blue tent on the left.” Only that tent is removed; the one beside it stays, as asked.
+
+![A beach with the blue tent on the left removed](docs/images/examples/tent-removed.jpg)
+
+“Make the water a deeper turquoise and the sky a deeper blue.”
+
+![A mountain lake with deeper turquoise water and a deeper blue sky](docs/images/examples/lake-turquoise.jpg)
+
+“Dramatic black and white.”
+
+![A city skyline turned into dramatic black and white](docs/images/examples/building-black-and-white.jpg)
+
+“Give him aviator shades.”
+
+![A man's portrait with aviator sunglasses added](docs/images/examples/aviator-shades.jpg)
+
+“Platinum blonde.”
+
+![A woman's red hair turned platinum blonde](docs/images/examples/platinum-blonde.jpg)
+
+“Make the snow a cleaner white and the dog stand out.”
+
+![A dog in a snowy forest with cleaner white snow](docs/images/examples/snow-and-dog.jpg)
 ## A whole library
 
 ```sh

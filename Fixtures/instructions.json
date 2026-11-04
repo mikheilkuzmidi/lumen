@@ -59,6 +59,14 @@
     {
       "photo": "photos/sunset-beach-couple.jpg",
       "instruction": "Make the sunset more vivid."
+    },
+    {
+      "photo": "photos/man-in-t-shirt-posing.jpg",
+      "instruction": "Make the red stripes of his T-shirt blue."
+    },
+    {
+      "photo": "photos/red-shirt-woman-in-a-cafe.jpg",
+      "instruction": "Make her red blouse blue."
     }
   ]
 }

@@ -27,6 +27,8 @@ Recorded model responses in `Tests/LumenMetaTests/Recorded/` are trimmed to what
 | `photos/man-walks-in-front-of-graffiti-wall.jpg` | [Man walks in front of graffiti wall (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_walks_in_front_of_graffiti_wall_(Unsplash).jpg) | Josh Aarons mrjoshuahh | CC0 |
 | `photos/stockholm-man-with-headphones.jpg` | [Stockholm man with headphones (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Stockholm_man_with_headphones_(Unsplash).jpg) | Yingchou Han hyingchou | CC0 |
 | `photos/sunset-beach-couple.jpg` | [Sunset beach couple (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Sunset_beach_couple_(Unsplash).jpg) | Caleb Ekeroth calebekeroth | CC0 |
+| `photos/man-in-t-shirt-posing.jpg` | [Man in t-shirt posing (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Man_in_t-shirt_posing_(Unsplash).jpg) | Mohammad Faruque primitivestudios | CC0 |
+| `photos/red-shirt-woman-in-a-cafe.jpg` | [Red shirt woman in a cafe (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Red_shirt_woman_in_a_cafe_(Unsplash).jpg) | Alexander Solodukhin solodfoto | CC0 |
 
 The photos are scaled to 1280 px on the long edge. `Fixtures/instructions.json` pairs each with the instruction the evaluation runs.
 

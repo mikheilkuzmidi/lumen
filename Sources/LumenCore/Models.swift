@@ -126,8 +126,11 @@ public struct ColourMeasurement: Equatable, Sendable {
     }
 
     /// Whether the colour is in `family` by hue, whatever its lightness: an orange poppy in shade names as brown.
+    /// White is also a near-white light grey: white daisies, petals shaded by their neighbours, read lightness 78 to 88
+    /// and SAM found 58 flowers of which only 2 were named white.
     public func isIn(_ family: String) -> Bool {
         if self.family == family { return true }
+        if family == "white", chroma < 10, lightness >= 78 { return true }
         guard chroma >= 15 else { return false }
         let hues: [String: [ClosedRange<Double>]] = [
             "red": [20...58], "orange": [50...82], "yellow": [78...110], "green": [105...172], "teal": [168...238],

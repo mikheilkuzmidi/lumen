@@ -78,6 +78,10 @@ struct EveryOneTests {
         let shaded = ColourMeasurement(lightness: 42, a: 14, b: 32)
         #expect(shaded.family == "brown" && shaded.isIn("orange") && !shaded.isIn("blue"))
         #expect(!ColourMeasurement(lightness: 50, a: 2, b: 3).isIn("orange"), "grey is no hue")
+        // A white daisy shaded by its neighbours reads light grey; it is still a white flower. A mid grey is not.
+        #expect(ColourMeasurement(lightness: 84, a: -1, b: -6).isIn("white"))
+        #expect(!ColourMeasurement(lightness: 66, a: 1, b: 2).isIn("white"))
+        #expect(!ColourMeasurement(lightness: 84, a: 9, b: 10).isIn("white"), "a pale pink is not white")
     }
 
     @Test func thePlanCheckKeepsOnlyColourFamiliesAndNeedsAConcept() {

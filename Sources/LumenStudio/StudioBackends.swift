@@ -2,6 +2,7 @@ import Foundation
 import LumenCore
 import LumenMeta
 import LumenOpen
+import LumenUI
 import Observation
 
 extension StudioScript.Backend {
@@ -10,6 +11,15 @@ extension StudioScript.Backend {
         case .meta: "Muse Spark (Meta)"
         case .glimmer: "Muse Glimmer on this Mac"
         case .sparkOpen: "Muse Spark Open"
+        }
+    }
+
+    /// The planner by name; selection and redraws always run on Meta's SAM 3.1 and Muse Image.
+    var liveModels: LiveEditModels {
+        switch self {
+        case .meta: LiveEditModels()
+        case .glimmer: LiveEditModels(planner: "Muse Glimmer")
+        case .sparkOpen: LiveEditModels(planner: "Muse Spark Open")
         }
     }
 }

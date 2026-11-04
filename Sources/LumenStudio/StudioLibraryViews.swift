@@ -13,11 +13,7 @@ struct StudioLibraryView: View {
     @State private var dropTarget = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var assistantStyle: AssistantStyle {
-        AssistantStyle(panel: StudioStyle.panel, raised: StudioStyle.raised, line: StudioStyle.line,
-                       primary: StudioStyle.textPrimary, secondary: StudioStyle.textSecondary,
-                       accent: StudioStyle.accent, danger: StudioStyle.danger, radius: StudioStyle.promptRadius)
-    }
+    private var assistantStyle: AssistantStyle { StudioStyle.assistant }
 
     var body: some View {
         VStack(spacing: 0) {

@@ -2,6 +2,7 @@ import AppKit
 import LumenCore
 import LumenMeta
 import LumenRender
+import LumenUI
 import LumenVoice
 import Observation
 import UniformTypeIdentifiers
@@ -99,6 +100,8 @@ final class StudioModel {
     private(set) var layers: [Layer] = []
     private(set) var steps: [StudioStep] = []
     private(set) var regions: [StudioRegion] = []
+    /// The edit as it happens, for the live view over the photo.
+    private(set) var live = LiveEditState()
     private(set) var planSummary = ""
     private(set) var completion: String?
     private(set) var historyPosition = 0
@@ -225,6 +228,7 @@ final class StudioModel {
             layers = []
             steps = []
             regions = []
+            live.end()
             regionColors = [:]
             planSummary = ""
             completion = nil
@@ -341,6 +345,8 @@ final class StudioModel {
         revision = 0
         pendingRevision = nil
         regions = []
+        live = LiveEditState(models: backends.selection.liveModels)
+        live.begin()
         question = nil
         earlyAnswer = nil
         sidebar = .steps
@@ -382,6 +388,7 @@ final class StudioModel {
         photoDidChange?()
         await Task { await renderPreview(maxLongEdge: renderEdge) }.value
         regions = []
+        if live.phase != .accepted { live.end() }
         question = nil
         phase = .idle
         if let failure { throw failure }
@@ -537,6 +544,8 @@ final class StudioModel {
     }
 
     private func receive(_ event: AgentEvent) async {
+        // After the event's own work, so a redraw's veil lifts once the new preview is showing.
+        defer { live.receive(event) }
         switch event {
         case .planned(let plan):
             finishActive()

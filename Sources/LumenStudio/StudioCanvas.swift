@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import LumenCore
+import LumenUI
 
 struct StudioCanvas: View {
     @Bindable var model: StudioModel
@@ -114,6 +115,10 @@ private struct PhotoSurface: View {
                             .transition(.opacity)
                     }
                     .allowsHitTesting(false)
+                    // Studio draws its own selection reveal; the live view adds the redraw and the check.
+                    if model.live.phase != nil {
+                        LiveEditOverlay(state: model.live, style: StudioStyle.assistant, drawsSelection: false)
+                    }
                     if let area = model.area {
                         AreaOverlay(area: area, snapshotDate: model.snapshotDate)
                             .allowsHitTesting(false)

@@ -6,6 +6,11 @@ import LumenUI
 /// the chrome never biases how a photo's colour reads, and the orange-red accent kept for Lumen's own actions and the
 /// few marks that must catch the eye. Standard controls are tinted grey, not the accent.
 enum StudioStyle {
+    /// The shared assistant surfaces (the plan review, the live view of an edit) in Studio's colours.
+    static var assistant: AssistantStyle {
+        AssistantStyle(panel: panel, raised: raised, line: line, primary: textPrimary, secondary: textSecondary,
+                       accent: accent, danger: danger, radius: promptRadius)
+    }
     static let canvas = Color(hex: 0x0A0A0B)
     static let panel = Color(hex: 0x0E0E0F)
     static let raised = Color(hex: 0x141416)

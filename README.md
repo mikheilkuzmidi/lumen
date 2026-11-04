@@ -151,6 +151,7 @@ swift test
 - **`LumenRender`:** applies layers to a photo with Core Image (`PhotoDocument`).
 - **`LumenOpen`:** open-weight planners.
 - **`lumen`:** the command-line tool.
+- **`LumenUI`:** SwiftUI pieces a host app shares: the plan review, and the live view of an edit over the photo (one pass while Muse Spark plans, the mask as SAM 3.1 finds it, a veil while Muse Image redraws, the redraw landing, the check). Lumen Studio and the Lumen editor both use them.
 - **`LumenStudio`:** the Mac app.
 
 ## License

@@ -79,15 +79,21 @@ public struct AgentConfiguration: Sendable {
     /// material recolour. Off by default: on real edits the established
     /// photographic edge path looked more natural.
     public var materialRecolour = false
+    /// Whether a colour-only recolour uses the host's prepared edge (a colour
+    /// matte of SAM's mask, placed without a second blend). Off by default:
+    /// the soft blend of the fitted mask and the redrawn object, with the
+    /// photo's colour and detail matched back, gave smoother garment edges.
+    public var recolourEdges = false
 
     public init(maxSteps: Int = 12, maxRevisions: Int = 2, previewLongEdge: Int = 1024, selectionLongEdge: Int = 1536,
-                closeUpLongEdge: Int = 768, materialRecolour: Bool = false) {
+                closeUpLongEdge: Int = 768, materialRecolour: Bool = false, recolourEdges: Bool = false) {
         self.maxSteps = maxSteps
         self.maxRevisions = maxRevisions
         self.previewLongEdge = previewLongEdge
         self.selectionLongEdge = selectionLongEdge
         self.closeUpLongEdge = closeUpLongEdge
         self.materialRecolour = materialRecolour
+        self.recolourEdges = recolourEdges
     }
 }
 
@@ -842,7 +848,7 @@ public actor EditAgent {
         // the edge's last pixels. Then it takes in the rim or shade of the same colour SAM stopped short of, which the
         // redraw recoloured too: a teal fender's edge and its shaded underside, left teal beside the new red.
         mask = try await host.extended(try await host.fitted(original, region: rect), region: rect)
-        let colourOnly = Self.isRecolourPrompt(prompt) && !region.intentionalFalloff
+        let colourOnly = configuration.recolourEdges && Self.isRecolourPrompt(prompt) && !region.intentionalFalloff
         if let overlap = attempt.overlap {
             if overlap >= 0.5, let object = attempt.object {
                 // A colour replacement retains the original garment geometry.

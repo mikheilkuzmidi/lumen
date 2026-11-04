@@ -11,7 +11,8 @@ struct RedrawTests {
             .select(Selection(id: "cup", concept: "cup")),
             .regenerate(Regeneration(region: "cup", prompt: prompt)), .finish(Finish(reason: "Ready")),
         ]))
-        let agent = EditAgent(planner: planner, segmenter: RedrawSegmenter(), generator: RedrawGenerator(), host: host)
+        let agent = EditAgent(planner: planner, segmenter: RedrawSegmenter(), generator: RedrawGenerator(), host: host,
+                              configuration: AgentConfiguration(recolourEdges: true))
         let events = try await redrawEvents(agent.run(prompt))
         let layer = try #require(events.redrawLayers.last)
         let patch = try await redrawPatch(layer, agent: agent)
@@ -19,6 +20,23 @@ struct RedrawTests {
         #expect(layer.precompositedEdges == (recolour ? true : nil))
         #expect(layer.sourceReferenced == nil, "Ordinary and single-garment edge paths retain their colour correction")
         #expect((String(data: patch.image.data, encoding: .utf8) == "prepared edge crop") == recolour)
+    }
+    @Test func byDefaultARecolourBlendsTheFittedMaskAndTheRedrawnObject() async throws {
+        let object = RedrawPhoto.mask(x: 3..<49, y: 6..<46)
+        let segmenter = RedrawSegmenter(checks: [.success([RedrawPhoto.segment(object, score: 0.9)])])
+        let host = RedrawHost(preparesEdges: true)
+        let planner = RedrawPlanner(plan: EditPlan(summary: "Change cup", steps: [
+            .select(Selection(id: "cup", concept: "cup")),
+            .regenerate(Regeneration(region: "cup", prompt: "Recolour the cup bright yellow, keeping its shape")),
+            .finish(Finish(reason: "Ready")),
+        ]))
+        let agent = EditAgent(planner: planner, segmenter: segmenter, generator: RedrawGenerator(), host: host)
+        let events = try await redrawEvents(agent.run("Make the cup bright yellow"))
+        let layer = try #require(events.redrawLayers.last)
+        let patch = try await redrawPatch(layer, agent: agent)
+        #expect(await host.recolourCalls == 0)
+        #expect(layer.precompositedEdges == nil && layer.sourceReferenced == nil)
+        #expect(patch.mask == RedrawPhoto.inCrop.union(object))
     }
     @Test func acceptedObjectExtendsThePatchAndUsesTheBestOverlap() async throws {
         let object = RedrawPhoto.mask(x: 3..<49, y: 6..<46)

@@ -120,7 +120,7 @@ struct MaterialRecolourIntegrationTests {
         let agent = EditAgent(planner: MaterialReusePlanner(),
                               segmenter: MaterialTestSegmenter(instances: MaterialFixture.instances),
                               generator: MaterialTestGenerator(), host: host,
-                              configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true))
+                              configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true, recolourEdges: true))
         _ = try await materialEvents(agent.run(Self.instruction))
         #expect(await host.inputs.isEmpty)
         _ = try await materialEvents(agent.run(Self.instruction, area: NormalizedRect(x: 0, y: 0, width: 0.5, height: 1)))
@@ -174,7 +174,7 @@ private enum MaterialFixture {
         let steps = prefix + [.select(selection), .regenerate(Regeneration(region: selection.id, prompt: prompt))]
         return EditAgent(planner: MaterialTestPlanner(steps: steps, satisfied: satisfied),
                          segmenter: MaterialTestSegmenter(instances: instances), generator: generator, host: host,
-                         configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true))
+                         configuration: AgentConfiguration(maxRevisions: 0, materialRecolour: true, recolourEdges: true))
     }
 }
 
